@@ -1,6 +1,6 @@
 # GutAI Privacy Policy
 
-**Effective Date:** February 24, 2026  
+**Effective Date:** February 24, 2026
 **Last Updated:** February 24, 2026
 
 GutAI ("we", "us", "our") is a gut-health food diary app that helps you track meals, monitor symptoms, and discover food-related patterns. This privacy policy explains what data we collect, how we use it, and your rights.
@@ -10,28 +10,33 @@ GutAI ("we", "us", "our") is a gut-health food diary app that helps you track me
 ## 1. Data We Collect
 
 ### Account Information
+
 - Email address
 - Display name
 - Password (stored as a salted hash — we never store or see your plaintext password)
 - Timezone
 
 ### Health & Dietary Preferences
+
 - Self-reported allergies (e.g., peanuts, dairy, gluten)
 - Dietary preferences (e.g., vegan, keto, low-FODMAP)
 - Daily nutrition goals (calories, protein, carbs, fat, fiber)
 
 ### Food Diary
+
 - Meal entries including food names, portion sizes, and nutritional values
 - Timestamps of when meals were logged
 - Free-text notes and natural language meal descriptions (e.g., "ate 2 eggs and toast")
 - Optional photo URLs
 
 ### Symptom Logs
+
 - Symptom type, severity, timing, and duration
 - Free-text notes about symptoms
 - Associations between meals and symptoms
 
 ### Derived Data
+
 - Food-symptom correlations and trigger food identification
 - Additive exposure tracking
 - Personalized gut-health insights
@@ -53,13 +58,13 @@ We generate these insights locally from your own data to help you understand pat
 
 ## 3. How We Use Your Data
 
-| Purpose | Data Used |
-|---|---|
-| Provide the core food diary and symptom tracking service | Meals, symptoms, preferences |
-| Generate personalized insights and trigger food analysis | Meals, symptoms, correlations |
-| Look up nutritional information for foods you log | Food names, barcodes, meal descriptions |
-| Authenticate your account | Email, hashed password, JWT tokens |
-| Comply with your nutrition goals | Calorie/macro targets |
+| Purpose                                                  | Data Used                               |
+| -------------------------------------------------------- | --------------------------------------- |
+| Provide the core food diary and symptom tracking service | Meals, symptoms, preferences            |
+| Generate personalized insights and trigger food analysis | Meals, symptoms, correlations           |
+| Look up nutritional information for foods you log        | Food names, barcodes, meal descriptions |
+| Authenticate your account                                | Email, hashed password, JWT tokens      |
+| Comply with your nutrition goals                         | Calorie/macro targets                   |
 
 We do **not** use your data for advertising, profiling, or sale to third parties.
 
@@ -69,12 +74,12 @@ We do **not** use your data for advertising, profiling, or sale to third parties
 
 When you search for or log a food, we may query external nutrition databases to retrieve nutritional data. These services receive **only** the food search text or barcode — never your email, name, health data, or any personal identifiers.
 
-| Service | Data Sent | Purpose |
-|---|---|---|
-| [Edamam](https://www.edamam.com/) | Food name or natural language meal description | Nutrition lookup and meal parsing |
-| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Food name | Nutrition lookup |
-| [Open Food Facts](https://world.openfoodfacts.org/) | Barcode | Barcode-based food lookup |
-| [CalorieNinjas](https://calorieninjas.com/) | Natural language meal description | Fallback nutrition parsing |
+| Service                                             | Data Sent                                      | Purpose                           |
+| --------------------------------------------------- | ---------------------------------------------- | --------------------------------- |
+| [Edamam](https://www.edamam.com/)                   | Food name or natural language meal description | Nutrition lookup and meal parsing |
+| [USDA FoodData Central](https://fdc.nal.usda.gov/)  | Food name                                      | Nutrition lookup                  |
+| [Open Food Facts](https://world.openfoodfacts.org/) | Barcode                                        | Barcode-based food lookup         |
+| [CalorieNinjas](https://calorieninjas.com/)         | Natural language meal description              | Fallback nutrition parsing        |
 
 No other third-party services receive your data.
 
@@ -131,4 +136,4 @@ If you have questions about this privacy policy or your data, contact us at:
 
 ---
 
-*This privacy policy is also available at: [https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md](https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md)*
+_This privacy policy is also available at: [https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md](https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md)_

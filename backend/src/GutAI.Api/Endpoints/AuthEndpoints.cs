@@ -1,8 +1,10 @@
 using System.Security.Claims;
+using GutAI.Application.Common;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 
 public static class AuthEndpoints
 {
@@ -22,18 +24,30 @@ public static class AuthEndpoints
         RegisterRequest request,
         IJwtService jwt,
         ITableStore store,
-        IConfiguration config)
+        IOptions<JwtSettings> jwtOptions)
     {
-        if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@') || !request.Email.Contains('.'))
+        if (string.IsNullOrWhiteSpace(request.Email) || request.Email.Length > 256 || !request.Email.Contains('@') || !request.Email.Contains('.'))
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["InvalidEmail"] = ["A valid email address is required."]
+                ["InvalidEmail"] = ["A valid email address is required (max 256 characters)."]
             });
 
         if (string.IsNullOrEmpty(request.Password))
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["PasswordRequired"] = ["Password is required."]
+            });
+
+        if (request.Password.Length > 128)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["PasswordTooLong"] = ["Password must not exceed 128 characters."]
+            });
+
+        if (request.DisplayName is not null && request.DisplayName.Length > 100)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["DisplayNameTooLong"] = ["Display name must not exceed 100 characters."]
             });
 
         var normalizedEmail = request.Email.Trim().ToUpperInvariant();
@@ -80,11 +94,12 @@ public static class AuthEndpoints
             ExpiresAt = DateTime.UtcNow.AddDays(7)
         });
 
+        var settings = jwtOptions.Value;
         return Results.Created($"/api/user/profile", new AuthResponse
         {
             AccessToken = accessToken,
             RefreshToken = refreshToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(int.TryParse(config["Jwt:ExpiryMinutes"], out var mins) ? mins : 60),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(settings.ExpiryMinutes),
             User = MapProfile(appUser)
         });
     }
@@ -93,8 +108,14 @@ public static class AuthEndpoints
         LoginRequest request,
         IJwtService jwt,
         ITableStore store,
-        IConfiguration config)
+        IOptions<JwtSettings> jwtOptions)
     {
+        if (string.IsNullOrWhiteSpace(request.Email) || request.Email.Length > 256)
+            return Results.Unauthorized();
+
+        if (string.IsNullOrEmpty(request.Password) || request.Password.Length > 128)
+            return Results.Unauthorized();
+
         var identity = await store.GetIdentityByEmailAsync(request.Email);
         if (identity is null)
             return Results.Unauthorized();
@@ -124,11 +145,12 @@ public static class AuthEndpoints
             ExpiresAt = DateTime.UtcNow.AddDays(7)
         });
 
+        var settings = jwtOptions.Value;
         return Results.Ok(new AuthResponse
         {
             AccessToken = accessToken,
             RefreshToken = refreshToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(int.TryParse(config["Jwt:ExpiryMinutes"], out var mins) ? mins : 60),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(settings.ExpiryMinutes),
             User = MapProfile(appUser)
         });
     }
@@ -137,8 +159,11 @@ public static class AuthEndpoints
         RefreshTokenRequest request,
         IJwtService jwt,
         ITableStore store,
-        IConfiguration config)
+        IOptions<JwtSettings> jwtOptions)
     {
+        if (string.IsNullOrWhiteSpace(request.RefreshToken) || request.RefreshToken.Length > 512)
+            return Results.Unauthorized();
+
         var token = await store.GetRefreshTokenByValueAsync(request.RefreshToken);
         if (token is null || !token.IsActive)
             return Results.Unauthorized();
@@ -162,11 +187,12 @@ public static class AuthEndpoints
 
         var accessToken = jwt.GenerateAccessToken(token.UserId, user.Email);
 
+        var settings = jwtOptions.Value;
         return Results.Ok(new AuthResponse
         {
             AccessToken = accessToken,
             RefreshToken = newRefreshToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(int.TryParse(config["Jwt:ExpiryMinutes"], out var mins) ? mins : 60),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(settings.ExpiryMinutes),
             User = MapProfile(user)
         });
     }
@@ -188,6 +214,18 @@ public static class AuthEndpoints
         ClaimsPrincipal principal,
         ITableStore store)
     {
+        if (string.IsNullOrEmpty(request.CurrentPassword) || request.CurrentPassword.Length > 128)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["InvalidInput"] = ["Current password is required."]
+            });
+
+        if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length > 128)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["InvalidInput"] = ["New password is required (max 128 characters)."]
+            });
+
         var userId = Guid.Parse(principal.FindFirstValue("sub")!);
         var identity = await store.GetIdentityByIdAsync(userId);
         if (identity is null)

@@ -26,8 +26,26 @@ public static class MealEndpoints
         if (request.Items.Count == 0)
             return Results.BadRequest(new { error = "A meal must have at least one item" });
 
+        if (request.Items.Count > 50)
+            return Results.BadRequest(new { error = "A meal cannot have more than 50 items" });
+
+        if (request.Notes is not null && request.Notes.Length > 1000)
+            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
+
+        if (request.OriginalText is not null && request.OriginalText.Length > 2000)
+            return Results.BadRequest(new { error = "Original text must not exceed 2000 characters" });
+
+        if (request.Items.Any(i => string.IsNullOrWhiteSpace(i.FoodName) || i.FoodName.Length > 200))
+            return Results.BadRequest(new { error = "Each item must have a food name (max 200 characters)" });
+
+        if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
+            return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
+
         if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0))
             return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
+
+        if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
+            return Results.BadRequest(new { error = "Nutrition values are unrealistically high" });
 
         var userId = GetUserId(principal);
         var mealType = Enum.TryParse<MealType>(request.MealType, true, out var mt) ? mt : MealType.Snack;
@@ -84,6 +102,9 @@ public static class MealEndpoints
         ClaimsPrincipal principal,
         INutritionApiService nutritionApi)
     {
+        if (string.IsNullOrWhiteSpace(request.Text) || request.Text.Length > 2000)
+            return Results.BadRequest(new { error = "Text is required and must not exceed 2000 characters" });
+
         var parsed = await nutritionApi.ParseNaturalLanguageAsync(request.Text);
         if (parsed.Count == 0)
             return Results.BadRequest(new { error = "Could not parse any food items from the text." });
@@ -127,8 +148,23 @@ public static class MealEndpoints
         if (request.Items.Count == 0)
             return Results.BadRequest(new { error = "A meal must have at least one item" });
 
+        if (request.Items.Count > 50)
+            return Results.BadRequest(new { error = "A meal cannot have more than 50 items" });
+
+        if (request.Notes is not null && request.Notes.Length > 1000)
+            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
+
+        if (request.Items.Any(i => string.IsNullOrWhiteSpace(i.FoodName) || i.FoodName.Length > 200))
+            return Results.BadRequest(new { error = "Each item must have a food name (max 200 characters)" });
+
+        if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
+            return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
+
         if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0))
             return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
+
+        if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
+            return Results.BadRequest(new { error = "Nutrition values are unrealistically high" });
 
         meal.MealType = Enum.TryParse<MealType>(request.MealType, true, out var mt) ? mt : meal.MealType;
         meal.Notes = request.Notes;

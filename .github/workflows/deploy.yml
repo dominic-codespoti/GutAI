@@ -1,0 +1,139 @@
+name: Deploy Backend to Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "infra/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, prod]
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/gutai-api
+  AZURE_RG: gutai-${{ github.event.inputs.environment || 'staging' }}
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet test backend/ --verbosity minimal
+
+  build-and-push:
+    name: Build & Push to GHCR
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+  deploy-infra:
+    name: Deploy Infrastructure
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    outputs:
+      api-url: ${{ steps.deploy.outputs.apiUrl }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure resource group
+        run: |
+          az group create \
+            --name ${{ env.AZURE_RG }} \
+            --location australiaeast \
+            --tags project=gutai environment=${{ github.event.inputs.environment || 'staging' }}
+
+      - name: Deploy Bicep
+        id: deploy
+        run: |
+          ENV=${{ github.event.inputs.environment || 'staging' }}
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::7}"
+          az deployment group create \
+            --resource-group ${{ env.AZURE_RG }} \
+            --template-file infra/main.bicep \
+            --parameters \
+              environment=$ENV \
+              containerImage=$IMAGE \
+              jwtSecret='${{ secrets.JWT_SECRET }}' \
+              usdaApiKey='${{ secrets.USDA_API_KEY }}' \
+              calorieNinjasApiKey='${{ secrets.CALORIENINJAS_API_KEY }}' \
+              edamamAppId='${{ secrets.EDAMAM_APP_ID }}' \
+              edamamAppKey='${{ secrets.EDAMAM_APP_KEY }}' \
+              ghcrUsername='${{ github.actor }}' \
+              ghcrPassword='${{ secrets.GITHUB_TOKEN }}'
+
+          API_URL=$(az deployment group show \
+            --resource-group ${{ env.AZURE_RG }} \
+            --name main \
+            --query properties.outputs.apiUrl.value -o tsv)
+          echo "apiUrl=$API_URL" >> $GITHUB_OUTPUT
+
+      - name: Print API URL
+        run: echo "✅ API deployed to ${{ steps.deploy.outputs.apiUrl }}"
+
+  smoke-test:
+    name: Smoke Test
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check
+        run: |
+          URL="${{ needs.deploy-infra.outputs.api-url }}/health"
+          echo "Checking $URL ..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i: status=$STATUS, retrying in 10s..."
+            sleep 10
+          done
+          echo "❌ Health check failed after 2 minutes"
+          exit 1

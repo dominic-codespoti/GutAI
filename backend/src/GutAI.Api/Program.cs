@@ -1,6 +1,7 @@
 using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using GutAI.Api.Middleware;
+using GutAI.Application.Common;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Infrastructure;
 using GutAI.Infrastructure.Data;
@@ -21,9 +22,17 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // Rate limiting
 builder.Services.AddGutAIRateLimiting();
 
+// Bind JwtSettings from config + env vars
+var jwtSection = builder.Configuration.GetSection(JwtSettings.SectionName);
+builder.Services.Configure<JwtSettings>(jwtSection);
+
+var jwtSettings = jwtSection.Get<JwtSettings>() ?? new JwtSettings();
+if (string.IsNullOrWhiteSpace(jwtSettings.Secret) || jwtSettings.Secret.Length < 32)
+    throw new InvalidOperationException(
+        "Jwt:Secret must be configured and at least 32 characters. Set the Jwt__Secret environment variable.");
+
 // Auth
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret must be configured. Set Jwt__Secret environment variable.");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -31,32 +40,26 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
             ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "GutAI",
+            ValidIssuer = jwtSettings.Issuer,
             ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "GutAI",
+            ValidAudience = jwtSettings.Audience,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
     });
 builder.Services.AddAuthorization();
 
-// CORS
-builder.Services.AddCors(options =>
+// CORS — only needed in development (native mobile apps don't use CORS)
+if (builder.Environment.IsDevelopment())
 {
-    if (builder.Environment.IsDevelopment())
+    builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
             policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-    }
-    else
-    {
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
-        options.AddDefaultPolicy(policy =>
-            policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader().AllowCredentials());
-    }
-});
+    });
+}
 
 // Health checks
 builder.Services.AddHealthChecks();
@@ -65,7 +68,10 @@ var app = builder.Build();
 
 // Middleware pipeline
 app.UseMiddleware<ExceptionMiddleware>();
-app.UseCors();
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors();
+}
 app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())

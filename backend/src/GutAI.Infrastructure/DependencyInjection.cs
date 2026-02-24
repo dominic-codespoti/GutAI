@@ -22,8 +22,7 @@ public static class DependencyInjection
         services.AddSingleton<ITableStore, TableStorageStore>();
 
         // JWT
-        services.AddSingleton<JwtService>();
-        services.AddSingleton<IJwtService>(sp => sp.GetRequiredService<JwtService>());
+        services.AddSingleton<IJwtService, JwtService>();
 
         // In-memory distributed cache (replaces Redis)
         services.AddDistributedMemoryCache();

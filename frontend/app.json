@@ -21,10 +21,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gutai.app",
+      "bundleIdentifier": "com.djapplications.gutai",
       "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes"
+        "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -33,7 +34,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.gutai.app",
+      "package": "com.djapplications.gutai",
       "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",

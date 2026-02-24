@@ -50,6 +50,25 @@ public static class UserEndpoints
         var userId = GetUserId(principal);
         var user = await store.GetUserAsync(userId);
         if (user is null) return Results.NotFound();
+
+        if (request.DisplayName is not null && request.DisplayName.Length > 100)
+            return Results.BadRequest(new { error = "Display name must not exceed 100 characters" });
+
+        if (request.TimezoneId is not null && request.TimezoneId.Length > 100)
+            return Results.BadRequest(new { error = "Timezone ID must not exceed 100 characters" });
+
+        if (request.Allergies.Length > 50)
+            return Results.BadRequest(new { error = "Cannot have more than 50 allergies" });
+
+        if (request.Allergies.Any(a => a.Length > 100))
+            return Results.BadRequest(new { error = "Each allergy must not exceed 100 characters" });
+
+        if (request.DietaryPreferences.Length > 50)
+            return Results.BadRequest(new { error = "Cannot have more than 50 dietary preferences" });
+
+        if (request.DietaryPreferences.Any(d => d.Length > 100))
+            return Results.BadRequest(new { error = "Each dietary preference must not exceed 100 characters" });
+
         user.DisplayName = request.DisplayName ?? user.DisplayName;
         user.Allergies = request.Allergies ?? user.Allergies;
         user.DietaryPreferences = request.DietaryPreferences ?? user.DietaryPreferences;
@@ -80,6 +99,22 @@ public static class UserEndpoints
         var userId = GetUserId(principal);
         var user = await store.GetUserAsync(userId);
         if (user is null) return Results.NotFound();
+
+        if (request.DailyCalorieGoal < 0 || request.DailyCalorieGoal > 20000)
+            return Results.BadRequest(new { error = "Daily calorie goal must be between 0 and 20000" });
+
+        if (request.DailyProteinGoalG < 0 || request.DailyProteinGoalG > 2000)
+            return Results.BadRequest(new { error = "Daily protein goal must be between 0 and 2000g" });
+
+        if (request.DailyCarbGoalG < 0 || request.DailyCarbGoalG > 2000)
+            return Results.BadRequest(new { error = "Daily carb goal must be between 0 and 2000g" });
+
+        if (request.DailyFatGoalG < 0 || request.DailyFatGoalG > 2000)
+            return Results.BadRequest(new { error = "Daily fat goal must be between 0 and 2000g" });
+
+        if (request.DailyFiberGoalG < 0 || request.DailyFiberGoalG > 500)
+            return Results.BadRequest(new { error = "Daily fiber goal must be between 0 and 500g" });
+
         user.DailyCalorieGoal = request.DailyCalorieGoal;
         user.DailyProteinGoalG = request.DailyProteinGoalG;
         user.DailyCarbGoalG = request.DailyCarbGoalG;

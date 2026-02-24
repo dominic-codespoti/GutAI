@@ -2,22 +2,22 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
+using GutAI.Application.Common;
 using GutAI.Application.Common.Interfaces;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 
 namespace GutAI.Infrastructure.Identity;
 
 public class JwtService : IJwtService
 {
-    private readonly IConfiguration _config;
+    private readonly JwtSettings _settings;
 
-    public JwtService(IConfiguration config) => _config = config;
+    public JwtService(IOptions<JwtSettings> options) => _settings = options.Value;
 
     public string GenerateAccessToken(Guid userId, string email)
     {
-        var secret = _config["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret is not configured");
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
 
         var claims = new[]
         {
@@ -27,10 +27,10 @@ public class JwtService : IJwtService
         };
 
         var token = new JwtSecurityToken(
-            issuer: _config["Jwt:Issuer"] ?? "GutAI",
-            audience: _config["Jwt:Audience"] ?? "GutAI",
+            issuer: _settings.Issuer,
+            audience: _settings.Audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(int.TryParse(_config["Jwt:ExpiryMinutes"], out var m) ? m : 15),
+            expires: DateTime.UtcNow.AddMinutes(_settings.ExpiryMinutes),
             signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
 
         return new JwtSecurityTokenHandler().WriteToken(token);
@@ -46,8 +46,7 @@ public class JwtService : IJwtService
 
     public ClaimsPrincipal? ValidateToken(string token)
     {
-        var secret = _config["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret is not configured");
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
 
         var handler = new JwtSecurityTokenHandler();
         try
@@ -57,9 +56,9 @@ public class JwtService : IJwtService
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = key,
                 ValidateIssuer = true,
-                ValidIssuer = _config["Jwt:Issuer"] ?? "GutAI",
+                ValidIssuer = _settings.Issuer,
                 ValidateAudience = true,
-                ValidAudience = _config["Jwt:Audience"] ?? "GutAI",
+                ValidAudience = _settings.Audience,
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero
             }, out _);

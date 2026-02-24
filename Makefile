@@ -87,13 +87,13 @@ eas-setup:
 	@echo "✅ EAS project initialized. Update app.json projectId + owner."
 
 eas-dev:
-	cd frontend && EAS_NO_VCS=1 eas build --profile development --platform all
+	cd frontend && eas build --profile development --platform all
 
 eas-preview:
-	cd frontend && EAS_NO_VCS=1 eas build --profile preview --platform all
+	cd frontend && eas build --profile preview --platform all
 
 eas-prod:
-	cd frontend && EAS_NO_VCS=1 eas build --profile production --platform all
+	cd frontend && eas build --profile production --platform all
 
 eas-submit-ios:
 	cd frontend && eas submit --platform ios --profile production
@@ -105,4 +105,4 @@ eas-submit:
 	cd frontend && eas submit --platform all --profile production
 
 eas-update:
-	cd frontend && EAS_NO_VCS=1 eas update --channel production
+	cd frontend && eas update --channel production

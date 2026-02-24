@@ -26,6 +26,12 @@ public static class SymptomEndpoints
         if (request.Severity < 1 || request.Severity > 10)
             return Results.BadRequest(new { error = "Severity must be between 1 and 10" });
 
+        if (request.Notes is not null && request.Notes.Length > 1000)
+            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
+
+        if (request.Duration.HasValue && (request.Duration.Value < TimeSpan.Zero || request.Duration.Value > TimeSpan.FromDays(7)))
+            return Results.BadRequest(new { error = "Duration must be between 0 and 7 days" });
+
         if (!await store.SymptomTypeExistsAsync(request.SymptomTypeId))
             return Results.BadRequest(new { error = "Invalid symptom type" });
 
@@ -100,6 +106,12 @@ public static class SymptomEndpoints
 
         if (request.Severity < 1 || request.Severity > 10)
             return Results.BadRequest(new { error = "Severity must be between 1 and 10" });
+
+        if (request.Notes is not null && request.Notes.Length > 1000)
+            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
+
+        if (request.Duration.HasValue && (request.Duration.Value < TimeSpan.Zero || request.Duration.Value > TimeSpan.FromDays(7)))
+            return Results.BadRequest(new { error = "Duration must be between 0 and 7 days" });
 
         if (!await store.SymptomTypeExistsAsync(request.SymptomTypeId))
             return Results.BadRequest(new { error = "Invalid symptom type" });

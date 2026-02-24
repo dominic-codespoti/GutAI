@@ -34,6 +34,9 @@ public static class FoodEndpoints
         if (query.Length < 2)
             return Results.Ok(Array.Empty<FoodProductDto>());
 
+        if (query.Length > 200)
+            return Results.BadRequest(new { error = "Search query must not exceed 200 characters" });
+
         var cacheKey = $"food-search:{query.ToLowerInvariant()}";
         var cached = await cache.GetAsync<List<FoodProductDto>>(cacheKey);
         if (cached is not null)
@@ -136,6 +139,9 @@ public static class FoodEndpoints
 
     static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store)
     {
+        if (string.IsNullOrWhiteSpace(barcode) || barcode.Length > 50)
+            return Results.BadRequest(new { error = "Barcode must be between 1 and 50 characters" });
+
         var product = await store.GetFoodProductByBarcodeAsync(barcode);
         if (product is null) return Results.NotFound();
         var additives = await store.GetAllFoodAdditivesAsync();
@@ -267,6 +273,21 @@ public static class FoodEndpoints
 
     static async Task<IResult> CreateFoodProduct(CreateFoodProductRequest request, ITableStore store)
     {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 300)
+            return Results.BadRequest(new { error = "Product name is required (max 300 characters)" });
+
+        if (request.Brand is not null && request.Brand.Length > 200)
+            return Results.BadRequest(new { error = "Brand must not exceed 200 characters" });
+
+        if (request.Ingredients is not null && request.Ingredients.Length > 5000)
+            return Results.BadRequest(new { error = "Ingredients must not exceed 5000 characters" });
+
+        if (request.Barcode is not null && request.Barcode.Length > 50)
+            return Results.BadRequest(new { error = "Barcode must not exceed 50 characters" });
+
+        if (request.AdditiveIds.Count > 100)
+            return Results.BadRequest(new { error = "Cannot have more than 100 additives" });
+
         var product = new FoodProduct
         {
             Id = Guid.NewGuid(),
@@ -288,6 +309,22 @@ public static class FoodEndpoints
     {
         var product = await store.GetFoodProductAsync(id);
         if (product is null) return Results.NotFound();
+
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 300)
+            return Results.BadRequest(new { error = "Product name is required (max 300 characters)" });
+
+        if (request.Brand is not null && request.Brand.Length > 200)
+            return Results.BadRequest(new { error = "Brand must not exceed 200 characters" });
+
+        if (request.Ingredients is not null && request.Ingredients.Length > 5000)
+            return Results.BadRequest(new { error = "Ingredients must not exceed 5000 characters" });
+
+        if (request.Barcode is not null && request.Barcode.Length > 50)
+            return Results.BadRequest(new { error = "Barcode must not exceed 50 characters" });
+
+        if (request.AdditiveIds.Count > 100)
+            return Results.BadRequest(new { error = "Cannot have more than 100 additives" });
+
         product.Name = request.Name;
         product.Barcode = request.Barcode;
         product.NovaGroup = int.TryParse(request.NovaGroup, out var ng) ? ng : product.NovaGroup;
