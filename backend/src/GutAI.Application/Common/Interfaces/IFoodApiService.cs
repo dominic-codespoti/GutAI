@@ -1,0 +1,9 @@
+using GutAI.Application.Common.DTOs;
+
+namespace GutAI.Application.Common.Interfaces;
+
+public interface IFoodApiService
+{
+    Task<FoodProductDto?> LookupBarcodeAsync(string barcode, CancellationToken ct = default);
+    Task<List<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default);
+}

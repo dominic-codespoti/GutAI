@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.expo/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+publish/
+
+# Docker volumes
+pgdata/
+redisdata/
+seqdata/
+
+# Secrets
+*.pfx
+*.pem
+
+# Logs
+logs/
+*.log
+
+# Test results
+TestResults/
+coverage/

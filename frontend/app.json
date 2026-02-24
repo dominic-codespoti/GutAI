@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "GutAI",
+    "slug": "gut-ai",
+    "scheme": "gutai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/18ddbacc-5aee-4310-afba-96d053017225"
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gutai.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.gutai.app",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "GutAI uses the camera to scan food barcodes"
+        }
+      ],
+      "expo-updates"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "18ddbacc-5aee-4310-afba-96d053017225"
+      },
+      "router": {}
+    },
+    "owner": "thed24"
+  }
+}
