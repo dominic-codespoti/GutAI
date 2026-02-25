@@ -148,6 +148,16 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           ]
           probes: [
             {
+              type: 'Startup'
+              httpGet: {
+                path: '/health'
+                port: 8080
+              }
+              initialDelaySeconds: 2
+              periodSeconds: 3
+              failureThreshold: 15
+            }
+            {
               type: 'Liveness'
               httpGet: {
                 path: '/health'
@@ -161,15 +171,14 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 10
               periodSeconds: 10
             }
           ]
         }
       ]
       scale: {
-        minReplicas: 0
-        maxReplicas: 3
+        minReplicas: 1
+        maxReplicas: 1
         rules: [
           {
             name: 'http-scaling'

@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "18ddbacc-5aee-4310-afba-96d053017225"
+      }
+    },
+    "android": {
+      "package": "com.djapplications.gutai"
+    }
+  }
+}
