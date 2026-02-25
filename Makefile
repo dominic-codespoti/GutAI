@@ -1,4 +1,4 @@
-.PHONY: up down logs api-logs seed test ci check-contracts azure-setup azure-deploy
+.PHONY: up up\:prod down logs api-logs seed test ci check-contracts azure-setup azure-deploy
 
 # ── Start everything (fresh build) ──
 up:
@@ -11,6 +11,17 @@ up:
 	@echo "   Scalar UI: http://localhost:5000/scalar/v1"
 	@echo "   Frontend:  http://localhost:8081"
 	@echo "   Azurite:   http://localhost:10002 (Table Storage)"
+	@echo ""
+
+# ── Start frontend against production API ──
+up\:prod:
+	cd frontend && npm install
+	@EXPO_PUBLIC_API_URL=https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io \
+		setsid sh -c 'cd frontend && EXPO_PUBLIC_API_URL=https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io npx expo start --web --port 8081' > /tmp/gutai-frontend.log 2>&1 & echo $$! > /tmp/gutai-frontend.pid
+	@echo ""
+	@echo "🚀 Frontend running against PRODUCTION API"
+	@echo "   API:      https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io"
+	@echo "   Frontend: http://localhost:8081"
 	@echo ""
 
 # ── Stop everything (clean) ──
