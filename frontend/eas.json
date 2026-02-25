@@ -27,7 +27,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-staging.gutai.app"
+        "EXPO_PUBLIC_API_URL": "https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io"
       },
       "ios": {
         "buildConfiguration": "Release"
@@ -40,7 +40,7 @@
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.gutai.app"
+        "EXPO_PUBLIC_API_URL": "https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io"
       },
       "ios": {
         "buildConfiguration": "Release"
