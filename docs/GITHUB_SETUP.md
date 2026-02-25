@@ -1,6 +1,6 @@
 # GitHub Repository Setup for Deployment
 
-This guide covers everything you need to configure in the GitHub repo (`dominic-codespoti/pinchy`) to enable automated Azure deployments.
+This guide covers everything you need to configure in the GitHub repo (`dominic-codespoti/GutAI`) to enable automated Azure deployments.
 
 ---
 
@@ -57,21 +57,21 @@ az role assignment create \
 az ad app federated-credential create --id $APP_ID --parameters '{
   "name": "gutai-main",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:dominic-codespoti/pinchy:ref:refs/heads/main",
+  "subject": "repo:dominic-codespoti/GutAI:ref:refs/heads/main",
   "audiences": ["api://AzureADTokenExchange"]
 }'
 
 az ad app federated-credential create --id $APP_ID --parameters '{
   "name": "gutai-staging",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:dominic-codespoti/pinchy:environment:staging",
+  "subject": "repo:dominic-codespoti/GutAI:environment:staging",
   "audiences": ["api://AzureADTokenExchange"]
 }'
 
 az ad app federated-credential create --id $APP_ID --parameters '{
   "name": "gutai-prod",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:dominic-codespoti/pinchy:environment:prod",
+  "subject": "repo:dominic-codespoti/GutAI:environment:prod",
   "audiences": ["api://AzureADTokenExchange"]
 }'
 ```

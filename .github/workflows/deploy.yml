@@ -8,13 +8,6 @@ on:
       - "infra/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target environment"
-        required: true
-        default: "staging"
-        type: choice
-        options: [staging, prod]
 
 permissions:
   id-token: write
@@ -24,7 +17,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/gutai-api
-  AZURE_RG: gutai-${{ github.event.inputs.environment || 'staging' }}
+  AZURE_RG: gutai-prod
 
 jobs:
   test:
@@ -70,7 +63,7 @@ jobs:
     name: Deploy Infrastructure
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
+    environment: prod
     outputs:
       api-url: ${{ steps.deploy.outputs.apiUrl }}
     steps:
@@ -87,18 +80,16 @@ jobs:
           az group create \
             --name ${{ env.AZURE_RG }} \
             --location australiaeast \
-            --tags project=gutai environment=${{ github.event.inputs.environment || 'staging' }}
+            --tags project=gutai
 
       - name: Deploy Bicep
         id: deploy
         run: |
-          ENV=${{ github.event.inputs.environment || 'staging' }}
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::7}"
           az deployment group create \
             --resource-group ${{ env.AZURE_RG }} \
             --template-file infra/main.bicep \
             --parameters \
-              environment=$ENV \
               containerImage=$IMAGE \
               jwtSecret='${{ secrets.JWT_SECRET }}' \
               usdaApiKey='${{ secrets.USDA_API_KEY }}' \

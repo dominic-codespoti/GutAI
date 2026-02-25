@@ -1,4 +1,4 @@
-.PHONY: up down logs api-logs seed test ci check-contracts
+.PHONY: up down logs api-logs seed test ci check-contracts azure-setup azure-deploy
 
 # ── Start everything (fresh build) ──
 up:
@@ -106,3 +106,10 @@ eas-submit:
 
 eas-update:
 	cd frontend && eas update --channel production
+
+# ── Azure Deployment ──
+azure-setup:
+	./scripts/azure-setup.sh
+
+azure-deploy:
+	./scripts/azure-setup.sh --deploy

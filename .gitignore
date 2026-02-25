@@ -44,3 +44,5 @@ logs/
 # Test results
 TestResults/
 coverage/
+
+docs/GITHUB_SETUP.md

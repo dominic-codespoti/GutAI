@@ -136,4 +136,4 @@ If you have questions about this privacy policy or your data, contact us at:
 
 ---
 
-_This privacy policy is also available at: [https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md](https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md)_
+_This privacy policy is also available at: [https://github.com/dominic-codespoti/GutAI/blob/main/PRIVACY_POLICY.md](https://github.com/dominic-codespoti/GutAI/blob/main/PRIVACY_POLICY.md)_

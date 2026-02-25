@@ -220,7 +220,7 @@ Before your first submission, make sure you have:
 
 - [x] App icon (1024×1024 — `assets/icon.png`)
 - [x] Splash screen image (`assets/splash-icon.png`)
-- [x] Privacy policy URL → `https://github.com/dominic-codespoti/pinchy/blob/main/PRIVACY_POLICY.md`
+- [x] Privacy policy URL → `https://github.com/dominic-codespoti/GutAI/blob/main/PRIVACY_POLICY.md`
 - [ ] Production backend deployed to Azure and accessible
 - [ ] `EXPO_PUBLIC_API_URL` set to production URL in `eas.json`
 
@@ -323,81 +323,92 @@ The backend API deploys to **Azure Container Apps** with **Azure Table Storage**
 
 - Azure subscription
 - Azure CLI installed (`az --version`)
+- GitHub CLI installed (`gh --version`)
 - GitHub repo with Actions enabled
 
-## Step 1 — Create Azure Service Principal
+## Quick Start (Fully Automated)
 
-The GitHub Actions workflow uses OIDC (federated credentials) to authenticate with Azure. This is more secure than storing client secrets.
+A single script handles **everything** — Azure AD app registration, service principal, OIDC federation, resource group creation, and GitHub secrets:
 
 ```bash
-# Create a service principal
+# Setup staging (creates Azure infra + sets GitHub secrets)
+make azure-setup
+
+# Setup production
+make azure-setup-prod
+
+# Setup + first deploy (builds, pushes image, runs Bicep)
+make azure-deploy-staging
+make azure-deploy-prod
+```
+
+Or run the script directly with options:
+
+```bash
+./scripts/azure-setup.sh --env staging              # Setup only
+./scripts/azure-setup.sh --env prod --deploy         # Setup + deploy
+./scripts/azure-setup.sh --env prod --location eastus # Custom region
+```
+
+The script will:
+
+1. ✅ Verify you're logged into Azure CLI and GitHub CLI
+2. ✅ Create (or reuse) an Azure AD app registration — `appId` captured programmatically
+3. ✅ Create the service principal and grant Contributor role
+4. ✅ Create OIDC federated credentials for GitHub Actions (main branch + environments)
+5. ✅ Create the Azure resource group
+6. ✅ Set all GitHub Actions secrets automatically (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `JWT_SECRET`)
+7. ✅ Prompt for app-specific API keys (USDA, CalorieNinjas, Edamam) — skips if already set
+8. ✅ Create GitHub environments (`staging`, `prod`)
+9. ✅ (With `--deploy`) Build Docker image, push to GHCR, deploy Bicep, and smoke test
+
+## Manual Steps (Reference)
+
+<details>
+<summary>Click to expand manual setup steps (if you prefer not to use the script)</summary>
+
+### Create Azure Service Principal
+
+```bash
 az ad app create --display-name "gutai-github-actions"
-
-# Note the appId (client ID) from the output, then:
-APP_ID="<appId from above>"
+APP_ID="<appId from output>"
 az ad sp create --id $APP_ID
-
-# Get the object ID of the service principal
 SP_OBJECT_ID=$(az ad sp show --id $APP_ID --query id -o tsv)
-
-# Grant it Contributor on your subscription (or scope to a resource group)
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 az role assignment create \
   --assignee-object-id $SP_OBJECT_ID \
   --assignee-principal-type ServicePrincipal \
   --role Contributor \
   --scope /subscriptions/$SUBSCRIPTION_ID
+```
 
-# Create federated credentials for GitHub Actions
+### Create Federated Credentials
+
+```bash
 az ad app federated-credential create --id $APP_ID --parameters '{
   "name": "gutai-main",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:dominic-codespoti/pinchy:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-
-# Also for environment-based deployments
-az ad app federated-credential create --id $APP_ID --parameters '{
-  "name": "gutai-staging",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:dominic-codespoti/pinchy:environment:staging",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-
-az ad app federated-credential create --id $APP_ID --parameters '{
-  "name": "gutai-prod",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:dominic-codespoti/pinchy:environment:prod",
+  "subject": "repo:dominic-codespoti/GutAI:ref:refs/heads/main",
   "audiences": ["api://AzureADTokenExchange"]
 }'
 ```
 
-## Step 2 — Configure GitHub Secrets
+### Configure GitHub Secrets
 
-Go to **GitHub repo → Settings → Secrets and variables → Actions** and add:
+| Secret                  | Value                         |
+| ----------------------- | ----------------------------- |
+| `AZURE_CLIENT_ID`       | App registration client ID    |
+| `AZURE_TENANT_ID`       | Azure AD tenant ID            |
+| `AZURE_SUBSCRIPTION_ID` | Subscription ID               |
+| `JWT_SECRET`            | Random 32+ char string        |
+| `USDA_API_KEY`          | USDA FoodData Central API key |
+| `CALORIENINJAS_API_KEY` | CalorieNinjas API key         |
+| `EDAMAM_APP_ID`         | Edamam application ID         |
+| `EDAMAM_APP_KEY`        | Edamam application key        |
 
-### Secrets (Settings → Secrets)
+</details>
 
-| Secret                  | Value                                                   |
-| ----------------------- | ------------------------------------------------------- |
-| `AZURE_CLIENT_ID`       | App registration client ID                              |
-| `AZURE_TENANT_ID`       | Azure AD tenant ID (`az account show --query tenantId`) |
-| `AZURE_SUBSCRIPTION_ID` | Subscription ID (`az account show --query id`)          |
-| `JWT_SECRET`            | Random 32+ char string for JWT signing                  |
-| `USDA_API_KEY`          | USDA FoodData Central API key                           |
-| `CALORIENINJAS_API_KEY` | CalorieNinjas API key                                   |
-| `EDAMAM_APP_ID`         | Edamam application ID                                   |
-| `EDAMAM_APP_KEY`        | Edamam application key                                  |
-
-No GHCR credentials needed — the workflow uses `GITHUB_TOKEN` automatically.
-
-### Variables (Settings → Variables)
-
-| Variable       | Value                                |
-| -------------- | ------------------------------------ |
-| `CORS_ORIGINS` | `https://gutai.app` (or your domain) |
-
-## Step 3 — Deploy
+## Deploying After Setup
 
 ### Automatic (on push to main)
 
@@ -411,39 +422,14 @@ Any push to `main` that changes `backend/` or `infra/` triggers the pipeline:
 ### Manual
 
 ```bash
-# Via GitHub UI: Actions → Deploy Backend to Azure → Run workflow → Select environment
-
-# Or via CLI:
+# Via GitHub CLI
 gh workflow run deploy.yml -f environment=staging
 gh workflow run deploy.yml -f environment=prod
+
+# Via GitHub UI: Actions → Deploy Backend to Azure → Run workflow → Select environment
 ```
 
-### First-time local deploy (without GitHub Actions)
-
-```bash
-# Login
-az login
-
-# Create resource group
-az group create --name gutai-staging --location australiaeast
-
-# Build and push image to GHCR
-echo $GITHUB_PAT | docker login ghcr.io -u YOUR_USERNAME --password-stdin
-docker build -t ghcr.io/dominic-codespoti/pinchy/gutai-api:latest ./backend
-docker push ghcr.io/dominic-codespoti/pinchy/gutai-api:latest
-
-# Deploy infra (will prompt for secure params)
-az deployment group create \
-  --resource-group gutai-staging \
-  --template-file infra/main.bicep \
-  --parameters \
-    environment=staging \
-    containerImage=ghcr.io/dominic-codespoti/pinchy/gutai-api:latest \
-    ghcrUsername=YOUR_USERNAME \
-    ghcrPassword=$GITHUB_PAT
-```
-
-## Step 4 — Update EAS with the API URL
+## Update EAS with the API URL
 
 Once deployed, get the API URL:
 
@@ -474,5 +460,6 @@ With scale-to-zero and minimal usage:
 | ------------------------------ | ------------------------------------------------------------------ |
 | `infra/main.bicep`             | Azure resources (Storage, Container Apps, Log Analytics)           |
 | `infra/main.bicepparam`        | Default parameter values                                           |
+| `scripts/azure-setup.sh`       | Fully automated Azure + GitHub setup script                        |
 | `.github/workflows/deploy.yml` | CI/CD pipeline (test → build → push to GHCR → deploy → smoke test) |
 | `.github/workflows/ci.yml`     | PR checks (build, lint, type check)                                |

@@ -1,9 +1,5 @@
 targetScope = 'resourceGroup'
 
-@description('Environment name (e.g., prod, staging)')
-@allowed(['prod', 'staging'])
-param environment string
-
 @description('Azure region for all resources')
 param location string = resourceGroup().location
 
@@ -38,10 +34,9 @@ param ghcrUsername string = ''
 @description('GHCR password (GitHub PAT with read:packages)')
 param ghcrPassword string = ''
 
-var prefix = 'gutai-${environment}'
+var prefix = 'gutai-prod'
 var tags = {
   project: 'gutai'
-  environment: environment
 }
 
 // ── Storage Account (Table Storage) ──
