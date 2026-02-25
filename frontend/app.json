@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -33,7 +32,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.djapplications.gutai",
       "versionCode": 1,
       "permissions": [
@@ -52,7 +50,9 @@
           "cameraPermission": "GutAI uses the camera to scan food barcodes"
         }
       ],
-      "expo-updates"
+      "expo-updates",
+      "expo-secure-store",
+      "expo-font"
     ],
     "extra": {
       "eas": {
