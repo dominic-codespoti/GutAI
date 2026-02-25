@@ -51,15 +51,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-// CORS — only needed in development (native mobile apps don't use CORS)
-if (builder.Environment.IsDevelopment())
+// CORS — mobile apps don't send Origin headers so CORS is a no-op there.
+// Enabled unconditionally so the Expo web dev server can reach the API.
+builder.Services.AddCors(options =>
 {
-    builder.Services.AddCors(options =>
-    {
-        options.AddDefaultPolicy(policy =>
-            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-    });
-}
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+});
 
 // Health checks
 builder.Services.AddHealthChecks();
@@ -68,10 +66,7 @@ var app = builder.Build();
 
 // Middleware pipeline
 app.UseMiddleware<ExceptionMiddleware>();
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors();
-}
+app.UseCors();
 app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
