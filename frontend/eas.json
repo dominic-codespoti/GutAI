@@ -54,6 +54,7 @@
     "production": {
       "ios": {
         "appleId": "domcodespoti@gmail.com",
+        "ascAppId": "6759645892",
         "appleTeamId": "RDX7V3455D"
       },
       "android": {

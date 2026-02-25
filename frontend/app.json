@@ -21,7 +21,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.djapplications.gutai",
+      "bundleIdentifier": "gut.ai",
       "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
