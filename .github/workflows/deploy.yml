@@ -39,6 +39,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Lowercase image name
+        id: lower
+        run: echo "image_name=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -48,7 +52,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}
           tags: |
             type=sha
             type=raw,value=latest
@@ -85,7 +89,8 @@ jobs:
       - name: Deploy Bicep
         id: deploy
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::7}"
+          IMAGE_NAME_LOWER=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')
+          IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:sha-${GITHUB_SHA::7}"
           az deployment group create \
             --resource-group ${{ env.AZURE_RG }} \
             --template-file infra/main.bicep \
