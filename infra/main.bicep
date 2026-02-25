@@ -39,6 +39,13 @@ var tags = {
   project: 'gutai'
 }
 
+// Azure Container Apps requires non-empty secret values.
+// Use 'unused' as placeholder for optional API keys not yet configured.
+var effectiveCalorieNinjasApiKey = empty(calorieNinjasApiKey) ? 'unused' : calorieNinjasApiKey
+var effectiveEdamamAppId = empty(edamamAppId) ? 'unused' : edamamAppId
+var effectiveEdamamAppKey = empty(edamamAppKey) ? 'unused' : edamamAppKey
+var effectiveUsdaApiKey = empty(usdaApiKey) ? 'unused' : usdaApiKey
+
 // ── Storage Account (Table Storage) ──
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: replace('${prefix}storage', '-', '')
@@ -111,10 +118,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
       secrets: [
         { name: 'storage-connection', value: storageConnectionString }
         { name: 'jwt-secret', value: jwtSecret }
-        { name: 'usda-api-key', value: usdaApiKey }
-        { name: 'calorieninjas-api-key', value: calorieNinjasApiKey }
-        { name: 'edamam-app-id', value: edamamAppId }
-        { name: 'edamam-app-key', value: edamamAppKey }
+        { name: 'usda-api-key', value: effectiveUsdaApiKey }
+        { name: 'calorieninjas-api-key', value: effectiveCalorieNinjasApiKey }
+        { name: 'edamam-app-id', value: effectiveEdamamAppId }
+        { name: 'edamam-app-key', value: effectiveEdamamAppKey }
         { name: 'ghcr-password', value: ghcrPassword }
       ]
     }
