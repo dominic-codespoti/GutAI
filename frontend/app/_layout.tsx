@@ -1,23 +1,14 @@
 import { useEffect } from "react";
-import { View, TouchableOpacity } from "react-native";
+import { View, TouchableOpacity, Platform } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useAuthStore } from "../src/stores/auth";
 import ToastContainer from "../components/Toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Ionicons } from "@expo/vector-icons";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 1000 * 60 * 5,
-      gcTime: 1000 * 60 * 30,
-    },
-  },
-});
+import { queryClient } from "../src/queryClient";
 
 function AuthGate() {
   const { isAuthenticated, isLoading, hydrate, user } = useAuthStore();
@@ -91,6 +82,14 @@ function AuthGate() {
           headerShadowVisible: false,
           headerTintColor: "#0f172a",
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{ marginRight: 8, padding: 4 }}
+            >
+              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+            </TouchableOpacity>
+          ),
         }}
       />
     </Stack>

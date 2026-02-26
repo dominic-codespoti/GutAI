@@ -1,0 +1,40 @@
+import { View, Text, TouchableOpacity } from "react-native";
+import { MEAL_TYPES } from "../src/utils/constants";
+import { colors } from "../src/utils/theme";
+
+interface MealTypePickerProps {
+  selected: string;
+  onSelect: (type: string) => void;
+}
+
+export function MealTypePicker({ selected, onSelect }: MealTypePickerProps) {
+  return (
+    <View style={{ flexDirection: "row", marginBottom: 12 }}>
+      {MEAL_TYPES.map((type) => (
+        <TouchableOpacity
+          key={type}
+          onPress={() => onSelect(type)}
+          style={{
+            flex: 1,
+            paddingVertical: 6,
+            borderRadius: 6,
+            marginHorizontal: 2,
+            backgroundColor:
+              selected === type ? colors.primaryLight : colors.borderLight,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "600",
+              color: selected === type ? "#fff" : colors.textMuted,
+            }}
+          >
+            {type}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}

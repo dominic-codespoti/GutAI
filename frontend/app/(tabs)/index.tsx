@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "../../src/stores/auth";
-import { mealApi, symptomApi, userApi } from "../../src/api";
+import { mealApi, symptomApi, userApi, insightApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
 import { DashboardSkeleton } from "../../components/SkeletonLoader";
 import { ErrorState } from "../../components/ErrorState";
@@ -193,6 +193,12 @@ export default function DashboardScreen() {
   const { data: alerts } = useQuery({
     queryKey: ["alerts"],
     queryFn: () => userApi.getAlerts().then((r) => r.data),
+  });
+
+  const { data: triggerFoods } = useQuery({
+    queryKey: ["trigger-foods-dashboard"],
+    queryFn: () => insightApi.triggerFoods(30).then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
   });
 
   const [refreshing, setRefreshing] = useState(false);
@@ -818,6 +824,26 @@ export default function DashboardScreen() {
                 >
                   No symptoms today — great!
                 </Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(tabs)/symptoms")}
+                  style={{
+                    marginTop: spacing.md,
+                    backgroundColor: colors.primaryBg,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: radius.sm,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.primary,
+                      fontWeight: "600",
+                      fontSize: 13,
+                    }}
+                  >
+                    Log a symptom
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>

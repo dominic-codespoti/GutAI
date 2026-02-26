@@ -14,6 +14,7 @@ public class User
     public int DailyFiberGoalG { get; set; } = 25;
     public string[] Allergies { get; set; } = [];
     public string[] DietaryPreferences { get; set; } = [];
+    public string[] GutConditions { get; set; } = [];
     public bool OnboardingCompleted { get; set; }
     public string? TimezoneId { get; set; }
 

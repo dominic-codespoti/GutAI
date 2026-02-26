@@ -5,13 +5,13 @@ using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.Caching;
 
-public class RedisCacheService : ICacheService
+public class InMemoryCacheService : ICacheService
 {
     private readonly IDistributedCache _cache;
-    private readonly ILogger<RedisCacheService> _logger;
+    private readonly ILogger<InMemoryCacheService> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public RedisCacheService(IDistributedCache cache, ILogger<RedisCacheService> logger)
+    public InMemoryCacheService(IDistributedCache cache, ILogger<InMemoryCacheService> logger)
     {
         _cache = cache;
         _logger = logger;
@@ -26,7 +26,7 @@ public class RedisCacheService : ICacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Redis cache GET failed for key {Key}", key);
+            _logger.LogWarning(ex, "Cache GET failed for key {Key}", key);
             return default;
         }
     }
@@ -44,7 +44,7 @@ public class RedisCacheService : ICacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Redis cache SET failed for key {Key}", key);
+            _logger.LogWarning(ex, "Cache SET failed for key {Key}", key);
         }
     }
 
@@ -56,7 +56,7 @@ public class RedisCacheService : ICacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Redis cache REMOVE failed for key {Key}", key);
+            _logger.LogWarning(ex, "Cache REMOVE failed for key {Key}", key);
         }
     }
 }

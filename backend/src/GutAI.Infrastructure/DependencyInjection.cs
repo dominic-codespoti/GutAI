@@ -24,9 +24,9 @@ public static class DependencyInjection
         // JWT
         services.AddSingleton<IJwtService, JwtService>();
 
-        // In-memory distributed cache (replaces Redis)
+        // In-memory distributed cache
         services.AddDistributedMemoryCache();
-        services.AddSingleton<ICacheService, RedisCacheService>();
+        services.AddSingleton<ICacheService, InMemoryCacheService>();
 
         // Correlation engine
         services.AddScoped<ICorrelationEngine, CorrelationEngine>();

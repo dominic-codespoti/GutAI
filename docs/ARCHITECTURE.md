@@ -6,67 +6,74 @@
 ## Current Implementation Status (Session 12)
 
 ### Backend — Fully Implemented ✅
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Auth** | ✅ | Register (with transaction safety), Login, Refresh token rotation, Logout, **Change Password** |
-| **Meal Endpoints** | ✅ | CRUD, natural language parsing, daily summary, **data export**, negative value validation |
-| **Food Endpoints** | ✅ | Search (local + composite API fan-out), barcode lookup, safety report, additives catalog |
-| **Symptom Endpoints** | ✅ | CRUD with severity/type validation, **RelatedMealLogId ownership validation**, history filtering |
-| **Insight Endpoints** | ✅ | Correlations (food + additive), nutrition trends, additive exposure — all Redis-cached |
-| **User Endpoints** | ✅ | Profile CRUD, goals, alerts watchlist, **account deletion** |
-| **Middleware** | ✅ | ExceptionMiddleware (ProblemDetails), RateLimiting (3 policies), Serilog request logging |
-| **External APIs** | ✅ | CompositeFoodApiService (OFF + USDA fan-out), CalorieNinjas — all with Polly resilience |
-| **Caching** | ✅ | Redis with key-pattern invalidation on meal mutations (7/14/30-day windows) |
-| **Security** | ✅ | JWT (no hardcoded fallback — throws on missing secret), Identity, rate limiting, input validation |
-| **Database** | ✅ | EF Core with indexes on Email, Barcode, Name, ENumber (unique), UserId, composite indexes, soft-delete filters |
-| **Correlation Engine** | ✅ | 24h lookback correlating food items AND additives against symptoms |
-| **Health Checks** | ✅ | Postgres + Redis health endpoints |
+
+| Component              | Status | Details                                                                                                        |
+| ---------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
+| **Auth**               | ✅     | Register (with transaction safety), Login, Refresh token rotation, Logout, **Change Password**                 |
+| **Meal Endpoints**     | ✅     | CRUD, natural language parsing, daily summary, **data export**, negative value validation                      |
+| **Food Endpoints**     | ✅     | Search (local + composite API fan-out), barcode lookup, safety report, additives catalog                       |
+| **Symptom Endpoints**  | ✅     | CRUD with severity/type validation, **RelatedMealLogId ownership validation**, history filtering               |
+| **Insight Endpoints**  | ✅     | Correlations (food + additive), nutrition trends, additive exposure — all in-memory cached                     |
+| **User Endpoints**     | ✅     | Profile CRUD, goals, alerts watchlist, **account deletion**                                                    |
+| **Middleware**         | ✅     | ExceptionMiddleware (ProblemDetails), RateLimiting (3 policies), Serilog request logging                       |
+| **External APIs**      | ✅     | CompositeFoodApiService (OFF + USDA fan-out), CalorieNinjas — all with Polly resilience                        |
+| **Caching**            | ✅     | In-memory (IDistributedCache)                                                                                  |
+| **Security**           | ✅     | JWT (no hardcoded fallback — throws on missing secret), Identity, rate limiting, input validation              |
+| **Database**           | ✅     | EF Core with indexes on Email, Barcode, Name, ENumber (unique), UserId, composite indexes, soft-delete filters |
+| **Correlation Engine** | ✅     | 24h lookback correlating food items AND additives against symptoms                                             |
+| **Health Checks**      | ✅     | Health endpoints                                                                                               |
 
 ### Frontend — Fully Implemented ✅
-| Screen | Status | Details |
-|--------|--------|---------|
-| **Dashboard** | ✅ | Calorie progress ring, macro bars, today's meals/symptoms, date navigation |
-| **Meals** | ✅ | Manual entry (with negative validation), natural language parsing, edit/delete, date navigation |
-| **Symptoms** | ✅ | Type selection, severity picker, notes, meal linking, edit/delete, date navigation |
-| **Scan** | ✅ | Barcode input + camera, food search, safety report, add-to-meal, **product images** |
-| **Insights** | ✅ | Nutrition trends, additive exposure, correlations (shared utils), symptom timeline |
-| **Profile** | ✅ | User info, daily goals, alerts, correlations preview, **settings link** |
-| **Food Detail** | ✅ | Safety badges, nutrition, ingredients, allergens, additives, **product images**, add-to-meal |
-| **Login/Register** | ✅ | **Email validation**, password visibility toggle, proper error typing (`catch (e: unknown)`) |
-| **Onboarding** | ✅ | 4-step wizard with **goal validation** (calorie range 1-10000, no negatives) |
-| **Settings** | ✅ | Change password, data export, app info, **account deletion** (danger zone) |
-| **Components** | ✅ | ErrorBoundary, ErrorState, SkeletonLoader, Toast, pull-to-refresh on all lists |
-| **Shared Utils** | ✅ | severityColor, ratingColor, cspiColor, **confidenceColor/Icon**, shiftDate, formatDateLabel, **today()** |
-| **API Layer** | ✅ | All endpoints including **changePassword, export, deleteAccount** |
-| **Types** | ✅ | All DTOs typed including **servingWeightG, foodProductId, ChangePasswordRequest, DataExport** |
+
+| Screen             | Status | Details                                                                                                  |
+| ------------------ | ------ | -------------------------------------------------------------------------------------------------------- |
+| **Dashboard**      | ✅     | Calorie progress ring, macro bars, today's meals/symptoms, date navigation                               |
+| **Meals**          | ✅     | Manual entry (with negative validation), natural language parsing, edit/delete, date navigation          |
+| **Symptoms**       | ✅     | Type selection, severity picker, notes, meal linking, edit/delete, date navigation                       |
+| **Scan**           | ✅     | Barcode input + camera, food search, safety report, add-to-meal, **product images**                      |
+| **Insights**       | ✅     | Nutrition trends, additive exposure, correlations (shared utils), symptom timeline                       |
+| **Profile**        | ✅     | User info, daily goals, alerts, correlations preview, **settings link**                                  |
+| **Food Detail**    | ✅     | Safety badges, nutrition, ingredients, allergens, additives, **product images**, add-to-meal             |
+| **Login/Register** | ✅     | **Email validation**, password visibility toggle, proper error typing (`catch (e: unknown)`)             |
+| **Onboarding**     | ✅     | 4-step wizard with **goal validation** (calorie range 1-10000, no negatives)                             |
+| **Settings**       | ✅     | Change password, data export, app info, **account deletion** (danger zone)                               |
+| **Components**     | ✅     | ErrorBoundary, ErrorState, SkeletonLoader, Toast, pull-to-refresh on all lists                           |
+| **Shared Utils**   | ✅     | severityColor, ratingColor, cspiColor, **confidenceColor/Icon**, shiftDate, formatDateLabel, **today()** |
+| **API Layer**      | ✅     | All endpoints including **changePassword, export, deleteAccount**                                        |
+| **Types**          | ✅     | All DTOs typed including **servingWeightG, foodProductId, ChangePasswordRequest, DataExport**            |
 
 ### Infrastructure ✅
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Docker Compose** | ✅ | API + Postgres 16 + Redis 7 + Seq (log viewer), health checks, develop.watch |
-| **Makefile** | ✅ | up/down/nuke/logs/test/build/migrate/fresh targets |
-| **GitHub Actions CI** | ✅ | Backend build/lint, frontend type check, Docker build |
-| **EditorConfig** | ✅ | Consistent formatting rules (2-space TS, 4-space C#) |
-| **VS Code Config** | ✅ | settings.json + extensions.json with recommended extensions |
+
+| Component             | Status | Details                                                        |
+| --------------------- | ------ | -------------------------------------------------------------- |
+| **Docker Compose**    | ✅     | API + Azurite + Seq (log viewer), health checks, develop.watch |
+| **Makefile**          | ✅     | up/down/nuke/logs/test/build/migrate/fresh targets             |
+| **GitHub Actions CI** | ✅     | Backend build/lint, frontend type check, Docker build          |
+| **EditorConfig**      | ✅     | Consistent formatting rules (2-space TS, 4-space C#)           |
+| **VS Code Config**    | ✅     | settings.json + extensions.json with recommended extensions    |
 
 ### Middleware Pipeline (Order)
+
 ```
 Request → ExceptionMiddleware → SerilogRequestLogging → CORS → RateLimiter → Auth → Authorization → Endpoints
 ```
 
 ### Rate Limiting Policies
-| Policy | Type | Limit |
-|--------|------|-------|
-| `authenticated` | Token bucket | 100/min |
-| `auth` | Fixed window | 20/min per-IP |
-| `search` | Sliding window | 30/min |
 
-### Redis Cache Strategy
+| Policy          | Type           | Limit         |
+| --------------- | -------------- | ------------- |
+| `authenticated` | Token bucket   | 100/min       |
+| `auth`          | Fixed window   | 20/min per-IP |
+| `search`        | Sliding window | 30/min        |
+
+### In-Memory Cache Strategy
+
 - Keys: `{type}:{userId}:{fromDate}:{toDate}`
 - TTL: 15min (correlations), 10min (trends/exposure)
 - Invalidation: On meal create/update/delete — clears 7/14/30-day windows
 
 ### External API Resilience (Polly)
+
 - All HTTP clients: retry 2x, circuit breaker 30s, timeout 5s/15s
 - API key guards: USDA + CalorieNinjas skip if keys empty (graceful degradation)
 
@@ -81,12 +88,14 @@ Request → ExceptionMiddleware → SerilogRequestLogging → CORS → RateLimit
 3. **Food Safety Insights** — Scan any product barcode for an instant safety report: flagged additives (Red 40, BHT, sodium nitrite, titanium dioxide), CSPI safety ratings, EU vs US regulatory status, NOVA ultra-processing score, Nutri-Score, and health concern summaries.
 
 ### Target Users
+
 - Health-conscious consumers wanting to avoid harmful additives
 - People with IBS, food sensitivities, or unexplained gut issues
 - Parents wanting to screen foods for children (dyes, preservatives)
 - Anyone tracking calories/macros for fitness or weight goals
 
 ### Key Differentiators
+
 - **Additive safety scoring** combining CSPI + EFSA + EU ban status + FDA adverse event data — no other consumer app does this
 - **Symptom-food correlation engine** that learns from user data over time
 - **US vs EU regulatory comparison** — highlights additives banned in EU but still allowed in US
@@ -97,40 +106,43 @@ Request → ExceptionMiddleware → SerilogRequestLogging → CORS → RateLimit
 ## 2. Tech Stack
 
 ### Backend
-| Layer | Technology |
-|-------|-----------|
-| Runtime | .NET 10 (C# 14) |
-| Framework | ASP.NET Core Minimal APIs |
-| ORM | Entity Framework Core 10 |
-| Database | PostgreSQL 16 |
-| Cache | Redis 7 |
-| Auth | ASP.NET Core Identity + JWT Bearer tokens |
-| API Docs | Scalar |
-| Logging | Serilog → Seq |
-| Testing | xUnit + NSubstitute + Testcontainers |
-| Containerization | Docker + Docker Compose |
+
+| Layer            | Technology                                |
+| ---------------- | ----------------------------------------- |
+| Runtime          | .NET 10 (C# 14)                           |
+| Framework        | ASP.NET Core Minimal APIs                 |
+| ORM              | Entity Framework Core 10                  |
+| Database         | PostgreSQL 16                             |
+| Cache            | In-memory (IDistributedCache)             |
+| Auth             | ASP.NET Core Identity + JWT Bearer tokens |
+| API Docs         | Scalar                                    |
+| Logging          | Serilog → Seq                             |
+| Testing          | xUnit + NSubstitute + Testcontainers      |
+| Containerization | Docker + Docker Compose                   |
 
 ### Frontend
-| Layer | Technology |
-|-------|-----------|
-| Framework | React Native 0.81+ with Expo SDK 54 |
-| Navigation | Expo Router v6 (file-based) |
-| Styling | React Native StyleSheet (inline) |
-| Server State | TanStack Query v5 (React Query) |
-| Client State | Zustand |
-| Camera/Barcode | expo-camera |
-| Storage | expo-secure-store (tokens) |
-| HTTP | Axios with interceptors |
-| Testing | Jest + React Native Testing Library |
+
+| Layer          | Technology                          |
+| -------------- | ----------------------------------- |
+| Framework      | React Native 0.81+ with Expo SDK 54 |
+| Navigation     | Expo Router v6 (file-based)         |
+| Styling        | React Native StyleSheet (inline)    |
+| Server State   | TanStack Query v5 (React Query)     |
+| Client State   | Zustand                             |
+| Camera/Barcode | expo-camera                         |
+| Storage        | expo-secure-store (tokens)          |
+| HTTP           | Axios with interceptors             |
+| Testing        | Jest + React Native Testing Library |
 
 ### Infrastructure
-| Concern | Tool |
-|---------|------|
-| Local Dev | Docker Compose (API + Postgres + Redis + Seq) |
-| CI/CD | GitHub Actions |
-| Backend Hosting | Fly.io or Railway |
-| Mobile Builds | Expo EAS Build + EAS Submit |
-| Monitoring | Sentry (errors), Expo Insights (analytics) |
+
+| Concern         | Tool                                       |
+| --------------- | ------------------------------------------ |
+| Local Dev       | Docker Compose (API + Azurite + Seq)       |
+| CI/CD           | GitHub Actions                             |
+| Backend Hosting | Fly.io or Railway                          |
+| Mobile Builds   | Expo EAS Build + EAS Submit                |
+| Monitoring      | Sentry (errors), Expo Insights (analytics) |
 
 ---
 
@@ -222,7 +234,7 @@ backend/
 │       │   ├── JwtService.cs
 │       │   └── AuthService.cs
 │       ├── Caching/
-│       │   └── RedisCacheService.cs
+│       │   └── InMemoryCacheService.cs
 │       └── BackgroundJobs/
 │           ├── AdditiveDbRefreshJob.cs
 │           └── WeeklyReportJob.cs
@@ -311,6 +323,7 @@ frontend/
 ### Tier 1 — Core (Always Used)
 
 #### Open Food Facts (FREE — Primary barcode/product lookup)
+
 - **Used for**: Barcode scan → product name, brand, ingredients list, additives tags, NOVA group, Nutri-Score, nutrition facts, allergens
 - **Endpoint**: `GET https://world.openfoodfacts.org/api/v2/product/{barcode}`
 - **Key fields**: `product_name`, `ingredients_text`, `additives_tags`, `nova_group`, `nutriscore_grade`, `nutriments`, `allergens_tags`
@@ -319,6 +332,7 @@ frontend/
 - **Integration point**: `OpenFoodFactsClient.cs` → called by `FoodSafetyService.cs`
 
 #### USDA FoodData Central (FREE — Nutrient composition enrichment)
+
 - **Used for**: Detailed nutrient data (150+ nutrients) when Open Food Facts data is insufficient, or for generic/unbranded foods
 - **Endpoint**: `GET https://api.nal.usda.gov/fdc/v1/foods/search?query={food}&api_key={key}`
 - **Key fields**: `fdcId`, `description`, `foodNutrients[]` (energy, protein, fat, carbs, fiber, sugar, sodium, vitamins, minerals)
@@ -327,6 +341,7 @@ frontend/
 - **Integration point**: `UsdaFoodDataClient.cs` → fallback/enrichment for meal logging
 
 #### CalorieNinjas (FREE tier — NLP meal logging)
+
 - **Used for**: Natural language meal input parsing. User types "ate a chicken burrito and a coke" → API returns structured per-item nutrition (calories, protein, carbs, fat, etc.)
 - **Endpoint**: `GET https://api.calorieninjas.com/v1/nutrition?query={text}`
 - **Response**: Array of items, each with `name`, `calories`, `protein_g`, `carbohydrates_total_g`, `fat_total_g`, `fiber_g`, `sugar_g`, `sodium_mg`, `cholesterol_mg`
@@ -334,6 +349,7 @@ frontend/
 - **Integration point**: `CalorieNinjasClient.cs` → called from `POST /api/meals/log-natural` endpoint
 
 #### CSPI Chemical Cuisine (Static Import — Additive safety ratings)
+
 - **Used for**: The core additive safety rating system. Each additive gets a CSPI rating: Safe / Cut Back / Caution / Avoid / Certain People Should Avoid
 - **Data source**: Scrape/manually build from https://www.cspinet.org/eating-healthy/chemical-cuisine
 - **Storage**: Static seed data in `FoodAdditives` table. Fields: `Name`, `ENumber`, `CspiRating` (enum), `HealthConcerns` (text), `Description`
@@ -343,6 +359,7 @@ frontend/
 ### Tier 2 — Safety Enrichment (Static Imports + Periodic Refresh)
 
 #### EFSA / OpenEFSA (EU additive safety data)
+
 - **Used for**: EU scientific safety opinions, Acceptable Daily Intake (ADI) values, and re-evaluation status for each additive
 - **Data source**: Download from https://open.efsa.europa.eu/ — structured scientific output data
 - **Storage**: Enrich `FoodAdditives` table with `EfsaAdi`, `EfsaStatus`, `EfsaLastReviewDate`
@@ -350,21 +367,25 @@ frontend/
 - **Refresh**: Hangfire monthly job to check for new EFSA opinions
 
 #### EC Food Additives Database (EU regulatory status)
+
 - **Used for**: Cross-referencing what's authorized/restricted/banned in EU vs allowed in US
 - **Storage**: `FoodAdditives` table fields: `UsStatus` (Approved/Restricted/Banned), `EuStatus` (Approved/Restricted/Banned)
 - **Key value**: "This additive is **banned in the EU** but still permitted in the US" — powerful for user trust
 
 #### EPA IRIS (Toxicological reference)
+
 - **Used for**: Reference Doses (RfD) and cancer classifications for food-relevant chemicals
 - **Storage**: Enrich `FoodAdditives` with `EpaRfd`, `EpaCancerClassification` where applicable
 - **Scope**: Only ~20-30 food-relevant chemicals in IRIS — small static import
 
 #### EWG Food Scores (Ingredient hazard reference)
+
 - **Used for**: Product-level ingredient concern scoring as secondary validation
 - **Data source**: Manual reference from https://www.ewg.org/foodscores
 - **Usage**: Inform our composite safety score algorithm, not direct data import
 
 #### openFDA Food APIs (Adverse events & recalls)
+
 - **Used for**: Querying adverse event reports and recalls related to specific additives
 - **Endpoints**:
   - `GET https://api.fda.gov/food/event.json?search=products.industry_name:"Red+40"` — adverse events
@@ -375,15 +396,18 @@ frontend/
 ### Tier 3 — Premium/Optional (Freemium APIs — add as budget allows)
 
 #### Edamam (Recipe nutrition analysis + food DB)
+
 - **Used for**: Recipe text → full nutrition breakdown, broader food database search (900K foods)
 - **Free tier**: Limited requests/day — use as enrichment, not primary
 - **Future**: Meal planning feature could leverage their Meal Planner API
 
 #### Spoonacular (Allergen detection, diet classification)
+
 - **Used for**: Diet classification (vegan, paleo, keto, Whole30), allergen detection, recipe search
 - **Free tier**: ~150 requests/day — use for diet/allergen tagging on food products
 
 #### Nutritionix (Premium NLP food logging)
+
 - **Used for**: Upgrade from CalorieNinjas if premium NLP accuracy needed. Superior branded food database.
 - **Cost**: Paid/enterprise — defer to Phase 5+ if revenue supports it
 
@@ -407,6 +431,7 @@ MealLog ──1:M──> SymptomLog (optional association)
 ### Entities Detail
 
 #### Users
+
 ```
 Id                  : Guid (PK)
 Email               : string (unique, required)
@@ -424,6 +449,7 @@ OnboardingCompleted : bool
 ```
 
 #### MealLogs
+
 ```
 Id                  : Guid (PK)
 UserId              : Guid (FK → Users)
@@ -439,6 +465,7 @@ OriginalText        : string? (raw NLP input text, e.g., "2 eggs and toast")
 ```
 
 #### MealItems
+
 ```
 Id                  : Guid (PK)
 MealLogId           : Guid (FK → MealLogs)
@@ -461,6 +488,7 @@ PotassiumMg         : decimal
 ```
 
 #### FoodProducts (cached from APIs)
+
 ```
 Id                  : Guid (PK)
 Barcode             : string? (unique index)
@@ -487,6 +515,7 @@ SafetyRating        : enum (Safe=0, Caution=1, Warning=2, Avoid=3)
 ```
 
 #### FoodAdditives
+
 ```
 Id                  : int (PK)
 ENumber             : string? (e.g., "E129")
@@ -508,12 +537,14 @@ LastUpdated         : DateTime
 ```
 
 #### FoodProductAdditives (junction)
+
 ```
 FoodProductId       : Guid (FK)
 FoodAdditiveId      : int (FK)
 ```
 
 #### SymptomTypes (seed data)
+
 ```
 Id                  : int (PK)
 Name                : string (e.g., "Bloating")
@@ -522,6 +553,7 @@ Icon                : string (emoji or icon name)
 ```
 
 Seed data:
+
 - **Digestive**: Bloating, Gas, Cramping, Diarrhea, Constipation, Heartburn/Acid Reflux, Nausea, Stomach Pain, Indigestion
 - **Neurological**: Brain Fog, Headache, Migraine, Dizziness
 - **Skin**: Skin Rash, Hives, Acne Flare-up, Eczema Flare-up
@@ -529,6 +561,7 @@ Seed data:
 - **Other**: Joint Pain, Mood Changes, Anxiety, Inflammation
 
 #### SymptomLogs
+
 ```
 Id                  : Guid (PK)
 UserId              : Guid (FK → Users)
@@ -541,6 +574,7 @@ Duration            : TimeSpan?
 ```
 
 #### DailyNutritionSummary (aggregated daily)
+
 ```
 Id                  : Guid (PK)
 UserId              : Guid (FK → Users)
@@ -557,6 +591,7 @@ CalorieGoal         : int (snapshot of user's goal that day)
 ```
 
 #### UserFoodAlerts (custom watchlist)
+
 ```
 Id                  : Guid (PK)
 UserId              : Guid (FK → Users)
@@ -566,6 +601,7 @@ CreatedAt           : DateTime
 ```
 
 #### InsightReports
+
 ```
 Id                  : Guid (PK)
 UserId              : Guid (FK → Users)
@@ -584,64 +620,70 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 ## 6. Backend API Endpoints
 
 ### Auth
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/register` | Register with email/password |
-| POST | `/api/auth/login` | Login → JWT + refresh token |
-| POST | `/api/auth/refresh` | Refresh expired JWT |
-| POST | `/api/auth/logout` | Revoke refresh token |
+
+| Method | Path                 | Description                  |
+| ------ | -------------------- | ---------------------------- |
+| POST   | `/api/auth/register` | Register with email/password |
+| POST   | `/api/auth/login`    | Login → JWT + refresh token  |
+| POST   | `/api/auth/refresh`  | Refresh expired JWT          |
+| POST   | `/api/auth/logout`   | Revoke refresh token         |
 
 ### Meals
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/meals` | Log a meal (manual item entry) |
-| POST | `/api/meals/log-natural` | Log meal via natural language text |
-| GET | `/api/meals?date={date}` | Get meals for a date |
-| GET | `/api/meals/{id}` | Get meal detail with items |
-| PUT | `/api/meals/{id}` | Update a meal log |
-| DELETE | `/api/meals/{id}` | Delete a meal log |
-| GET | `/api/meals/daily-summary/{date}` | Get daily nutrition summary |
-| GET | `/api/meals/history?from={date}&to={date}` | Meal history range |
+
+| Method | Path                                       | Description                        |
+| ------ | ------------------------------------------ | ---------------------------------- |
+| POST   | `/api/meals`                               | Log a meal (manual item entry)     |
+| POST   | `/api/meals/log-natural`                   | Log meal via natural language text |
+| GET    | `/api/meals?date={date}`                   | Get meals for a date               |
+| GET    | `/api/meals/{id}`                          | Get meal detail with items         |
+| PUT    | `/api/meals/{id}`                          | Update a meal log                  |
+| DELETE | `/api/meals/{id}`                          | Delete a meal log                  |
+| GET    | `/api/meals/daily-summary/{date}`          | Get daily nutrition summary        |
+| GET    | `/api/meals/history?from={date}&to={date}` | Meal history range                 |
 
 ### Food
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/food/search?q={query}` | Search foods by name |
-| GET | `/api/food/barcode/{code}` | Lookup product by barcode |
-| GET | `/api/food/{id}` | Get cached food product detail |
-| GET | `/api/food/{id}/safety-report` | Full safety report (additives, ratings, concerns) |
-| GET | `/api/food/additives` | List all tracked additives with ratings |
-| GET | `/api/food/additives/{id}` | Single additive detail |
+
+| Method | Path                           | Description                                       |
+| ------ | ------------------------------ | ------------------------------------------------- |
+| GET    | `/api/food/search?q={query}`   | Search foods by name                              |
+| GET    | `/api/food/barcode/{code}`     | Lookup product by barcode                         |
+| GET    | `/api/food/{id}`               | Get cached food product detail                    |
+| GET    | `/api/food/{id}/safety-report` | Full safety report (additives, ratings, concerns) |
+| GET    | `/api/food/additives`          | List all tracked additives with ratings           |
+| GET    | `/api/food/additives/{id}`     | Single additive detail                            |
 
 ### Symptoms
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/symptoms` | Log a symptom |
-| GET | `/api/symptoms?date={date}` | Get symptoms for a date |
-| GET | `/api/symptoms/{id}` | Get symptom detail |
-| PUT | `/api/symptoms/{id}` | Update a symptom log |
-| DELETE | `/api/symptoms/{id}` | Delete a symptom log |
-| GET | `/api/symptoms/types` | List all symptom types |
-| GET | `/api/symptoms/history?from={date}&to={date}&type={typeId}` | Filterable history |
+
+| Method | Path                                                        | Description             |
+| ------ | ----------------------------------------------------------- | ----------------------- |
+| POST   | `/api/symptoms`                                             | Log a symptom           |
+| GET    | `/api/symptoms?date={date}`                                 | Get symptoms for a date |
+| GET    | `/api/symptoms/{id}`                                        | Get symptom detail      |
+| PUT    | `/api/symptoms/{id}`                                        | Update a symptom log    |
+| DELETE | `/api/symptoms/{id}`                                        | Delete a symptom log    |
+| GET    | `/api/symptoms/types`                                       | List all symptom types  |
+| GET    | `/api/symptoms/history?from={date}&to={date}&type={typeId}` | Filterable history      |
 
 ### Insights
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/insights/weekly-report` | Current week's insight report |
-| GET | `/api/insights/report/{period}?date={date}` | Weekly or monthly report |
-| GET | `/api/insights/correlations` | Food-symptom correlations |
-| GET | `/api/insights/additive-exposure?from={date}&to={date}` | Additive exposure summary |
-| GET | `/api/insights/nutrition-trends?from={date}&to={date}` | Nutrition trend data |
+
+| Method | Path                                                    | Description                   |
+| ------ | ------------------------------------------------------- | ----------------------------- |
+| GET    | `/api/insights/weekly-report`                           | Current week's insight report |
+| GET    | `/api/insights/report/{period}?date={date}`             | Weekly or monthly report      |
+| GET    | `/api/insights/correlations`                            | Food-symptom correlations     |
+| GET    | `/api/insights/additive-exposure?from={date}&to={date}` | Additive exposure summary     |
+| GET    | `/api/insights/nutrition-trends?from={date}&to={date}`  | Nutrition trend data          |
 
 ### User
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/user/profile` | Get current user profile |
-| PUT | `/api/user/profile` | Update profile info |
-| PUT | `/api/user/goals` | Update dietary goals |
-| GET | `/api/user/alerts` | Get additive watchlist |
-| POST | `/api/user/alerts` | Add additive to watchlist |
-| DELETE | `/api/user/alerts/{additiveId}` | Remove from watchlist |
+
+| Method | Path                            | Description               |
+| ------ | ------------------------------- | ------------------------- |
+| GET    | `/api/user/profile`             | Get current user profile  |
+| PUT    | `/api/user/profile`             | Update profile info       |
+| PUT    | `/api/user/goals`               | Update dietary goals      |
+| GET    | `/api/user/alerts`              | Get additive watchlist    |
+| POST   | `/api/user/alerts`              | Add additive to watchlist |
+| DELETE | `/api/user/alerts/{additiveId}` | Remove from watchlist     |
 
 ---
 
@@ -650,6 +692,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 ### Tab Navigation (5 tabs)
 
 #### 🏠 Tab 1: Home / Dashboard (`(tabs)/index.tsx`)
+
 - **Daily calorie ring** — circular progress showing consumed vs goal
 - **Macro breakdown** — protein / carbs / fat progress bars with grams & percentages
 - **Today's meals** — list of logged meals with calorie subtotals, tap to expand items
@@ -659,6 +702,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 - **Streak counter** — days of consecutive logging
 
 #### 🍽️ Tab 2: Log Meal (`(tabs)/log.tsx`)
+
 - **Natural language input** — large text field with placeholder "What did you eat? (e.g., 2 eggs, toast with butter, coffee)"
   - On submit → hits CalorieNinjas API → shows parsed items with nutrition
   - User can adjust servings, remove items, confirm
@@ -670,6 +714,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 - **Add photo** — optional meal photo via camera or gallery
 
 #### 📷 Tab 3: Scan Food (`(tabs)/scan.tsx`)
+
 - **Camera viewfinder** — full-screen barcode scanner using `expo-camera`
 - **On scan** → lookup barcode via Open Food Facts API
 - **Result card overlay** slides up with:
@@ -683,6 +728,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 - **Search fallback** — if barcode not found, offer text search
 
 #### 🩺 Tab 4: Symptoms (`(tabs)/symptoms.tsx`)
+
 - **Quick-log grid** — 3×4 grid of common symptoms with icons/emojis:
   - 🫧 Bloating, 💨 Gas, 😖 Cramping, 🚽 Diarrhea, 🧱 Constipation, 🔥 Heartburn
   - 🤢 Nausea, 🧠 Brain Fog, 😴 Fatigue, 🤕 Headache, 🌡️ Skin Rash, 😫 Stomach Pain
@@ -697,6 +743,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 - **"View Insights"** button → navigates to correlation analysis
 
 #### 👤 Tab 5: Profile (`(tabs)/profile.tsx`)
+
 - **Profile info** — name, email, avatar
 - **Daily goals** — editable calorie, protein, carbs, fat, fiber goals
 - **Allergies & sensitivities** — multi-select chips (dairy, gluten, nuts, soy, shellfish, eggs, etc.)
@@ -712,6 +759,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 ### Detail Screens
 
 #### Food Safety Report (`food/[id].tsx`)
+
 - **Header**: Product image, name, brand, barcode
 - **Safety score** — large circular score (0-100) with color gradient
 - **Score breakdown** — how the composite score was calculated:
@@ -733,6 +781,7 @@ TopTriggersJson     : string (JSON blob of top suspected trigger foods)
 - **"Add to Meal"** button
 
 #### Insights Dashboard (`insights/index.tsx`)
+
 - **Period selector** — This Week / This Month / Custom
 - **Nutrition trends** — line charts for calories, protein, carbs, fat over time vs goals
 - **Symptom frequency** — bar chart of symptom counts by type for the period
@@ -834,6 +883,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 ### Phase 1 — MVP: Meal Logging & Calorie Tracking (Weeks 1-6)
 
 **Backend:**
+
 - [ ] Project scaffolding (solution, projects, Docker Compose)
 - [ ] PostgreSQL + EF Core setup, initial migration
 - [ ] User registration & login (Identity + JWT)
@@ -841,9 +891,10 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 - [ ] CalorieNinjas integration for NLP meal logging
 - [ ] USDA FoodData Central integration for food search
 - [ ] Daily nutrition summary aggregation
-- [ ] Redis caching layer
+- [ ] In-memory caching layer
 
 **Frontend:**
+
 - [ ] Expo project init with Router, NativeWind, TanStack Query, Zustand
 - [ ] Auth screens (login, register)
 - [ ] Dashboard screen (calorie ring, macro bars, today's meals)
@@ -857,6 +908,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 ### Phase 2 — Food Safety: Barcode Scanning & Additive Database (Weeks 7-10)
 
 **Backend:**
+
 - [ ] Seed FoodAdditives table (CSPI data, EU status, EFSA ADI, ~150 additives)
 - [ ] Open Food Facts integration (barcode lookup)
 - [ ] Food product caching with TTL
@@ -866,6 +918,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 - [ ] Food search combining OFF + USDA results
 
 **Frontend:**
+
 - [ ] Barcode scanner screen (expo-camera)
 - [ ] Scan result card overlay (product info, safety score, flagged additives)
 - [ ] Food safety report detail screen (full additive breakdown, US vs EU)
@@ -879,12 +932,14 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 ### Phase 3 — Gut Health: Symptom Tracking & History (Weeks 11-14)
 
 **Backend:**
+
 - [ ] Seed SymptomTypes table
 - [ ] Symptom CRUD endpoints
 - [ ] Symptom history endpoint with filtering
 - [ ] Basic correlation query (meals before symptoms in time window)
 
 **Frontend:**
+
 - [ ] Symptom logger screen (quick-log grid, severity slider, time, meal association)
 - [ ] Symptom history/calendar view
 - [ ] Symptom timeline component
@@ -895,6 +950,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 ### Phase 4 — Insights & Correlation Engine (Weeks 15-18)
 
 **Backend:**
+
 - [ ] Correlation engine implementation (time-window analysis, frequency calculation)
 - [ ] Weekly/monthly report generation (Hangfire job)
 - [ ] Insight report endpoints
@@ -902,6 +958,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 - [ ] Nutrition trend aggregation endpoints
 
 **Frontend:**
+
 - [ ] Insights dashboard (nutrition trends, symptom frequency, correlations)
 - [ ] Correlation cards with visual explanations
 - [ ] Additive exposure summary chart
@@ -915,6 +972,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 ### Phase 5 — Polish, Onboarding & Launch (Weeks 19-22)
 
 **Backend:**
+
 - [ ] Push notification service (Expo Push)
 - [ ] Rate limiting and abuse protection
 - [ ] Performance optimization (query tuning, caching review)
@@ -922,6 +980,7 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 - [ ] Security audit (OWASP checklist)
 
 **Frontend:**
+
 - [ ] Onboarding flow (goals, allergies, dietary prefs, additive watchlist setup)
 - [ ] Push notification integration (reminders, weekly reports, scan alerts)
 - [ ] Empty states, loading skeletons, error states
@@ -932,8 +991,9 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 - [ ] App Store screenshots and metadata
 
 **Infrastructure:**
+
 - [ ] CI/CD pipeline (GitHub Actions → EAS Build → backend deploy)
-- [ ] Production environment setup (Fly.io + managed Postgres + Redis)
+- [ ] Production environment setup (Fly.io + managed Postgres)
 - [ ] Sentry error tracking integration
 - [ ] App Store / Play Store submission
 - [ ] Web deployment (Expo Web → Vercel or Fly.io)
@@ -944,18 +1004,19 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 
 ## 10. Third-Party API Caching Strategy
 
-| API Source | Storage | TTL | Refresh Mechanism |
-|-----------|---------|-----|-------------------|
-| Open Food Facts products | PostgreSQL `FoodProducts` | 24 hours | On-demand (cache miss → fetch) |
-| USDA nutrient data | PostgreSQL `FoodProducts` | 7 days | On-demand |
-| CalorieNinjas NLP results | Redis | 24 hours | On-demand (same query = cache hit) |
-| CSPI additive ratings | PostgreSQL `FoodAdditives` | ∞ (static seed) | Manual quarterly review |
-| EFSA ADI / safety opinions | PostgreSQL `FoodAdditives` | 30 days | Hangfire monthly job |
-| EU regulatory status | PostgreSQL `FoodAdditives` | ∞ (static seed) | Manual quarterly review |
-| openFDA adverse events | PostgreSQL `FoodAdditives` | 7 days | Hangfire weekly job |
-| Edamam / Spoonacular | Redis | 24 hours | On-demand |
+| API Source                 | Storage                    | TTL             | Refresh Mechanism                  |
+| -------------------------- | -------------------------- | --------------- | ---------------------------------- |
+| Open Food Facts products   | PostgreSQL `FoodProducts`  | 24 hours        | On-demand (cache miss → fetch)     |
+| USDA nutrient data         | PostgreSQL `FoodProducts`  | 7 days          | On-demand                          |
+| CalorieNinjas NLP results  | In-memory cache            | 24 hours        | On-demand (same query = cache hit) |
+| CSPI additive ratings      | PostgreSQL `FoodAdditives` | ∞ (static seed) | Manual quarterly review            |
+| EFSA ADI / safety opinions | PostgreSQL `FoodAdditives` | 30 days         | Hangfire monthly job               |
+| EU regulatory status       | PostgreSQL `FoodAdditives` | ∞ (static seed) | Manual quarterly review            |
+| openFDA adverse events     | PostgreSQL `FoodAdditives` | 7 days          | Hangfire weekly job                |
+| Edamam / Spoonacular       | In-memory cache            | 24 hours        | On-demand                          |
 
 ### Rate Limit Handling
+
 - All external API clients use **Microsoft.Extensions.Http.Resilience** standard resilience handler:
   - **Retry**: 2 retries with 500ms delay
   - **Circuit breaker**: Opens after failures in 30s sampling window, half-open recovery
@@ -970,18 +1031,18 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 
 ## 11. Security
 
-| Concern | Implementation | Status |
-|---------|---------------|--------|
-| Authentication | JWT access tokens (60min expiry) + refresh tokens (7-day rotation) | ✅ Implemented |
-| Password | ASP.NET Core Identity with bcrypt hashing | ✅ Implemented |
-| Transport | HTTPS everywhere (TLS 1.3) | ✅ Via Docker/proxy |
-| Input validation | Inline validation in all endpoints (type, range, required checks) | ✅ Implemented |
-| Rate limiting | ASP.NET Core rate limiting — `authenticated` (100/min), `auth` (20/min per-IP), `search` (30/min sliding window) | ✅ Implemented |
-| CORS | AllowAnyOrigin for local dev (lock down for prod) | ✅ Implemented |
-| SQL injection | Parameterized queries via EF Core (no raw SQL) | ✅ Implemented |
-| API keys | External API keys stored in env vars, never exposed to frontend | ✅ Implemented |
-| Global error handling | ExceptionMiddleware returns ProblemDetails JSON, no stack traces in production | ✅ Implemented |
-| HTTP client resilience | Polly standard resilience handler on all external API clients (retry, circuit breaker, timeout) | ✅ Implemented |
+| Concern                | Implementation                                                                                                   | Status              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Authentication         | JWT access tokens (60min expiry) + refresh tokens (7-day rotation)                                               | ✅ Implemented      |
+| Password               | ASP.NET Core Identity with bcrypt hashing                                                                        | ✅ Implemented      |
+| Transport              | HTTPS everywhere (TLS 1.3)                                                                                       | ✅ Via Docker/proxy |
+| Input validation       | Inline validation in all endpoints (type, range, required checks)                                                | ✅ Implemented      |
+| Rate limiting          | ASP.NET Core rate limiting — `authenticated` (100/min), `auth` (20/min per-IP), `search` (30/min sliding window) | ✅ Implemented      |
+| CORS                   | AllowAnyOrigin for local dev (lock down for prod)                                                                | ✅ Implemented      |
+| SQL injection          | Parameterized queries via EF Core (no raw SQL)                                                                   | ✅ Implemented      |
+| API keys               | External API keys stored in env vars, never exposed to frontend                                                  | ✅ Implemented      |
+| Global error handling  | ExceptionMiddleware returns ProblemDetails JSON, no stack traces in production                                   | ✅ Implemented      |
+| HTTP client resilience | Polly standard resilience handler on all external API clients (retry, circuit breaker, timeout)                  | ✅ Implemented      |
 
 ---
 
@@ -993,24 +1054,19 @@ services:
     build: ./backend
     ports: ["5000:8080"]
     environment:
-      - ConnectionStrings__DefaultConnection=Host=db;Database=gutai;Username=postgres;Password=postgres
-      - ConnectionStrings__Redis=redis:6379
+      - ConnectionStrings__AzureStorage=UseDevelopmentStorage=true
       - Jwt__Secret=dev-secret-key-change-in-prod
       - ExternalApis__UsdaApiKey=${USDA_API_KEY}
       - ExternalApis__CalorieNinjasApiKey=${CALORIENINJAS_API_KEY}
-    depends_on: [db, redis]
+    depends_on: [azurite]
 
-  db:
-    image: postgres:16-alpine
-    ports: ["5432:5432"]
-    environment:
-      POSTGRES_DB: gutai
-      POSTGRES_PASSWORD: postgres
-    volumes: [pgdata:/var/lib/postgresql/data]
-
-  redis:
-    image: redis:7-alpine
-    ports: ["6379:6379"]
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes: [azurite-data:/data]
 
   seq:
     image: datalust/seq
@@ -1019,24 +1075,24 @@ services:
       ACCEPT_EULA: "Y"
 
 volumes:
-  pgdata:
+  azurite-data:
 ```
 
 ---
 
 ## 13. Key Technical Decisions & Rationale
 
-| Decision | Rationale |
-|----------|-----------|
-| **CalorieNinjas over Nutritionix** for NLP | Free tier, sufficient accuracy for MVP. Upgrade to Nutritionix later if needed. |
-| **Open Food Facts as primary product DB** | Free, open-source, 3M+ products, includes additives data. No API key needed. |
+| Decision                                          | Rationale                                                                                                                                                       |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CalorieNinjas over Nutritionix** for NLP        | Free tier, sufficient accuracy for MVP. Upgrade to Nutritionix later if needed.                                                                                 |
+| **Open Food Facts as primary product DB**         | Free, open-source, 3M+ products, includes additives data. No API key needed.                                                                                    |
 | **Static additive safety DB** (not real-time API) | CSPI, EFSA, EPA data doesn't change frequently. Static seeding with periodic refresh is more reliable and faster than runtime API calls to scrape-only sources. |
-| **Composite safety score** (not single-source) | No single source rates all additives comprehensively. Combining CSPI + EU status + EFSA ADI + FDA adverse events gives the most complete picture. |
-| **PostgreSQL over SQLite/Cosmos** | Relational model fits (users, meals, items, additives, junctions). Great JSON support for flexible fields. Robust, free, widely hosted. |
-| **Minimal APIs over Controllers** | Less boilerplate, faster development, good enough for this scope. |
-| **Expo over bare RN** | Barcode scanner, camera, notifications, push, OTA updates, EAS builds — all easier with Expo. Web support included. |
-| **TanStack Query for server state** | Automatic caching, background refetching, optimistic updates, devtools. Eliminates custom loading/error state management. |
-| **Zustand over Redux** | Minimal boilerplate, tiny bundle, sufficient for auth/app state. Server state handled by TanStack Query. |
+| **Composite safety score** (not single-source)    | No single source rates all additives comprehensively. Combining CSPI + EU status + EFSA ADI + FDA adverse events gives the most complete picture.               |
+| **PostgreSQL over SQLite/Cosmos**                 | Relational model fits (users, meals, items, additives, junctions). Great JSON support for flexible fields. Robust, free, widely hosted.                         |
+| **Minimal APIs over Controllers**                 | Less boilerplate, faster development, good enough for this scope.                                                                                               |
+| **Expo over bare RN**                             | Barcode scanner, camera, notifications, push, OTA updates, EAS builds — all easier with Expo. Web support included.                                             |
+| **TanStack Query for server state**               | Automatic caching, background refetching, optimistic updates, devtools. Eliminates custom loading/error state management.                                       |
+| **Zustand over Redux**                            | Minimal boilerplate, tiny bundle, sufficient for auth/app state. Server state handled by TanStack Query.                                                        |
 
 ---
 
@@ -1102,6 +1158,7 @@ cd ../../frontend && npx expo start  # Frontend on :8081
 **Total estimated timeline: 20-22 weeks for a solo developer, 10-12 weeks with a 2-person team.**
 
 **Priority order for external API integration:**
+
 1. CalorieNinjas (Week 1 — enables core meal logging)
 2. USDA FoodData Central (Week 2 — food search)
 3. CSPI static seed (Week 7 — additive safety foundation)

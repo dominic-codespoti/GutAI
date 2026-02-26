@@ -103,10 +103,16 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerEnv.id
     configuration: {
       activeRevisionsMode: 'Single'
+      maxInactiveRevisions: 2
       ingress: {
         external: true
         targetPort: 8080
-        transport: 'http'
+        transport: 'http2'
+        corsPolicy: {
+          allowedOrigins: ['*']
+          allowedMethods: ['*']
+          allowedHeaders: ['*']
+        }
       }
       registries: [
         {
@@ -136,6 +142,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           }
           env: [
             { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
+            { name: 'DOTNET_RUNNING_IN_CONTAINER', value: 'true' }
+            { name: 'DOTNET_GCServer', value: '0' }
             { name: 'ConnectionStrings__AzureStorage', secretRef: 'storage-connection' }
             { name: 'Jwt__Secret', secretRef: 'jwt-secret' }
             { name: 'Jwt__Issuer', value: 'GutAI' }
@@ -153,9 +161,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 2
-              periodSeconds: 3
-              failureThreshold: 15
+              initialDelaySeconds: 1
+              periodSeconds: 2
+              failureThreshold: 20
+              timeoutSeconds: 3
             }
             {
               type: 'Liveness'
@@ -164,6 +173,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
                 port: 8080
               }
               periodSeconds: 30
+              failureThreshold: 3
+              timeoutSeconds: 3
             }
             {
               type: 'Readiness'
@@ -172,19 +183,21 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
                 port: 8080
               }
               periodSeconds: 10
+              failureThreshold: 3
+              timeoutSeconds: 3
             }
           ]
         }
       ]
       scale: {
-        minReplicas: 1
-        maxReplicas: 1
+        minReplicas: 0
+        maxReplicas: 3
         rules: [
           {
             name: 'http-scaling'
             http: {
               metadata: {
-                concurrentRequests: '50'
+                concurrentRequests: '25'
               }
             }
           }

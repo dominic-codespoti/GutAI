@@ -38,6 +38,7 @@ public record UserProfileDto
     public int DailyFiberGoalG { get; init; }
     public string[] Allergies { get; init; } = [];
     public string[] DietaryPreferences { get; init; } = [];
+    public string[] GutConditions { get; init; } = [];
     public bool OnboardingCompleted { get; init; }
     public string? TimezoneId { get; init; }
 }
@@ -47,6 +48,7 @@ public record UpdateProfileRequest
     public string? DisplayName { get; init; }
     public string[] Allergies { get; init; } = [];
     public string[] DietaryPreferences { get; init; } = [];
+    public string[] GutConditions { get; init; } = [];
     public string? TimezoneId { get; init; }
     public bool? OnboardingCompleted { get; init; }
 }

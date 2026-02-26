@@ -8,18 +8,29 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
-  Image,
+  BackHandler,
+  Platform,
 } from "react-native";
+import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { foodApi, userApi, mealApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
 import { toast } from "../../src/stores/toast";
 import { ErrorState } from "../../components/ErrorState";
+import { NutritionBar } from "../../components/NutritionBar";
+import { MealTypePicker } from "../../components/MealTypePicker";
+import { ServingSizeSelector } from "../../components/ServingSizeSelector";
+import {
+  scaleNutrition,
+  nutritionSummaryText,
+} from "../../src/utils/nutrition";
 import type { FoodProduct, SafetyReport } from "../../src/types";
 import { useRouter } from "expo-router";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { ratingColor } from "../../src/utils/colors";
+import { maybeRequestReview } from "../../src/utils/review";
 
 export default function ScanScreen() {
   const [barcode, setBarcode] = useState("");
@@ -37,9 +48,38 @@ export default function ScanScreen() {
   const [addToMealType, setAddToMealType] = useState<string>("Lunch");
   const [showAddToMeal, setShowAddToMeal] = useState(false);
   const [addToMealServingG, setAddToMealServingG] = useState<number>(100);
+  const [addToMealMultiplier, setAddToMealMultiplier] = useState<number>(1);
+  const [customServingText, setCustomServingText] = useState<string>("");
   const [addToMealProduct, setAddToMealProduct] = useState<FoodProduct | null>(
     null,
   );
+
+  const effectiveGrams = addToMealServingG * addToMealMultiplier;
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (showCamera) {
+          setShowCamera(false);
+          return true;
+        }
+        if (showAddToMeal) {
+          setShowAddToMeal(false);
+          return true;
+        }
+        if (selectedProductId) {
+          setSelectedProductId(null);
+          return true;
+        }
+        if (router.canGoBack()) {
+          router.back();
+          return true;
+        }
+        return false;
+      });
+      return () => handler.remove();
+    }
+  }, [showCamera, showAddToMeal, selectedProductId, router]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -57,7 +97,6 @@ export default function ScanScreen() {
     queryFn: () => foodApi.search(debouncedSearch).then((r) => r.data),
     enabled: debouncedSearch.length >= 2,
     staleTime: 5 * 60 * 1000,
-    placeholderData: (prev) => prev,
   });
 
   const pendingLookup = useQuery({
@@ -82,6 +121,8 @@ export default function ScanScreen() {
   });
 
   const handleSelectProduct = (product: FoodProduct) => {
+    setSearchText("");
+    setDebouncedSearch("");
     const emptyGuid = "00000000-0000-0000-0000-000000000000";
     if (product.id && product.id !== emptyGuid) {
       setSelectedProductId(product.id);
@@ -93,6 +134,9 @@ export default function ScanScreen() {
   const handleBarcodeScanned = ({ data }: { data: string }) => {
     setShowCamera(false);
     setBarcode(data);
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   };
 
   const openCamera = async () => {
@@ -133,7 +177,8 @@ export default function ScanScreen() {
 
   const addToMealMutation = useMutation({
     mutationFn: (product: FoodProduct) => {
-      const s = addToMealServingG;
+      const s = effectiveGrams;
+      const scaled = scaleNutrition(product, s);
       return mealApi.create({
         mealType: addToMealType,
         loggedAt: new Date().toISOString(),
@@ -148,13 +193,7 @@ export default function ScanScreen() {
             servings: 1,
             servingUnit: `${s}g`,
             servingWeightG: s,
-            calories: Math.round(((product.calories100g ?? 0) * s) / 100),
-            proteinG: Math.round(((product.protein100g ?? 0) * s) / 100),
-            carbsG: Math.round(((product.carbs100g ?? 0) * s) / 100),
-            fatG: Math.round(((product.fat100g ?? 0) * s) / 100),
-            fiberG: Math.round(((product.fiber100g ?? 0) * s) / 100),
-            sugarG: Math.round(((product.sugar100g ?? 0) * s) / 100),
-            sodiumMg: Math.round(((product.sodium100g ?? 0) * s) / 100),
+            ...scaled,
           },
         ],
       });
@@ -165,6 +204,10 @@ export default function ScanScreen() {
       setShowAddToMeal(false);
       setAddToMealProduct(null);
       toast.success("Added to meal!");
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      maybeRequestReview();
     },
     onError: () => toast.error("Failed to add to meal"),
   });
@@ -181,17 +224,6 @@ export default function ScanScreen() {
       }
     >
       <View style={{ padding: 20 }}>
-        <Text
-          style={{
-            fontSize: 20,
-            fontWeight: "700",
-            color: "#0f172a",
-            marginBottom: 16,
-          }}
-        >
-          Food Lookup
-        </Text>
-
         {/* Barcode Input */}
         <View
           style={{
@@ -375,7 +407,7 @@ export default function ScanScreen() {
                   marginBottom: 4,
                 }}
               >
-                Safety Report
+                {safetyReport.data.product.name}
               </Text>
               {selectedProductId && (
                 <TouchableOpacity
@@ -393,66 +425,14 @@ export default function ScanScreen() {
                 </TouchableOpacity>
               )}
             </View>
-            <Text style={{ fontSize: 16, color: "#334155", marginBottom: 12 }}>
-              {safetyReport.data.product.name}
-            </Text>
 
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-around",
-                marginBottom: 16,
-              }}
-            >
-              {safetyReport.data.safetyRating && (
-                <View style={{ alignItems: "center" }}>
-                  <Text
-                    style={{
-                      fontSize: 24,
-                      fontWeight: "700",
-                      color: ratingColor(safetyReport.data.safetyRating),
-                    }}
-                  >
-                    {safetyReport.data.safetyRating}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: "#64748b" }}>Safety</Text>
-                </View>
-              )}
-              {safetyReport.data.novaGroup && (
-                <View style={{ alignItems: "center" }}>
-                  <Text
-                    style={{
-                      fontSize: 24,
-                      fontWeight: "700",
-                      color:
-                        safetyReport.data.novaGroup >= 4
-                          ? "#ef4444"
-                          : "#22c55e",
-                    }}
-                  >
-                    {safetyReport.data.novaGroup}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: "#64748b" }}>NOVA</Text>
-                </View>
-              )}
-              {safetyReport.data.nutriScore &&
-                !safetyReport.data.nutriScore.toLowerCase().includes("not") && (
-                  <View style={{ alignItems: "center" }}>
-                    <Text
-                      style={{
-                        fontSize: 24,
-                        fontWeight: "700",
-                        color: "#3b82f6",
-                      }}
-                    >
-                      {safetyReport.data.nutriScore.toUpperCase()}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: "#64748b" }}>
-                      Nutri-Score
-                    </Text>
-                  </View>
-                )}
-            </View>
+            <NutritionBar
+              calories={Math.round(safetyReport.data.product.calories100g ?? 0)}
+              proteinG={Math.round(safetyReport.data.product.protein100g ?? 0)}
+              carbsG={Math.round(safetyReport.data.product.carbs100g ?? 0)}
+              fatG={Math.round(safetyReport.data.product.fat100g ?? 0)}
+              subtitle="per 100g"
+            />
 
             {safetyReport.data.additives.length > 0 && (
               <>
@@ -572,129 +552,36 @@ export default function ScanScreen() {
                 >
                   Add to meal:
                 </Text>
-                <View style={{ flexDirection: "row", marginBottom: 12 }}>
-                  {MEAL_TYPES.map((type) => (
-                    <TouchableOpacity
-                      key={type}
-                      onPress={() => setAddToMealType(type)}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 6,
-                        borderRadius: 6,
-                        marginHorizontal: 2,
-                        backgroundColor:
-                          addToMealType === type ? "#22c55e" : "#e2e8f0",
-                        alignItems: "center",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "600",
-                          color: addToMealType === type ? "#fff" : "#64748b",
-                        }}
-                      >
-                        {type}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                {/* Serving Size Presets */}
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color: "#334155",
-                    marginBottom: 6,
-                  }}
-                >
-                  Serving size:
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    gap: 6,
-                    marginBottom: 8,
-                  }}
-                >
-                  {(() => {
-                    const p = addToMealProduct ?? safetyReport.data?.product;
-                    const presets: { label: string; grams: number }[] = [];
-                    if (p?.servingQuantity && p.servingSize) {
-                      presets.push({
-                        label: `1 serving (${p.servingSize})`,
-                        grams: Math.round(p.servingQuantity),
-                      });
-                    }
-                    presets.push({ label: "50g", grams: 50 });
-                    presets.push({ label: "100g", grams: 100 });
-                    presets.push({ label: "150g", grams: 150 });
-                    presets.push({ label: "200g", grams: 200 });
-                    presets.push({ label: "250g", grams: 250 });
-                    return presets.map((preset) => (
-                      <TouchableOpacity
-                        key={preset.label}
-                        onPress={() => setAddToMealServingG(preset.grams)}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 6,
-                          backgroundColor:
-                            addToMealServingG === preset.grams
-                              ? "#22c55e"
-                              : "#e2e8f0",
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            fontWeight: "600",
-                            color:
-                              addToMealServingG === preset.grams
-                                ? "#fff"
-                                : "#64748b",
-                          }}
-                        >
-                          {preset.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ));
-                  })()}
-                </View>
-                <Text
-                  style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}
-                >
-                  {Math.round(
-                    ((safetyReport.data?.product.calories100g ?? 0) *
-                      addToMealServingG) /
-                      100,
-                  )}{" "}
-                  cal ·{" "}
-                  {Math.round(
-                    ((safetyReport.data?.product.protein100g ?? 0) *
-                      addToMealServingG) /
-                      100,
-                  )}
-                  g P ·{" "}
-                  {Math.round(
-                    ((safetyReport.data?.product.carbs100g ?? 0) *
-                      addToMealServingG) /
-                      100,
-                  )}
-                  g C ·{" "}
-                  {Math.round(
-                    ((safetyReport.data?.product.fat100g ?? 0) *
-                      addToMealServingG) /
-                      100,
-                  )}
-                  g F
-                </Text>
+                <MealTypePicker
+                  selected={addToMealType}
+                  onSelect={setAddToMealType}
+                />
+                <ServingSizeSelector
+                  servingG={addToMealServingG}
+                  onServingChange={setAddToMealServingG}
+                  customText={customServingText}
+                  onCustomTextChange={setCustomServingText}
+                  multiplier={addToMealMultiplier}
+                  onMultiplierChange={setAddToMealMultiplier}
+                  product={addToMealProduct ?? safetyReport.data?.product}
+                  summaryText={
+                    safetyReport.data?.product
+                      ? nutritionSummaryText(
+                          scaleNutrition(
+                            safetyReport.data.product,
+                            effectiveGrams,
+                          ),
+                          effectiveGrams,
+                        )
+                      : undefined
+                  }
+                />
                 <View
                   style={{
                     flexDirection: "row",
                     justifyContent: "flex-end",
                     gap: 8,
+                    marginTop: 8,
                   }}
                 >
                   <TouchableOpacity
@@ -734,6 +621,8 @@ export default function ScanScreen() {
               <TouchableOpacity
                 onPress={() => {
                   setShowAddToMeal(true);
+                  setAddToMealMultiplier(1);
+                  setCustomServingText("");
                   setAddToMealServingG(
                     safetyReport.data?.product.servingQuantity
                       ? Math.round(safetyReport.data.product.servingQuantity)
@@ -859,7 +748,8 @@ function ProductCard({
         <Image
           source={{ uri: product.imageUrl }}
           style={{ width: 60, height: 60, borderRadius: 8, marginRight: 12 }}
-          resizeMode="contain"
+          contentFit="contain"
+          transition={200}
         />
       )}
       <View style={{ flex: 1 }}>
@@ -893,7 +783,7 @@ function ProductCard({
         <View style={{ flexDirection: "row", marginTop: 8 }}>
           {product.calories100g != null && (
             <Text style={{ fontSize: 12, color: "#334155", marginRight: 12 }}>
-              {product.calories100g} cal/100g
+              {Math.round(product.calories100g)} cal/100g
             </Text>
           )}
           {product.safetyRating && (

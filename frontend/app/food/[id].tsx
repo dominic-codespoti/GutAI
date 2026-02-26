@@ -6,19 +6,30 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
-  Modal,
-  Image,
   TextInput,
+  BackHandler,
+  Platform,
 } from "react-native";
+import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { foodApi, mealApi } from "../../src/api";
+import { foodApi, mealApi, insightApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
 import { ErrorState } from "../../components/ErrorState";
+import { MealTypePicker } from "../../components/MealTypePicker";
+import { InfoTooltip } from "../../components/InfoTooltip";
+import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { ratingColor } from "../../src/utils/colors";
-import { MEAL_TYPES } from "../../src/utils/constants";
+import {
+  scaleNutrition,
+  nutritionSummaryText,
+  buildServingPresets,
+} from "../../src/utils/nutrition";
 import { toast } from "../../src/stores/toast";
 import type { PersonalizedScore } from "../../src/types";
+import { maybeRequestReview } from "../../src/utils/review";
+import { colors } from "../../src/utils/theme";
 
 const gutScoreColor = (score: number) => {
   if (score >= 80) return "#22c55e";
@@ -118,6 +129,92 @@ export default function FoodDetailScreen() {
     },
   });
 
+  const conditions = userProfile?.gutConditions ?? [];
+  const hasConditions = conditions.length > 0;
+  const fodmapRelevant = conditions.some((c) =>
+    ["IBS", "FODMAP Sensitive", "SIBO"].includes(c),
+  );
+  const gutRiskRelevant = conditions.some((c) =>
+    ["Crohn's Disease", "Ulcerative Colitis", "IBS"].includes(c),
+  );
+  const glycemicRelevant = conditions.some((c) => c === "GERD");
+
+  const { data: triggerFoods } = useQuery({
+    queryKey: ["trigger-foods"],
+    queryFn: () => insightApi.triggerFoods(90).then((r) => r.data),
+  });
+
+  const foodTrigger = product
+    ? triggerFoods?.find(
+        (t) => t.food.toLowerCase() === product.name.toLowerCase(),
+      )
+    : undefined;
+
+  const dietPrefs = userProfile?.dietaryPreferences ?? [];
+  const dietWarnings: string[] = [];
+  if (product) {
+    const name = product.name.toLowerCase();
+    const ingredients = (product.ingredientsText ?? "").toLowerCase();
+    const allergens = (product.allergensTags ?? []).map((a) => a.toLowerCase());
+    if (dietPrefs.includes("Vegan") || dietPrefs.includes("Vegetarian")) {
+      const animal = [
+        "meat",
+        "chicken",
+        "beef",
+        "pork",
+        "fish",
+        "salmon",
+        "tuna",
+        "shrimp",
+        "bacon",
+        "turkey",
+      ];
+      if (animal.some((a) => name.includes(a) || ingredients.includes(a)))
+        dietWarnings.push(
+          dietPrefs.includes("Vegan")
+            ? "May not be vegan"
+            : "May not be vegetarian",
+        );
+      if (
+        dietPrefs.includes("Vegan") &&
+        (allergens.some((a) => a.includes("milk") || a.includes("egg")) ||
+          [
+            "milk",
+            "egg",
+            "cheese",
+            "butter",
+            "cream",
+            "honey",
+            "whey",
+            "casein",
+          ].some((d) => ingredients.includes(d)))
+      )
+        dietWarnings.push("Contains animal-derived ingredients");
+    }
+    if (
+      dietPrefs.includes("Gluten-Free") &&
+      (allergens.some((a) => a.includes("wheat") || a.includes("gluten")) ||
+        ["wheat", "barley", "rye", "gluten"].some((g) =>
+          ingredients.includes(g),
+        ))
+    )
+      dietWarnings.push("May contain gluten");
+    if (
+      dietPrefs.includes("Keto") &&
+      product.carbohydrates != null &&
+      product.carbohydrates > 15
+    )
+      dietWarnings.push(
+        `High carbs for keto (${Math.round(product.carbohydrates)}g per serving)`,
+      );
+    if (
+      dietPrefs.includes("Low-FODMAP") &&
+      report?.fodmap &&
+      report.fodmap.fodmapScore < 60
+    )
+      dietWarnings.push("Not Low-FODMAP friendly");
+  }
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -126,8 +223,9 @@ export default function FoodDetailScreen() {
   }, [refetch]);
 
   const addToMealMutation = useMutation({
-    mutationFn: () =>
-      mealApi.create({
+    mutationFn: () => {
+      const scaled = scaleNutrition(product!, servingSize);
+      return mealApi.create({
         mealType: addToMealType,
         loggedAt: new Date().toISOString(),
         items: [
@@ -141,30 +239,40 @@ export default function FoodDetailScreen() {
             servings: 1,
             servingUnit: `${servingSize}g`,
             servingWeightG: servingSize,
-            calories: Math.round(
-              ((product!.calories100g ?? 0) * servingSize) / 100,
-            ),
-            proteinG: Math.round(
-              ((product!.protein100g ?? 0) * servingSize) / 100,
-            ),
-            carbsG: Math.round(((product!.carbs100g ?? 0) * servingSize) / 100),
-            fatG: Math.round(((product!.fat100g ?? 0) * servingSize) / 100),
-            fiberG: Math.round(((product!.fiber100g ?? 0) * servingSize) / 100),
-            sugarG: Math.round(((product!.sugar100g ?? 0) * servingSize) / 100),
-            sodiumMg: Math.round(
-              ((product!.sodium100g ?? 0) * servingSize) / 100,
-            ),
+            ...scaled,
           },
         ],
-      }),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meals"] });
       queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
       setShowAddToMeal(false);
       toast.success("Added to meal!");
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      maybeRequestReview();
     },
     onError: () => toast.error("Failed to add to meal"),
   });
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (showAddToMeal) {
+          setShowAddToMeal(false);
+          return true;
+        }
+        if (router.canGoBack()) {
+          router.back();
+          return true;
+        }
+        return false;
+      });
+      return () => handler.remove();
+    }
+  }, [showAddToMeal, router]);
 
   if (isLoading) {
     return (
@@ -219,7 +327,8 @@ export default function FoodDetailScreen() {
                 marginBottom: 12,
                 backgroundColor: "#fff",
               }}
-              resizeMode="contain"
+              contentFit="contain"
+              transition={200}
             />
           )}
           <Text style={{ fontSize: 22, fontWeight: "700", color: "#0f172a" }}>
@@ -242,64 +351,86 @@ export default function FoodDetailScreen() {
           )}
         </View>
 
-        {/* Safety Badges */}
+        {/* Hero Score Section */}
+        {personalScore && (
+          <View
+            style={{
+              backgroundColor: "#fff",
+              borderRadius: 16,
+              padding: 20,
+              marginBottom: 12,
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{ fontSize: 15, fontWeight: "600", color: "#334155" }}
+              >
+                🎯 Your Gut Health Score
+              </Text>
+              <InfoTooltip
+                title="Gut Health Score"
+                body="A personalized 0–100 composite score based on FODMAP risk, additive safety, processing level (NOVA), fiber content, allergen match, and sugar alcohols — weighted for your profile."
+              />
+            </View>
+            <Text
+              style={{
+                fontSize: 56,
+                fontWeight: "800",
+                color: personalScoreColor(personalScore.compositeScore),
+              }}
+            >
+              {personalScore.compositeScore}
+            </Text>
+            <View
+              style={{
+                backgroundColor:
+                  personalScoreColor(personalScore.compositeScore) + "18",
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 4,
+                marginTop: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: personalScoreColor(personalScore.compositeScore),
+                }}
+              >
+                {ratingEmoji(personalScore.rating)} {personalScore.rating}
+              </Text>
+            </View>
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#475569",
+                marginTop: 10,
+                textAlign: "center",
+                lineHeight: 18,
+                paddingHorizontal: 8,
+              }}
+            >
+              {personalScore.summary}
+            </Text>
+          </View>
+        )}
+
+        {/* Compact Score Badges — only show the most useful secondary scores */}
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-          {product.safetyRating && (
-            <View
-              style={{
-                backgroundColor: ratingColor(product.safetyRating) + "18",
-                borderRadius: 8,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                alignItems: "center",
-                flex: 1,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "700",
-                  color: ratingColor(product.safetyRating),
-                }}
-              >
-                {product.safetyRating}
-              </Text>
-              <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                Safety
-              </Text>
-            </View>
-          )}
-          {report?.gutRisk && (
-            <View
-              style={{
-                backgroundColor: gutScoreColor(report.gutRisk.gutScore) + "18",
-                borderRadius: 8,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                alignItems: "center",
-                flex: 1,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "700",
-                  color: gutScoreColor(report.gutRisk.gutScore),
-                }}
-              >
-                {report.gutRisk.gutScore}
-              </Text>
-              <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                Gut Score
-              </Text>
-            </View>
-          )}
           {report?.fodmap && (
             <View
               style={{
                 backgroundColor:
                   fodmapScoreColor(report.fodmap.fodmapScore) + "18",
-                borderRadius: 8,
+                borderRadius: 10,
                 paddingHorizontal: 14,
                 paddingVertical: 10,
                 alignItems: "center",
@@ -324,7 +455,7 @@ export default function FoodDetailScreen() {
             <View
               style={{
                 backgroundColor: giColor(report.glycemic.giCategory) + "18",
-                borderRadius: 8,
+                borderRadius: 10,
                 paddingHorizontal: 14,
                 paddingVertical: 10,
                 alignItems: "center",
@@ -345,11 +476,11 @@ export default function FoodDetailScreen() {
               </Text>
             </View>
           )}
-          {product.novaGroup != null && (
+          {product.safetyRating && (
             <View
               style={{
-                backgroundColor: product.novaGroup >= 4 ? "#fee2e2" : "#dcfce7",
-                borderRadius: 8,
+                backgroundColor: ratingColor(product.safetyRating) + "18",
+                borderRadius: 10,
                 paddingHorizontal: 14,
                 paddingVertical: 10,
                 alignItems: "center",
@@ -360,103 +491,89 @@ export default function FoodDetailScreen() {
                 style={{
                   fontSize: 18,
                   fontWeight: "700",
-                  color: product.novaGroup >= 4 ? "#ef4444" : "#22c55e",
+                  color: ratingColor(product.safetyRating),
                 }}
               >
-                NOVA {product.novaGroup}
+                {product.safetyRating}
               </Text>
               <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                Processing
+                Safety
               </Text>
             </View>
           )}
-          {product.nutriScore &&
-            !product.nutriScore.toLowerCase().includes("not") && (
+        </View>
+
+        {/* Secondary labels row: NOVA + Nutri-Score if available */}
+        {(product.novaGroup != null ||
+          (product.nutriScore &&
+            !product.nutriScore.toLowerCase().includes("not"))) && (
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+            {product.novaGroup != null && (
               <View
                 style={{
-                  backgroundColor: "#eff6ff",
-                  borderRadius: 8,
+                  backgroundColor:
+                    product.novaGroup >= 4 ? "#fee2e2" : "#dcfce7",
+                  borderRadius: 10,
                   paddingHorizontal: 14,
-                  paddingVertical: 10,
+                  paddingVertical: 8,
                   alignItems: "center",
                   flex: 1,
                 }}
               >
                 <Text
-                  style={{ fontSize: 18, fontWeight: "700", color: "#3b82f6" }}
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "700",
+                    color: product.novaGroup >= 4 ? "#ef4444" : "#22c55e",
+                  }}
                 >
-                  {product.nutriScore.toUpperCase()}
+                  NOVA {product.novaGroup}
                 </Text>
-                <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                  Nutri-Score
+                <Text style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+                  Processing
                 </Text>
               </View>
             )}
-        </View>
-
-        {/* Personalized Gut Health Score */}
-        {personalScore && (
-          <View
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 12,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#334155",
-                  flex: 1,
-                }}
-              >
-                🎯 Your Gut Health Score
-              </Text>
-              <View
-                style={{
-                  backgroundColor:
-                    personalScoreColor(personalScore.compositeScore) + "18",
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text
+            {product.nutriScore &&
+              !product.nutriScore.toLowerCase().includes("not") && (
+                <View
                   style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: personalScoreColor(personalScore.compositeScore),
+                    backgroundColor: "#eff6ff",
+                    borderRadius: 10,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    alignItems: "center",
+                    flex: 1,
                   }}
                 >
-                  {ratingEmoji(personalScore.rating)} {personalScore.rating}
-                </Text>
-              </View>
-            </View>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "700",
+                      color: "#3b82f6",
+                    }}
+                  >
+                    {product.nutriScore.toUpperCase()}
+                  </Text>
+                  <Text
+                    style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}
+                  >
+                    Nutri-Score
+                  </Text>
+                </View>
+              )}
+          </View>
+        )}
 
-            {/* Big Score */}
-            <View style={{ alignItems: "center", marginBottom: 16 }}>
-              <Text
-                style={{
-                  fontSize: 48,
-                  fontWeight: "800",
-                  color: personalScoreColor(personalScore.compositeScore),
-                }}
-              >
-                {personalScore.compositeScore}
-              </Text>
-              <Text style={{ fontSize: 13, color: "#64748b" }}>out of 100</Text>
-            </View>
-
-            {/* Component Breakdown */}
+        {/* Score Breakdown — collapsible */}
+        {personalScore && personalScore.explanations.length > 0 && (
+          <CollapsibleCard
+            title="Score Breakdown"
+            emoji="📊"
+            badge={`${personalScore.compositeScore}/100`}
+            badgeColor={personalScoreColor(personalScore.compositeScore)}
+            defaultOpen={hasConditions}
+          >
             {personalScore.explanations.map((exp) => {
               const barColor =
                 exp.rawScore >= 80
@@ -519,7 +636,6 @@ export default function FoodDetailScreen() {
               );
             })}
 
-            {/* Personal Trigger Penalty */}
             {personalScore.personalTriggerPenalty > 0 && (
               <View
                 style={{
@@ -542,7 +658,6 @@ export default function FoodDetailScreen() {
               </View>
             )}
 
-            {/* Personal Warnings */}
             {personalScore.personalWarnings.length > 0 && (
               <View style={{ marginTop: 4 }}>
                 {personalScore.personalWarnings.map((warning, i) => (
@@ -555,68 +670,18 @@ export default function FoodDetailScreen() {
                 ))}
               </View>
             )}
-
-            {/* Summary */}
-            <Text
-              style={{
-                fontSize: 13,
-                color: "#475569",
-                marginTop: 8,
-                lineHeight: 18,
-              }}
-            >
-              {personalScore.summary}
-            </Text>
-          </View>
+          </CollapsibleCard>
         )}
 
-        {/* Gut Risk Assessment */}
+        {/* Gut Risk Assessment — collapsible */}
         {report?.gutRisk && report.gutRisk.flagCount > 0 && (
-          <View
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
+          <CollapsibleCard
+            title="Gut Risk Assessment"
+            emoji="🫃"
+            badge={report.gutRisk.gutRating}
+            badgeColor={gutScoreColor(report.gutRisk.gutScore)}
+            defaultOpen={gutRiskRelevant}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 8,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#334155",
-                  flex: 1,
-                }}
-              >
-                🫃 Gut Risk Assessment
-              </Text>
-              <View
-                style={{
-                  backgroundColor:
-                    gutScoreColor(report.gutRisk.gutScore) + "18",
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: gutScoreColor(report.gutRisk.gutScore),
-                  }}
-                >
-                  {report.gutRisk.gutRating}
-                </Text>
-              </View>
-            </View>
             <Text
               style={{
                 fontSize: 13,
@@ -739,56 +804,18 @@ export default function FoodDetailScreen() {
                 </Text>
               </View>
             ))}
-          </View>
+          </CollapsibleCard>
         )}
 
-        {/* FODMAP Assessment */}
+        {/* FODMAP Assessment — collapsible */}
         {report?.fodmap && report.fodmap.triggerCount > 0 && (
-          <View
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
+          <CollapsibleCard
+            title="FODMAP Assessment"
+            emoji="🧪"
+            badge={report.fodmap.fodmapRating}
+            badgeColor={fodmapScoreColor(report.fodmap.fodmapScore)}
+            defaultOpen={fodmapRelevant}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 8,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#334155",
-                  flex: 1,
-                }}
-              >
-                🧪 FODMAP Assessment
-              </Text>
-              <View
-                style={{
-                  backgroundColor:
-                    fodmapScoreColor(report.fodmap.fodmapScore) + "18",
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: fodmapScoreColor(report.fodmap.fodmapScore),
-                  }}
-                >
-                  {report.fodmap.fodmapRating}
-                </Text>
-              </View>
-            </View>
             <Text
               style={{
                 fontSize: 13,
@@ -951,57 +978,18 @@ export default function FoodDetailScreen() {
                 </Text>
               </View>
             ))}
-          </View>
+          </CollapsibleCard>
         )}
 
-        {/* Glycemic Assessment */}
+        {/* Glycemic Assessment — collapsible */}
         {report?.glycemic && report.glycemic.estimatedGI != null && (
-          <View
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
+          <CollapsibleCard
+            title="Glycemic Assessment"
+            emoji="📊"
+            badge={`GI ${report.glycemic.estimatedGI} · ${report.glycemic.giCategory}`}
+            badgeColor={giColor(report.glycemic.giCategory)}
+            defaultOpen={glycemicRelevant}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 8,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#334155",
-                  flex: 1,
-                }}
-              >
-                📊 Glycemic Assessment
-              </Text>
-              <View
-                style={{
-                  backgroundColor: giColor(report.glycemic.giCategory) + "18",
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: giColor(report.glycemic.giCategory),
-                  }}
-                >
-                  GI {report.glycemic.estimatedGI} ·{" "}
-                  {report.glycemic.giCategory}
-                </Text>
-              </View>
-            </View>
-
             <Text
               style={{
                 fontSize: 13,
@@ -1153,7 +1141,7 @@ export default function FoodDetailScreen() {
                 ))}
               </View>
             )}
-          </View>
+          </CollapsibleCard>
         )}
 
         {/* Gut-Friendly Substitutions */}
@@ -1335,49 +1323,37 @@ export default function FoodDetailScreen() {
               marginBottom: 8,
             }}
           >
-            {(() => {
-              const presets: { label: string; grams: number }[] = [];
-              if (product.servingQuantity && product.servingSize) {
-                presets.push({
-                  label: `1 serving (${product.servingSize})`,
-                  grams: Math.round(product.servingQuantity),
-                });
-              }
-              [50, 100, 150, 200, 250].forEach((g) =>
-                presets.push({ label: `${g}g`, grams: g }),
-              );
-              return presets.map((p) => (
-                <TouchableOpacity
-                  key={p.label}
-                  onPress={() => {
-                    setServingSize(p.grams);
-                    setCustomServing("");
-                  }}
+            {buildServingPresets(product).map((p) => (
+              <TouchableOpacity
+                key={p.label}
+                onPress={() => {
+                  setServingSize(p.grams);
+                  setCustomServing("");
+                }}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  backgroundColor:
+                    servingSize === p.grams && !customServing
+                      ? "#22c55e"
+                      : "#f1f5f9",
+                }}
+              >
+                <Text
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 8,
-                    backgroundColor:
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color:
                       servingSize === p.grams && !customServing
-                        ? "#22c55e"
-                        : "#f1f5f9",
+                        ? "#fff"
+                        : "#64748b",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "600",
-                      color:
-                        servingSize === p.grams && !customServing
-                          ? "#fff"
-                          : "#64748b",
-                    }}
-                  >
-                    {p.label}
-                  </Text>
-                </TouchableOpacity>
-              ));
-            })()}
+                  {p.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={{ fontSize: 13, color: "#64748b" }}>Custom:</Text>
@@ -1699,6 +1675,31 @@ export default function FoodDetailScreen() {
               marginBottom: 12,
             }}
           >
+            {foodTrigger && (
+              <View
+                style={{
+                  backgroundColor: "#fef2f2",
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 14, marginRight: 6 }}>⚠️</Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#dc2626",
+                    fontWeight: "600",
+                    flex: 1,
+                  }}
+                >
+                  This has triggered {foodTrigger.symptoms.join(", ")} for you{" "}
+                  {foodTrigger.totalOccurrences}x before
+                </Text>
+              </View>
+            )}
             <Text
               style={{
                 fontSize: 14,
@@ -1710,39 +1711,15 @@ export default function FoodDetailScreen() {
               Add {servingSize}g to meal:
             </Text>
             <Text style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
-              {Math.round(((product.calories100g ?? 0) * servingSize) / 100)}{" "}
-              cal ·{" "}
-              {Math.round(((product.protein100g ?? 0) * servingSize) / 100)}g P
-              · {Math.round(((product.carbs100g ?? 0) * servingSize) / 100)}g C
-              · {Math.round(((product.fat100g ?? 0) * servingSize) / 100)}g F
+              {nutritionSummaryText(
+                scaleNutrition(product, servingSize),
+                servingSize,
+              )}
             </Text>
-            <View style={{ flexDirection: "row", marginBottom: 12 }}>
-              {MEAL_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => setAddToMealType(type)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 6,
-                    marginHorizontal: 2,
-                    backgroundColor:
-                      addToMealType === type ? "#22c55e" : "#e2e8f0",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: "600",
-                      color: addToMealType === type ? "#fff" : "#64748b",
-                    }}
-                  >
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <MealTypePicker
+              selected={addToMealType}
+              onSelect={setAddToMealType}
+            />
             <View
               style={{
                 flexDirection: "row",

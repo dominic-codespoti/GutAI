@@ -28,6 +28,7 @@ export default function RegisterScreen() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const register = useAuthStore((s) => s.register);
@@ -43,6 +44,10 @@ export default function RegisterScreen() {
     }
     if (password.length < 8) {
       toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
       return;
     }
     setLoading(true);
@@ -184,7 +189,10 @@ export default function RegisterScreen() {
               alignItems: "center",
               backgroundColor: colors.bg,
               borderWidth: 1,
-              borderColor: colors.border,
+              borderColor:
+                confirmPassword && password !== confirmPassword
+                  ? colors.danger
+                  : colors.border,
               borderRadius: radius.md,
               paddingHorizontal: 14,
               marginBottom: spacing.xl,
@@ -210,6 +218,46 @@ export default function RegisterScreen() {
                 color={colors.textMuted}
               />
             </TouchableOpacity>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.bg,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.md,
+              paddingHorizontal: 14,
+              marginBottom: spacing.xl,
+            }}
+          >
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={18}
+              color={colors.textMuted}
+            />
+            <TextInput
+              placeholder="Confirm password"
+              placeholderTextColor={colors.textLight}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showPassword}
+              style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+            />
+            {confirmPassword !== "" && (
+              <Ionicons
+                name={
+                  password === confirmPassword
+                    ? "checkmark-circle"
+                    : "close-circle"
+                }
+                size={20}
+                color={
+                  password === confirmPassword ? colors.primary : colors.danger
+                }
+              />
+            )}
           </View>
 
           <TouchableOpacity

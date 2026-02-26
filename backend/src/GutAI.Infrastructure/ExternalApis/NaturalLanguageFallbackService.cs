@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
+using GutAI.Infrastructure.Data;
 using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.ExternalApis;
@@ -49,12 +50,13 @@ public partial class NaturalLanguageFallbackService
                 searchCts.CancelAfter(SearchTimeout);
 
                 var searchResults = await _foodApi.SearchAsync(foodName, searchCts.Token);
-                var match = searchResults.FirstOrDefault();
+                var match = PickBestMatch(searchResults, foodName);
 
                 if (match is not null)
                 {
-                    var servingWeightG = EstimateServingWeightG(match, unit, foodName) * sizeMultiplier;
-                    var totalWeightG = servingWeightG * quantity;
+                    var confidence = ComputeConfidence(searchResults, match, foodName);
+                    var unitWeightG = EstimateUnitWeightG(match, unit, foodName) * sizeMultiplier;
+                    var totalWeightG = unitWeightG * quantity;
                     var scale = totalWeightG / 100m;
 
                     Guid? foodProductId = null;
@@ -106,7 +108,8 @@ public partial class NaturalLanguageFallbackService
                         SodiumMg = Round(match.Sodium100g, scale),
                         ServingWeightG = totalWeightG,
                         ServingSize = FormatServingSize(quantity, unit),
-                        ServingQuantity = quantity
+                        ServingQuantity = quantity,
+                        MatchConfidence = confidence
                     });
                 }
                 else
@@ -261,7 +264,7 @@ public partial class NaturalLanguageFallbackService
         };
     }
 
-    internal static decimal EstimateServingWeightG(FoodProductDto product, string unit, string foodName)
+    internal static decimal EstimateUnitWeightG(FoodProductDto product, string unit, string foodName)
     {
         if (!string.IsNullOrEmpty(unit) && IsWeightUnit(unit))
             return WeightUnitToGrams(unit);
@@ -277,6 +280,10 @@ public partial class NaturalLanguageFallbackService
 
         return EstimateDefaultServingG(foodName);
     }
+
+    // Keep the old name as a forwarding method for binary compat
+    internal static decimal EstimateServingWeightG(FoodProductDto product, string unit, string foodName)
+        => EstimateUnitWeightG(product, unit, foodName);
 
     private static bool IsWeightUnit(string unit) => unit.ToLowerInvariant() switch
     {
@@ -471,7 +478,7 @@ public partial class NaturalLanguageFallbackService
             return (45m, 0.5m, 10m, 0.1m);
         if (lower.Contains("soda") || lower.Contains("cola") || lower.Contains("pop") || lower.Contains("lemonade"))
             return (40m, 0m, 10m, 0m);
-        if (lower.Contains("coffee") || lower.Contains("latte") || lower.Contains("cappuccino"))
+        if (lower.Contains("coffee") || lower.Contains("latte") || lower.Contains("cappuccino") || lower.Contains("espresso"))
             return (40m, 2m, 4m, 2m);
         if (lower.Contains("tea"))
             return (1m, 0m, 0.3m, 0m);
@@ -570,4 +577,230 @@ public partial class NaturalLanguageFallbackService
 
     [GeneratedRegex(@"^(?:and|or)\s+", RegexOptions.IgnoreCase)]
     private static partial Regex LeadingAndOrPattern();
+
+    internal static FoodProductDto? PickBestMatch(List<FoodProductDto> results, string query)
+    {
+        if (results.Count == 0) return null;
+        if (results.Count == 1) return results[0];
+
+        var queryLower = query.ToLowerInvariant().Trim();
+        var queryTokens = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var queryNorm = FoodSearchIndex.NormalizeFoodName(query);
+        var normTokens = queryNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return results
+            .OrderByDescending(r => ScoreMatch(r, queryLower, queryTokens, queryNorm, normTokens))
+            .First();
+    }
+
+    internal static decimal ComputeConfidence(List<FoodProductDto> results, FoodProductDto chosen, string query)
+    {
+        if (results.Count == 0) return 0m;
+
+        var queryLower = query.ToLowerInvariant().Trim();
+        var queryTokens = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var queryNorm = FoodSearchIndex.NormalizeFoodName(query);
+        var normTokens = queryNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var nameNorm = FoodSearchIndex.NormalizeFoodName(chosen.Name);
+        var nameLower = chosen.Name.ToLowerInvariant();
+
+        if (nameLower == queryLower || nameNorm == queryNorm)
+            return 1.0m;
+
+        var nameNormTokens = nameNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int matched = 0;
+        foreach (var qt in normTokens)
+        {
+            foreach (var nt in nameNormTokens)
+            {
+                if (nt == qt || nt.StartsWith(qt) || qt.StartsWith(nt))
+                { matched++; break; }
+            }
+        }
+        float coverage = normTokens.Length > 0 ? (float)matched / normTokens.Length : 0f;
+
+        if (coverage >= 1f && nameLower.StartsWith(queryLower))
+            return 0.95m;
+        if (coverage >= 1f)
+            return 0.85m;
+        if (coverage >= 0.5f)
+            return 0.6m;
+
+        string[] penaltyTerms = [
+            "frozen", "canned", "dehydrated", "powder", "powdered",
+            "mix", "mixture", "substitute", "imitation", "instant",
+            "baby food", "infant", "formula",
+            "alaska native", "industrial", "fast food",
+            "ns as to", "usda commodity", "as purchased", "not further specified",
+            "nfs", "ready-to-eat", "glucose reduced", "stabilized"
+        ];
+        bool hasPenalty = penaltyTerms.Any(t => nameLower.Contains(t));
+        if (hasPenalty)
+            return Math.Max(0.1m, (decimal)coverage * 0.3m);
+
+        return Math.Max(0.2m, (decimal)coverage * 0.5m);
+    }
+
+    private static double ScoreMatch(FoodProductDto food, string queryLower, string[] queryTokens,
+        string queryNorm, string[] normTokens)
+    {
+        var name = food.Name;
+        var nameLower = name.ToLowerInvariant();
+        var nameNorm = FoodSearchIndex.NormalizeFoodName(name);
+        var nameNormTokens = nameNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        double score = 0;
+
+        // Exact match is perfect
+        if (nameLower == queryLower || nameNorm == queryNorm)
+            return 1000;
+
+        // --- Token coverage (biggest differentiator) ---
+        int matched = 0;
+        foreach (var qt in normTokens)
+        {
+            foreach (var nt in nameNormTokens)
+            {
+                if (nt == qt || nt.StartsWith(qt) || qt.StartsWith(nt))
+                { matched++; break; }
+            }
+        }
+        float coverage = normTokens.Length > 0 ? (float)matched / normTokens.Length : 0f;
+        score += coverage * 80;
+        if (coverage >= 1f) score += 30;
+
+        // --- Token order bonus ---
+        if (normTokens.Length > 1 && matched > 1)
+        {
+            int lastIdx = -1;
+            bool inOrder = true;
+            foreach (var qt in normTokens)
+            {
+                int foundAt = -1;
+                for (int i = 0; i < nameNormTokens.Length; i++)
+                {
+                    if (nameNormTokens[i] == qt || nameNormTokens[i].StartsWith(qt))
+                    { foundAt = i; break; }
+                }
+                if (foundAt >= 0)
+                {
+                    if (foundAt <= lastIdx) { inOrder = false; break; }
+                    lastIdx = foundAt;
+                }
+            }
+            if (inOrder) score += 20;
+        }
+
+        // Strong bonus: name starts with query
+        if (nameLower.StartsWith(queryLower))
+            score += 100;
+        if (nameNorm.StartsWith(queryNorm))
+            score += 80;
+
+        // --- Name length: prefer shorter, non-linear penalty for long ---
+        if (name.Length <= 30)
+            score += Math.Max(0, 50 - name.Length * 0.5);
+        else
+            score += 50 - 15 - (name.Length - 30) * (name.Length - 30) / 40.0;
+
+        // Fewer commas
+        var commaCount = name.Count(c => c == ',');
+        score -= commaCount * 6;
+
+        // Parenthetical penalty
+        var parenCount = name.Count(c => c == '(');
+        score -= parenCount * 8;
+
+        // --- Hard weirdness penalties ---
+        string[] hardPenalty = [
+            "frozen", "canned", "dehydrated", "powder", "powdered",
+            "mix", "mixture", "substitute", "imitation", "instant",
+            "baby food", "infant", "formula",
+            "alaska native", "industrial", "fast food",
+            "ns as to", "usda commodity", "as purchased", "not further specified",
+            "nfs", "ready-to-eat", "glucose reduced", "stabilized"
+        ];
+        foreach (var term in hardPenalty)
+            if (nameLower.Contains(term))
+                score -= 35;
+
+        string[] softPenalty = [
+            "navajo", "hopi", "southwest", "shoshone", "apache",
+            "pasteurized", "restaurant", "commercial", "institutional"
+        ];
+        foreach (var term in softPenalty)
+            if (nameLower.Contains(term))
+                score -= 18;
+
+        // --- Preparation modifier handling ---
+        // For simple queries (1-2 tokens), treat prep terms as secondary
+        string[] prepTerms = ["raw", "fresh", "whole", "plain"];
+        if (queryTokens.Length <= 2)
+        {
+            foreach (var term in prepTerms)
+                if (nameLower.Contains(term))
+                    score += 8;
+        }
+
+        // --- Data quality ---
+        if (food.DataSource == "USDA")
+            score += 10;
+        if (food.Calories100g.HasValue)
+            score += 5;
+        if (food.Protein100g.HasValue && food.Carbs100g.HasValue && food.Fat100g.HasValue)
+            score += 5;
+
+        // --- Nutrition plausibility ---
+        score += NutritionPlausibilityScore(food, queryLower);
+
+        // --- Brand penalty for generic queries ---
+        if (!string.IsNullOrEmpty(food.Brand) && food.Brand.Length > 1)
+        {
+            bool queryMentionsBrand = queryTokens.Any(t =>
+                food.Brand.Contains(t, StringComparison.OrdinalIgnoreCase));
+            if (!queryMentionsBrand)
+                score -= 10;
+        }
+
+        return score;
+    }
+
+    private static double NutritionPlausibilityScore(FoodProductDto dto, string queryLower)
+    {
+        if (!dto.Calories100g.HasValue) return 0;
+
+        double penalty = 0;
+        var cal = dto.Calories100g.Value;
+        var protein = dto.Protein100g ?? 0m;
+        var carbs = dto.Carbs100g ?? 0m;
+        var fat = dto.Fat100g ?? 0m;
+
+        if (queryLower.Contains("chicken") || queryLower.Contains("beef") ||
+            queryLower.Contains("fish") || queryLower.Contains("turkey") ||
+            queryLower.Contains("pork") || queryLower.Contains("lamb") ||
+            queryLower.Contains("steak") || queryLower.Contains("salmon"))
+        {
+            if (carbs > 40m) penalty -= 15;
+            if (protein < 5m && cal > 50m) penalty -= 10;
+        }
+
+        if (queryLower.Contains("oil") || queryLower.Contains("butter") || queryLower.Contains("lard"))
+        {
+            if (fat < 20m && cal > 100m) penalty -= 15;
+        }
+
+        if (queryLower.Contains("lettuce") || queryLower.Contains("spinach") ||
+            queryLower.Contains("kale") || queryLower.Contains("celery") ||
+            queryLower.Contains("cucumber"))
+        {
+            if (cal > 100m) penalty -= 15;
+        }
+
+        if (queryLower.Contains("juice") || queryLower.Contains("water") ||
+            queryLower.Contains("tea") || queryLower.Contains("coffee"))
+        {
+            if (fat > 20m) penalty -= 10;
+        }
+
+        return penalty;
+    }
 }

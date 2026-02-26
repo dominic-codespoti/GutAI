@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using System.Text.Json;
+using Microsoft.AspNetCore.ResponseCompression;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,12 +60,23 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
+// Response compression for smaller payloads over the wire
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+    options.Level = System.IO.Compression.CompressionLevel.Fastest);
+
 // Health checks
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
 // Middleware pipeline
+app.UseResponseCompression();
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors();
 app.UseRateLimiter();
@@ -101,8 +113,7 @@ app.MapGroup("/api/symptoms").MapSymptomEndpoints().RequireAuthorization().Requi
 app.MapGroup("/api/insights").MapInsightEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 app.MapGroup("/api/user").MapUserEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 
-// Seed in development
-if (app.Environment.IsDevelopment())
+// Seed reference data (symptom types, food additives) in all environments
 {
     var store = app.Services.GetRequiredService<ITableStore>();
     await DbSeeder.SeedAsync(store);

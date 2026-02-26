@@ -1,39 +1,33 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
   ScrollView,
   ActivityIndicator,
+  BackHandler,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../src/stores/auth";
 import { userApi } from "../src/api";
 import { toast } from "../src/stores/toast";
-
-const ALLERGY_OPTIONS = [
-  "Peanuts",
-  "Tree Nuts",
-  "Milk",
-  "Eggs",
-  "Wheat",
-  "Soy",
-  "Fish",
-  "Shellfish",
-  "Sesame",
-];
-const DIET_OPTIONS = [
-  "None",
-  "Vegetarian",
-  "Vegan",
-  "Keto",
-  "Paleo",
-  "Gluten-Free",
-  "Low-FODMAP",
-  "Mediterranean",
-];
+import { AllergyChips } from "../components/AllergyChips";
+import { GoalField } from "../components/GoalField";
+import {
+  ALLERGY_OPTIONS,
+  DIET_OPTIONS,
+  GUT_CONDITION_OPTIONS,
+} from "../src/utils/options";
+import {
+  colors,
+  shadow,
+  shadowMd,
+  radius,
+  spacing,
+  fonts,
+} from "../src/utils/theme";
 
 export default function OnboardingScreen() {
   const { setUser } = useAuthStore();
@@ -41,6 +35,7 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [selectedDiet, setSelectedDiet] = useState("None");
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [calGoal, setCalGoal] = useState("2000");
   const [proteinGoal, setProteinGoal] = useState("50");
   const [carbGoal, setCarbGoal] = useState("250");
@@ -48,9 +43,28 @@ export default function OnboardingScreen() {
   const [fiberGoal, setFiberGoal] = useState("25");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (step > 0) {
+          setStep(step - 1);
+          return true;
+        }
+        return false;
+      });
+      return () => handler.remove();
+    }
+  }, [step]);
+
   const toggleAllergy = (a: string) => {
     setSelectedAllergies((prev) =>
       prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
+    );
+  };
+
+  const toggleCondition = (c: string) => {
+    setSelectedConditions((prev) =>
+      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
     );
   };
 
@@ -77,11 +91,14 @@ export default function OnboardingScreen() {
         onboardingCompleted: boolean;
         allergies?: string[];
         dietaryPreferences?: string[];
+        gutConditions?: string[];
       } = { onboardingCompleted: true };
       if (selectedAllergies.length > 0)
         profileData.allergies = selectedAllergies;
       if (selectedDiet !== "None")
         profileData.dietaryPreferences = [selectedDiet];
+      if (selectedConditions.length > 0)
+        profileData.gutConditions = selectedConditions;
       await userApi.updateProfile(profileData);
 
       await userApi.updateGoals({
@@ -122,21 +139,18 @@ export default function OnboardingScreen() {
   const steps = [
     // Step 0: Welcome
     <View key="welcome" style={{ alignItems: "center", paddingVertical: 40 }}>
-      <Text style={{ fontSize: 48, marginBottom: 16 }}>🥗</Text>
+      <Text style={{ fontSize: 48, marginBottom: spacing.lg }}>🥗</Text>
       <Text
         style={{
-          fontSize: 28,
-          fontWeight: "800",
-          color: "#0f172a",
-          marginBottom: 8,
+          ...fonts.h1,
+          marginBottom: spacing.sm,
         }}
       >
         Welcome to GutAI
       </Text>
       <Text
         style={{
-          fontSize: 15,
-          color: "#64748b",
+          ...fonts.body,
           textAlign: "center",
           lineHeight: 22,
         }}
@@ -150,61 +164,29 @@ export default function OnboardingScreen() {
     <View key="allergies">
       <Text
         style={{
-          fontSize: 22,
-          fontWeight: "700",
-          color: "#0f172a",
-          marginBottom: 4,
+          ...fonts.h2,
+          marginBottom: spacing.xs,
         }}
       >
         Any allergies?
       </Text>
-      <Text style={{ fontSize: 14, color: "#64748b", marginBottom: 16 }}>
+      <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
         We'll flag these in food safety reports
       </Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {ALLERGY_OPTIONS.map((a) => (
-          <TouchableOpacity
-            key={a}
-            onPress={() => toggleAllergy(a)}
-            style={{
-              backgroundColor: selectedAllergies.includes(a)
-                ? "#dcfce7"
-                : "#f1f5f9",
-              borderWidth: 1,
-              borderColor: selectedAllergies.includes(a)
-                ? "#22c55e"
-                : "#e2e8f0",
-              borderRadius: 20,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-            }}
-          >
-            <Text
-              style={{
-                fontWeight: "600",
-                color: selectedAllergies.includes(a) ? "#15803d" : "#64748b",
-              }}
-            >
-              {a}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <AllergyChips selected={selectedAllergies} onToggle={toggleAllergy} />
     </View>,
 
     // Step 2: Diet
     <View key="diet">
       <Text
         style={{
-          fontSize: 22,
-          fontWeight: "700",
-          color: "#0f172a",
-          marginBottom: 4,
+          ...fonts.h2,
+          marginBottom: spacing.xs,
         }}
       >
         Dietary preference?
       </Text>
-      <Text style={{ fontSize: 14, color: "#64748b", marginBottom: 16 }}>
+      <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
         Optional — helps personalize insights
       </Text>
       {DIET_OPTIONS.map((d) => (
@@ -212,12 +194,14 @@ export default function OnboardingScreen() {
           key={d}
           onPress={() => setSelectedDiet(d)}
           style={{
-            backgroundColor: selectedDiet === d ? "#dcfce7" : "#fff",
+            backgroundColor:
+              selectedDiet === d ? colors.primaryBg : colors.card,
             borderWidth: 1,
-            borderColor: selectedDiet === d ? "#22c55e" : "#e2e8f0",
-            borderRadius: 10,
+            borderColor:
+              selectedDiet === d ? colors.primaryLight : colors.border,
+            borderRadius: radius.md,
             padding: 14,
-            marginBottom: 8,
+            marginBottom: spacing.sm,
             flexDirection: "row",
             alignItems: "center",
           }}
@@ -228,11 +212,13 @@ export default function OnboardingScreen() {
               height: 20,
               borderRadius: 10,
               borderWidth: 2,
-              borderColor: selectedDiet === d ? "#22c55e" : "#cbd5e1",
-              backgroundColor: selectedDiet === d ? "#22c55e" : "transparent",
+              borderColor:
+                selectedDiet === d ? colors.primaryLight : colors.textLight,
+              backgroundColor:
+                selectedDiet === d ? colors.primaryLight : "transparent",
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 12,
+              marginRight: spacing.md,
             }}
           >
             {selectedDiet === d && (
@@ -242,7 +228,7 @@ export default function OnboardingScreen() {
           <Text
             style={{
               fontWeight: "600",
-              color: selectedDiet === d ? "#15803d" : "#334155",
+              color: selectedDiet === d ? colors.primary : colors.text,
             }}
           >
             {d}
@@ -251,19 +237,85 @@ export default function OnboardingScreen() {
       ))}
     </View>,
 
-    // Step 3: Goals
+    // Step 3: Gut Conditions
+    <View key="conditions">
+      <Text
+        style={{
+          ...fonts.h2,
+          marginBottom: spacing.xs,
+        }}
+      >
+        Any gut conditions?
+      </Text>
+      <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
+        Optional — we'll personalize food insights for you
+      </Text>
+      {GUT_CONDITION_OPTIONS.map((c) => {
+        const active = selectedConditions.includes(c.id);
+        return (
+          <TouchableOpacity
+            key={c.id}
+            onPress={() => toggleCondition(c.id)}
+            style={{
+              backgroundColor: active ? colors.primaryBg : colors.card,
+              borderWidth: 1,
+              borderColor: active ? colors.primaryLight : colors.border,
+              borderRadius: radius.md,
+              padding: 14,
+              marginBottom: spacing.sm,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 4,
+                borderWidth: 2,
+                borderColor: active ? colors.primaryLight : colors.textLight,
+                backgroundColor: active ? colors.primaryLight : "transparent",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: spacing.md,
+              }}
+            >
+              {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </View>
+            <Text style={{ fontSize: 18, marginRight: spacing.sm }}>
+              {c.emoji}
+            </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontWeight: "600",
+                  color: active ? colors.primary : colors.text,
+                }}
+              >
+                {c.label}
+              </Text>
+              <Text
+                style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}
+              >
+                {c.description}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>,
+
+    // Step 4: Goals
     <View key="goals">
       <Text
         style={{
-          fontSize: 22,
-          fontWeight: "700",
-          color: "#0f172a",
-          marginBottom: 4,
+          ...fonts.h2,
+          marginBottom: spacing.xs,
         }}
       >
         Set your daily goals
       </Text>
-      <Text style={{ fontSize: 14, color: "#64748b", marginBottom: 16 }}>
+      <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
         You can change these anytime in Profile
       </Text>
       <GoalField
@@ -292,16 +344,16 @@ export default function OnboardingScreen() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: "#f8fafc" }}
-      contentContainerStyle={{ padding: 24, paddingBottom: 100 }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.xxl, paddingBottom: 100 }}
     >
       {/* Progress dots */}
       <View
         style={{
           flexDirection: "row",
           justifyContent: "center",
-          marginBottom: 32,
-          gap: 8,
+          marginBottom: spacing.xxxl,
+          gap: spacing.sm,
         }}
       >
         {steps.map((_, i) => (
@@ -312,7 +364,11 @@ export default function OnboardingScreen() {
               height: 8,
               borderRadius: 4,
               backgroundColor:
-                i === step ? "#22c55e" : i < step ? "#86efac" : "#e2e8f0",
+                i === step
+                  ? colors.primaryLight
+                  : i < step
+                    ? colors.primaryBorder
+                    : colors.border,
             }}
           />
         ))}
@@ -325,15 +381,24 @@ export default function OnboardingScreen() {
         style={{
           flexDirection: "row",
           justifyContent: "space-between",
-          marginTop: 32,
+          marginTop: spacing.xxxl,
         }}
       >
         {step > 0 ? (
           <TouchableOpacity
             onPress={() => setStep(step - 1)}
-            style={{ paddingHorizontal: 24, paddingVertical: 12 }}
+            style={{
+              paddingHorizontal: spacing.xxl,
+              paddingVertical: spacing.md,
+            }}
           >
-            <Text style={{ color: "#64748b", fontWeight: "600", fontSize: 16 }}>
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontWeight: "600",
+                fontSize: 16,
+              }}
+            >
               Back
             </Text>
           </TouchableOpacity>
@@ -345,10 +410,10 @@ export default function OnboardingScreen() {
           <TouchableOpacity
             onPress={() => setStep(step + 1)}
             style={{
-              backgroundColor: "#22c55e",
+              backgroundColor: colors.primaryLight,
               paddingHorizontal: 28,
-              paddingVertical: 12,
-              borderRadius: 10,
+              paddingVertical: spacing.md,
+              borderRadius: radius.md,
             }}
           >
             <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
@@ -360,10 +425,10 @@ export default function OnboardingScreen() {
             onPress={finish}
             disabled={saving}
             style={{
-              backgroundColor: "#22c55e",
+              backgroundColor: colors.primaryLight,
               paddingHorizontal: 28,
-              paddingVertical: 12,
-              borderRadius: 10,
+              paddingVertical: spacing.md,
+              borderRadius: radius.md,
             }}
           >
             {saving ? (
@@ -380,43 +445,13 @@ export default function OnboardingScreen() {
       {step === 0 && (
         <TouchableOpacity
           onPress={finish}
-          style={{ alignItems: "center", marginTop: 16 }}
+          style={{ alignItems: "center", marginTop: spacing.lg }}
         >
-          <Text style={{ color: "#94a3b8", fontSize: 14 }}>Skip setup →</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 14 }}>
+            Skip setup →
+          </Text>
         </TouchableOpacity>
       )}
     </ScrollView>
-  );
-}
-
-function GoalField({
-  label,
-  value,
-  onChangeText,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (t: string) => void;
-}) {
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 13, color: "#64748b", marginBottom: 4 }}>
-        {label}
-      </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType="numeric"
-        style={{
-          borderWidth: 1,
-          borderColor: "#e2e8f0",
-          borderRadius: 8,
-          padding: 12,
-          fontSize: 16,
-          color: "#0f172a",
-          backgroundColor: "#fff",
-        }}
-      />
-    </View>
   );
 }

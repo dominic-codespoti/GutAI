@@ -7,12 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/18ddbacc-5aee-4310-afba-96d053017225"
-    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -21,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "gut.ai",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
         "ITSAppUsesNonExemptEncryption": false
@@ -33,11 +27,8 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.djapplications.gutai",
-      "versionCode": 2,
-      "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
+      "versionCode": 3,
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -50,9 +41,10 @@
           "cameraPermission": "GutAI uses the camera to scan food barcodes"
         }
       ],
-      "expo-updates",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      "expo-localization",
+      "expo-image"
     ],
     "extra": {
       "eas": {

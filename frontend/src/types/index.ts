@@ -11,6 +11,7 @@ export interface UserProfile {
   dailyFiberGoalG: number;
   allergies: string[];
   dietaryPreferences: string[];
+  gutConditions: string[];
   onboardingCompleted: boolean;
   timezoneId?: string;
 }

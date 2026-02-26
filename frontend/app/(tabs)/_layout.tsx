@@ -7,19 +7,32 @@ import { colors } from "../../src/utils/theme";
 export default function TabLayout() {
   const router = useRouter();
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)");
+    }
+  };
+
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.borderLight,
           borderTopWidth: 1,
           paddingBottom: 6,
           paddingTop: 6,
-          height: 60,
+          height: 64,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "600",
+          marginTop: 2,
         },
         headerShown: false,
       }}
@@ -119,10 +132,10 @@ export default function TabLayout() {
           },
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={handleBack}
               style={{ marginLeft: 12, padding: 4 }}
             >
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
             </TouchableOpacity>
           ),
         }}

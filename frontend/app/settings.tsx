@@ -9,44 +9,21 @@ import {
   Alert,
   Share,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../src/stores/auth";
 import { authApi, userApi, mealApi } from "../src/api";
 import { toast } from "../src/stores/toast";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Constants from "expo-constants";
 
 export default function SettingsScreen() {
-  const router = useRouter();
   const { logout } = useAuthStore();
-  const queryClient = useQueryClient();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [editTimezone, setEditTimezone] = useState(false);
-  const [timezone, setTimezone] = useState("");
-
-  const { data: profile } = useQuery({
-    queryKey: ["user-profile"],
-    queryFn: () => userApi.getProfile().then((r) => r.data),
-  });
-
-  React.useEffect(() => {
-    if (profile?.timezoneId) setTimezone(profile.timezoneId);
-  }, [profile?.timezoneId]);
-
-  const timezoneMutation = useMutation({
-    mutationFn: (tz: string) => userApi.updateProfile({ timezoneId: tz }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
-      toast.success("Timezone updated");
-      setEditTimezone(false);
-    },
-    onError: () => toast.error("Failed to update timezone"),
-  });
+  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
 
   const handleChangePassword = async () => {
     if (!currentPassword || !newPassword) {
@@ -116,17 +93,6 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
       <View style={{ padding: 20 }}>
-        <Text
-          style={{
-            fontSize: 24,
-            fontWeight: "700",
-            color: "#0f172a",
-            marginBottom: 24,
-          }}
-        >
-          Settings
-        </Text>
-
         {/* Change Password */}
         <View
           style={{
@@ -248,105 +214,6 @@ export default function SettingsScreen() {
           {exporting && <ActivityIndicator size="small" color="#22c55e" />}
         </TouchableOpacity>
 
-        {/* Timezone */}
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginTop: 12,
-            marginBottom: 12,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setEditTimezone(!editTimezone)}
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <View>
-              <Text
-                style={{ fontSize: 16, fontWeight: "600", color: "#334155" }}
-              >
-                🌐 Timezone
-              </Text>
-              <Text style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
-                {timezone || "Not set"}
-              </Text>
-            </View>
-            <Ionicons
-              name={editTimezone ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="#94a3b8"
-            />
-          </TouchableOpacity>
-          {editTimezone && (
-            <View style={{ marginTop: 12 }}>
-              <TextInput
-                placeholder="e.g. America/New_York"
-                value={timezone}
-                onChangeText={setTimezone}
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#e2e8f0",
-                  borderRadius: 8,
-                  padding: 12,
-                  fontSize: 15,
-                  color: "#0f172a",
-                  backgroundColor: "#f8fafc",
-                }}
-              />
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                {[
-                  "America/New_York",
-                  "America/Chicago",
-                  "America/Los_Angeles",
-                  "Europe/London",
-                  "Asia/Tokyo",
-                ].map((tz) => (
-                  <TouchableOpacity
-                    key={tz}
-                    onPress={() => setTimezone(tz)}
-                    style={{
-                      paddingVertical: 4,
-                      paddingHorizontal: 8,
-                      borderRadius: 6,
-                      backgroundColor: timezone === tz ? "#22c55e" : "#f1f5f9",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: timezone === tz ? "#fff" : "#64748b",
-                        fontWeight: "600",
-                      }}
-                    >
-                      {tz.split("/")[1]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity
-                onPress={() => timezone && timezoneMutation.mutate(timezone)}
-                disabled={!timezone || timezoneMutation.isPending}
-                style={{
-                  backgroundColor: timezone ? "#22c55e" : "#94a3b8",
-                  borderRadius: 8,
-                  padding: 12,
-                  alignItems: "center",
-                  marginTop: 8,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>
-                  {timezoneMutation.isPending ? "Saving..." : "Save Timezone"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
         {/* App Info */}
         <View
           style={{
@@ -374,17 +241,9 @@ export default function SettingsScreen() {
             }}
           >
             <Text style={{ color: "#64748b" }}>Version</Text>
-            <Text style={{ fontWeight: "600", color: "#0f172a" }}>1.0.0</Text>
-          </View>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 6,
-            }}
-          >
-            <Text style={{ color: "#64748b" }}>Environment</Text>
-            <Text style={{ fontWeight: "600", color: "#0f172a" }}>Local</Text>
+            <Text style={{ fontWeight: "600", color: "#0f172a" }}>
+              {appVersion}
+            </Text>
           </View>
           <View
             style={{

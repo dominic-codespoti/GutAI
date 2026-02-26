@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,10 +6,12 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   RefreshControl,
   Pressable,
+  BackHandler,
+  Platform,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { mealApi, foodApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,8 +26,10 @@ import type {
   ParsedFoodItem,
 } from "../../src/types";
 import { MealCardSkeleton } from "../../components/SkeletonLoader";
+import { BottomSheet } from "../../components/BottomSheet";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { shiftDate, formatDateLabel } from "../../src/utils/date";
+import { ratingColor } from "../../src/utils/colors";
 import {
   colors,
   shadow,
@@ -36,6 +40,7 @@ import {
   mealTypeEmoji,
 } from "../../src/utils/theme";
 import { useRouter } from "expo-router";
+import { maybeRequestReview } from "../../src/utils/review";
 
 const editFieldStyle = {
   borderWidth: 1 as const,
@@ -46,28 +51,6 @@ const editFieldStyle = {
   color: colors.text,
   textAlign: "center" as const,
   backgroundColor: colors.card,
-};
-
-const ratingColor = (rating: string | null) => {
-  switch (rating?.toLowerCase()) {
-    case "safe":
-    case "a":
-      return colors.primary;
-    case "low concern":
-    case "b":
-      return "#4ade80";
-    case "moderate concern":
-    case "c":
-      return "#facc15";
-    case "high concern":
-    case "d":
-      return "#fb923c";
-    case "avoid":
-    case "e":
-      return colors.danger;
-    default:
-      return colors.textMuted;
-  }
 };
 
 export default function MealsScreen() {
@@ -83,6 +66,9 @@ export default function MealsScreen() {
   const [editingMeal, setEditingMeal] = useState<MealLog | null>(null);
   const [editItems, setEditItems] = useState<MealItem[]>([]);
   const [editMealType, setEditMealType] = useState("Lunch");
+  const [editItemConfigs, setEditItemConfigs] = useState<
+    Record<number, { servingG: number; multiplier: number; customText: string }>
+  >({});
   const [manualFoodName, setManualFoodName] = useState("");
   const [manualCalories, setManualCalories] = useState("");
   const [manualProtein, setManualProtein] = useState("0");
@@ -104,6 +90,41 @@ export default function MealsScreen() {
   const [sheetReport, setSheetReport] = useState<SafetyReport | null>(null);
   const [sheetProduct, setSheetProduct] = useState<FoodProduct | null>(null);
   const [sheetLoading, setSheetLoading] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (sheetItem) {
+          setSheetItem(null);
+          return true;
+        }
+        if (editingMeal) {
+          setEditingMeal(null);
+          return true;
+        }
+        if (showParsedReview) {
+          setShowParsedReview(false);
+          return true;
+        }
+        if (showManualInput) {
+          setShowManualInput(false);
+          return true;
+        }
+        if (showNaturalInput) {
+          setShowNaturalInput(false);
+          return true;
+        }
+        return false;
+      });
+      return () => handler.remove();
+    }
+  }, [
+    sheetItem,
+    editingMeal,
+    showParsedReview,
+    showManualInput,
+    showNaturalInput,
+  ]);
 
   const openItemSheet = async (item: MealItem) => {
     setSheetItem(item);
@@ -206,6 +227,10 @@ export default function MealsScreen() {
       setManualFoodProductId(undefined);
       setShowManualInput(false);
       toast.success("Meal logged!");
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      maybeRequestReview();
     },
     onError: () => toast.error("Failed to log meal"),
   });
@@ -299,6 +324,10 @@ export default function MealsScreen() {
       setParsedItems([]);
       setShowParsedReview(false);
       toast.success("Meal logged!");
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      maybeRequestReview();
     },
     onError: () => toast.error("Failed to log meal"),
   });
@@ -333,6 +362,18 @@ export default function MealsScreen() {
     setEditingMeal(meal);
     setEditMealType(meal.mealType);
     setEditItems(meal.items.map((it) => ({ ...it })));
+    const configs: Record<
+      number,
+      { servingG: number; multiplier: number; customText: string }
+    > = {};
+    meal.items.forEach((it, idx) => {
+      configs[idx] = {
+        servingG: it.servingWeightG ?? 100,
+        multiplier: 1,
+        customText: "",
+      };
+    });
+    setEditItemConfigs(configs);
   };
 
   const updateEditItem = (idx: number, field: string, value: string) => {
@@ -359,21 +400,113 @@ export default function MealsScreen() {
       data: {
         mealType: editMealType,
         loggedAt: editingMeal.loggedAt,
-        items: editItems.map((it) => ({
-          foodName: it.foodName,
-          servings: it.servings,
-          servingUnit: it.servingUnit,
-          servingWeightG: it.servingWeightG,
-          calories: it.calories,
-          proteinG: it.proteinG,
-          carbsG: it.carbsG,
-          fatG: it.fatG,
-          fiberG: it.fiberG,
-          sugarG: it.sugarG,
-          sodiumMg: it.sodiumMg,
-        })),
+        items: editItems.map((it, idx) => {
+          const cfg = editItemConfigs[idx];
+          if (!cfg) {
+            return {
+              foodName: it.foodName,
+              servings: it.servings,
+              servingUnit: it.servingUnit,
+              servingWeightG: it.servingWeightG,
+              calories: it.calories,
+              proteinG: it.proteinG,
+              carbsG: it.carbsG,
+              fatG: it.fatG,
+              fiberG: it.fiberG,
+              sugarG: it.sugarG,
+              sodiumMg: it.sodiumMg,
+            };
+          }
+          const totalG = cfg.servingG * cfg.multiplier;
+          const origG = it.servingWeightG ?? 100;
+          const scale = totalG / origG;
+          const origServing = it.servingWeightG ?? 100;
+          const presets: { label: string; grams: number }[] = [
+            { label: `${origServing}g`, grams: origServing },
+            { label: "50g", grams: 50 },
+            { label: "100g", grams: 100 },
+            { label: "150g", grams: 150 },
+            { label: "200g", grams: 200 },
+          ];
+          const seen = new Set<number>();
+          const uniquePresets = presets.filter((p) => {
+            if (seen.has(p.grams)) return false;
+            seen.add(p.grams);
+            return true;
+          });
+          return {
+            foodName: it.foodName,
+            servings: 1,
+            servingUnit: `${totalG}g`,
+            servingWeightG: totalG,
+            calories: Math.round(it.calories * scale),
+            proteinG: Math.round(it.proteinG * scale * 10) / 10,
+            carbsG: Math.round(it.carbsG * scale * 10) / 10,
+            fatG: Math.round(it.fatG * scale * 10) / 10,
+            fiberG: Math.round(it.fiberG * scale * 10) / 10,
+            sugarG: Math.round(it.sugarG * scale * 10) / 10,
+            sodiumMg: Math.round(it.sodiumMg * scale),
+          };
+        }),
       },
     });
+  };
+
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
+  const [swapSearch, setSwapSearch] = useState("");
+  const [debouncedSwapSearch, setDebouncedSwapSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSwapSearch(swapSearch), 300);
+    return () => clearTimeout(timer);
+  }, [swapSearch]);
+
+  const swapSearchResults = useQuery({
+    queryKey: ["swap-food-search", debouncedSwapSearch],
+    queryFn: () => foodApi.search(debouncedSwapSearch).then((r) => r.data),
+    enabled: debouncedSwapSearch.length >= 2 && swapIndex !== null,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+
+  const openSwapSearch = (idx: number) => {
+    setSwapIndex(idx);
+    setSwapSearch(parsedItems[idx]?.name ?? "");
+  };
+
+  const selectSwapFood = (food: FoodProduct) => {
+    if (swapIndex === null) return;
+    const qty = parsedItems[swapIndex]?.servingQuantity ?? 1;
+    const servingG = food.servingQuantity
+      ? food.servingQuantity * qty
+      : (parsedItems[swapIndex]?.servingWeightG ?? 100);
+    const scale = servingG / 100;
+
+    setParsedItems((prev) =>
+      prev.map((it, i) =>
+        i === swapIndex
+          ? {
+              ...it,
+              name: food.name,
+              foodProductId:
+                food.id !== "00000000-0000-0000-0000-000000000000"
+                  ? food.id
+                  : undefined,
+              calories: Math.round((food.calories100g ?? 0) * scale),
+              proteinG: Math.round((food.protein100g ?? 0) * scale),
+              carbsG: Math.round((food.carbs100g ?? 0) * scale),
+              fatG: Math.round((food.fat100g ?? 0) * scale),
+              fiberG: Math.round((food.fiber100g ?? 0) * scale),
+              sugarG: Math.round((food.sugar100g ?? 0) * scale),
+              sodiumMg: Math.round((food.sodium100g ?? 0) * scale),
+              servingWeightG: servingG,
+            }
+          : it,
+      ),
+    );
+    setSwapIndex(null);
+    setSwapSearch("");
+    toast.success(`Swapped to "${food.name}"`);
   };
 
   return (
@@ -699,7 +832,14 @@ export default function MealsScreen() {
                 ...shadowMd,
               }}
             >
-              <Text style={{ fontWeight: "700", fontSize: 15, color: colors.text, marginBottom: spacing.md }}>
+              <Text
+                style={{
+                  fontWeight: "700",
+                  fontSize: 15,
+                  color: colors.text,
+                  marginBottom: spacing.md,
+                }}
+              >
                 {parsedItems.length} items found — review & edit
               </Text>
               {parsedItems.map((item, idx) => (
@@ -713,7 +853,14 @@ export default function MealsScreen() {
                     marginBottom: spacing.sm,
                   }}
                 >
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 6,
+                    }}
+                  >
                     <TextInput
                       value={item.name}
                       onChangeText={(v) => updateParsedItem(idx, "name", v)}
@@ -728,21 +875,49 @@ export default function MealsScreen() {
                       }}
                     />
                     <TouchableOpacity
-                      onPress={() => removeParsedItem(idx)}
-                      style={{ marginLeft: 8, padding: 4 }}
+                      onPress={() => openSwapSearch(idx)}
+                      style={{ marginLeft: 6, padding: 4 }}
                     >
-                      <Ionicons name="close-circle" size={20} color={colors.danger} />
+                      <Ionicons
+                        name="swap-horizontal"
+                        size={18}
+                        color={colors.primary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => removeParsedItem(idx)}
+                      style={{ marginLeft: 4, padding: 4 }}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={20}
+                        color={colors.danger}
+                      />
                     </TouchableOpacity>
                   </View>
-                  <View style={{ flexDirection: "row", gap: 6, marginBottom: 4 }}>
+                  <View
+                    style={{ flexDirection: "row", gap: 6, marginBottom: 4 }}
+                  >
                     {[
                       { label: "Cal", field: "calories", value: item.calories },
-                      { label: "Prot", field: "proteinG", value: item.proteinG },
+                      {
+                        label: "Prot",
+                        field: "proteinG",
+                        value: item.proteinG,
+                      },
                       { label: "Carbs", field: "carbsG", value: item.carbsG },
                       { label: "Fat", field: "fatG", value: item.fatG },
                     ].map(({ label, field, value }) => (
                       <View key={field} style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 9, color: colors.textMuted, marginBottom: 1 }}>{label}</Text>
+                        <Text
+                          style={{
+                            fontSize: 9,
+                            color: colors.textMuted,
+                            marginBottom: 1,
+                          }}
+                        >
+                          {label}
+                        </Text>
                         <TextInput
                           value={String(Math.round(value))}
                           onChangeText={(v) => updateParsedItem(idx, field, v)}
@@ -757,10 +932,22 @@ export default function MealsScreen() {
                       { label: "Fiber", field: "fiberG", value: item.fiberG },
                       { label: "Sugar", field: "sugarG", value: item.sugarG },
                       { label: "Na", field: "sodiumMg", value: item.sodiumMg },
-                      { label: "Qty", field: "servingQuantity", value: item.servingQuantity },
+                      {
+                        label: "Qty",
+                        field: "servingQuantity",
+                        value: item.servingQuantity,
+                      },
                     ].map(({ label, field, value }) => (
                       <View key={field} style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 9, color: colors.textMuted, marginBottom: 1 }}>{label}</Text>
+                        <Text
+                          style={{
+                            fontSize: 9,
+                            color: colors.textMuted,
+                            marginBottom: 1,
+                          }}
+                        >
+                          {label}
+                        </Text>
                         <TextInput
                           value={String(Math.round(value))}
                           onChangeText={(v) => updateParsedItem(idx, field, v)}
@@ -772,20 +959,40 @@ export default function MealsScreen() {
                   </View>
                 </View>
               ))}
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginTop: spacing.sm,
+                }}
+              >
                 <Text style={{ fontSize: 12, color: colors.textMuted }}>
-                  Total: {Math.round(parsedItems.reduce((s, i) => s + i.calories, 0))} cal
+                  Total:{" "}
+                  {Math.round(parsedItems.reduce((s, i) => s + i.calories, 0))}{" "}
+                  cal
                 </Text>
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <TouchableOpacity
-                    onPress={() => { setParsedItems([]); setShowParsedReview(false); }}
+                    onPress={() => {
+                      setParsedItems([]);
+                      setShowParsedReview(false);
+                    }}
                     style={{ paddingHorizontal: 14, paddingVertical: 8 }}
                   >
-                    <Text style={{ color: colors.textMuted, fontWeight: "600" }}>Cancel</Text>
+                    <Text
+                      style={{ color: colors.textMuted, fontWeight: "600" }}
+                    >
+                      Cancel
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => parsedItems.length > 0 && parsedMealMutation.mutate()}
-                    disabled={parsedMealMutation.isPending || parsedItems.length === 0}
+                    onPress={() =>
+                      parsedItems.length > 0 && parsedMealMutation.mutate()
+                    }
+                    disabled={
+                      parsedMealMutation.isPending || parsedItems.length === 0
+                    }
                     style={{
                       backgroundColor: colors.primary,
                       paddingHorizontal: 16,
@@ -796,7 +1003,13 @@ export default function MealsScreen() {
                     {parsedMealMutation.isPending ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontWeight: "600",
+                          fontSize: 14,
+                        }}
+                      >
                         Log Meal ({parsedItems.length} items)
                       </Text>
                     )}
@@ -828,32 +1041,31 @@ export default function MealsScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Text input
+                  Describe
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowManualInput(true)}
                 style={{
                   flex: 1,
-                  backgroundColor: colors.card,
+                  backgroundColor: colors.secondaryBg,
                   borderRadius: radius.md,
                   padding: 14,
-                  flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
-                  borderColor: colors.border,
+                  borderColor: colors.secondary,
                   ...shadow,
                 }}
               >
                 <Ionicons
-                  name="add-outline"
+                  name="create-outline"
                   size={18}
-                  color={colors.textSecondary}
+                  color={colors.secondary}
                 />
                 <Text
                   style={{
-                    color: colors.textSecondary,
+                    color: colors.secondary,
                     fontWeight: "600",
                     marginLeft: 6,
                     fontSize: 14,
@@ -866,31 +1078,30 @@ export default function MealsScreen() {
                 onPress={() => router.push("/(tabs)/scan")}
                 style={{
                   flex: 1,
-                  backgroundColor: colors.card,
+                  backgroundColor: colors.accentBg,
                   borderRadius: radius.md,
                   padding: 14,
-                  flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
-                  borderColor: colors.border,
+                  borderColor: colors.accent,
                   ...shadow,
                 }}
               >
                 <Ionicons
-                  name="barcode-outline"
-                  size={18}
-                  color={colors.textSecondary}
+                  name="search-outline"
+                  size={20}
+                  color={colors.accent}
                 />
                 <Text
                   style={{
-                    color: colors.textSecondary,
+                    color: colors.accent,
                     fontWeight: "600",
-                    marginLeft: 6,
-                    fontSize: 14,
+                    marginTop: 4,
+                    fontSize: 12,
                   }}
                 >
-                  Barcode
+                  Search
                 </Text>
               </TouchableOpacity>
             </>
@@ -1052,152 +1263,198 @@ export default function MealsScreen() {
             </TouchableOpacity>
           </View>
         ) : filteredMeals && filteredMeals.length > 0 ? (
-          filteredMeals.map((meal) => (
-            <View
-              key={meal.id}
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: radius.md,
-                padding: spacing.lg,
-                marginBottom: spacing.sm,
-                ...shadow,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: radius.sm,
-                      backgroundColor: colors.primaryBg,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: spacing.md,
-                    }}
-                  >
-                    <Text style={{ fontSize: 18 }}>
-                      {mealTypeEmoji[meal.mealType] ?? "🍽️"}
-                    </Text>
-                  </View>
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 15,
-                        fontWeight: "600",
-                        color: colors.text,
-                      }}
-                    >
-                      {meal.mealType}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: colors.textMuted,
-                        marginTop: 1,
-                      }}
-                    >
-                      {new Date(meal.loggedAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  </View>
-                </View>
+          (() => {
+            const mealTypeOrder = ["Breakfast", "Lunch", "Dinner", "Snack"];
+            const grouped: Record<string, MealLog[]> = {};
+            for (const meal of filteredMeals) {
+              const key = meal.mealType || "Other";
+              if (!grouped[key]) grouped[key] = [];
+              grouped[key].push(meal);
+            }
+            const sortedTypes = Object.keys(grouped).sort(
+              (a, b) =>
+                (mealTypeOrder.indexOf(a) === -1
+                  ? 99
+                  : mealTypeOrder.indexOf(a)) -
+                (mealTypeOrder.indexOf(b) === -1
+                  ? 99
+                  : mealTypeOrder.indexOf(b)),
+            );
+            return sortedTypes.map((type) => {
+              const mealsInGroup = grouped[type];
+              const totalCals = mealsInGroup.reduce(
+                (s, m) => s + m.totalCalories,
+                0,
+              );
+              return (
                 <View
+                  key={type}
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
+                    backgroundColor: colors.card,
+                    borderRadius: radius.md,
+                    padding: spacing.lg,
+                    marginBottom: spacing.sm,
+                    ...shadow,
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: colors.text,
-                    }}
-                  >
-                    {meal.totalCalories}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>
-                    cal
-                  </Text>
-                  <TouchableOpacity onPress={() => openEdit(meal)}>
-                    <Ionicons
-                      name="pencil-outline"
-                      size={18}
-                      color={colors.secondary}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(meal.id)}>
-                    <Ionicons
-                      name="trash-outline"
-                      size={18}
-                      color={colors.danger}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {meal.items.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => handleItemTap(item)}
-                  onLongPress={() => openItemSheet(item)}
-                  style={({ pressed }) => ({
-                    flexDirection: "row" as const,
-                    justifyContent: "space-between" as const,
-                    alignItems: "center" as const,
-                    marginTop: 8,
-                    paddingTop: 8,
-                    paddingBottom: 4,
-                    paddingHorizontal: 4,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.divider,
-                    borderRadius: radius.sm,
-                    backgroundColor: pressed
-                      ? colors.borderLight
-                      : "transparent",
-                  })}
-                >
-                  <Text style={{ color: colors.textSecondary, flex: 1 }}>
-                    {item.foodName}
-                    <Text style={{ color: colors.textMuted }}>
-                      {" "}
-                      · {item.servings} {item.servingUnit}
-                    </Text>
-                  </Text>
                   <View
                     style={{
                       flexDirection: "row",
+                      justifyContent: "space-between",
                       alignItems: "center",
-                      gap: 6,
+                      marginBottom: 8,
                     }}
                   >
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center" }}
+                    >
+                      <View
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: radius.sm,
+                          backgroundColor: colors.primaryBg,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: spacing.md,
+                        }}
+                      >
+                        <Text style={{ fontSize: 18 }}>
+                          {mealTypeEmoji[type] ?? "🍽️"}
+                        </Text>
+                      </View>
+                      <View>
+                        <Text
+                          style={{
+                            fontSize: 15,
+                            fontWeight: "600",
+                            color: colors.text,
+                          }}
+                        >
+                          {type}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: colors.textMuted,
+                            marginTop: 1,
+                          }}
+                        >
+                          {mealsInGroup.length}{" "}
+                          {mealsInGroup.length === 1 ? "entry" : "entries"}
+                        </Text>
+                      </View>
+                    </View>
                     <Text
                       style={{
-                        color: colors.textSecondary,
-                        fontWeight: "500",
+                        fontSize: 16,
+                        fontWeight: "700",
+                        color: colors.text,
                       }}
                     >
-                      {item.calories} cal
+                      {totalCals}{" "}
+                      <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                        cal
+                      </Text>
                     </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={14}
-                      color={colors.textLight}
-                    />
                   </View>
-                </Pressable>
-              ))}
-            </View>
-          ))
+                  {mealsInGroup.map((meal) => (
+                    <View key={meal.id}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingTop: 6,
+                          paddingBottom: 2,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                          {new Date(meal.loggedAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {" · "}
+                          {meal.totalCalories} cal
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 10 }}>
+                          <TouchableOpacity onPress={() => openEdit(meal)}>
+                            <Ionicons
+                              name="pencil-outline"
+                              size={16}
+                              color={colors.secondary}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDelete(meal.id)}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={16}
+                              color={colors.danger}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      {meal.items.map((item) => (
+                        <Pressable
+                          key={item.id}
+                          onPress={() => handleItemTap(item)}
+                          onLongPress={() => openItemSheet(item)}
+                          style={({ pressed }) => ({
+                            flexDirection: "row" as const,
+                            justifyContent: "space-between" as const,
+                            alignItems: "center" as const,
+                            marginTop: 4,
+                            paddingTop: 6,
+                            paddingBottom: 4,
+                            paddingHorizontal: 4,
+                            borderTopWidth: 1,
+                            borderTopColor: colors.divider,
+                            borderRadius: radius.sm,
+                            backgroundColor: pressed
+                              ? colors.borderLight
+                              : "transparent",
+                          })}
+                        >
+                          <Text
+                            style={{ color: colors.textSecondary, flex: 1 }}
+                          >
+                            {item.foodName}
+                            <Text style={{ color: colors.textMuted }}>
+                              {" "}
+                              · {item.servings} {item.servingUnit}
+                            </Text>
+                          </Text>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: colors.textSecondary,
+                                fontWeight: "500",
+                              }}
+                            >
+                              {item.calories} cal
+                            </Text>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={14}
+                              color={colors.textLight}
+                            />
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              );
+            });
+          })()
         ) : (
           <View style={{ alignItems: "center", paddingVertical: 48 }}>
             <Ionicons
@@ -1221,557 +1478,749 @@ export default function MealsScreen() {
       </View>
 
       {/* Food Info Bottom Sheet */}
-      <Modal
+      <BottomSheet
         visible={!!sheetItem}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSheetItem(null)}
+        onClose={() => setSheetItem(null)}
+        maxHeight="70%"
       >
-        <Pressable
+        <Text style={{ ...fonts.h3, marginBottom: 4 }}>
+          {sheetItem?.foodName}
+        </Text>
+        <Text
           style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.4)",
-            justifyContent: "flex-end",
+            fontSize: 13,
+            color: colors.textMuted,
+            marginBottom: spacing.lg,
           }}
-          onPress={() => setSheetItem(null)}
         >
-          <Pressable
-            style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl,
-              padding: spacing.xxl,
-              maxHeight: "70%",
-            }}
-            onPress={() => {}}
-          >
-            <View
-              style={{
-                width: 36,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: colors.borderLight,
-                alignSelf: "center",
-                marginBottom: spacing.lg,
-              }}
-            />
-            <Text style={{ ...fonts.h3, marginBottom: 4 }}>
-              {sheetItem?.foodName}
-            </Text>
+          {sheetItem?.calories} cal · {sheetItem?.proteinG}g protein ·{" "}
+          {sheetItem?.carbsG}g carbs · {sheetItem?.fatG}g fat
+        </Text>
+
+        {sheetLoading ? (
+          <View style={{ alignItems: "center", paddingVertical: spacing.xxl }}>
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text
               style={{
-                fontSize: 13,
                 color: colors.textMuted,
-                marginBottom: spacing.lg,
+                marginTop: spacing.md,
+                fontSize: 13,
               }}
             >
-              {sheetItem?.calories} cal · {sheetItem?.proteinG}g protein ·{" "}
-              {sheetItem?.carbsG}g carbs · {sheetItem?.fatG}g fat
+              Looking up food details…
             </Text>
-
-            {sheetLoading ? (
-              <View
-                style={{ alignItems: "center", paddingVertical: spacing.xxl }}
-              >
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text
+          </View>
+        ) : sheetProduct && sheetReport ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ maxHeight: 400 }}
+          >
+            {/* Quick badges row */}
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 8,
+                marginBottom: spacing.lg,
+                flexWrap: "wrap",
+              }}
+            >
+              {sheetProduct.novaGroup != null && (
+                <View
                   style={{
-                    color: colors.textMuted,
-                    marginTop: spacing.md,
-                    fontSize: 13,
+                    backgroundColor: colors.borderLight,
+                    borderRadius: radius.sm,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
                   }}
                 >
-                  Looking up food details…
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    NOVA
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: colors.text,
+                    }}
+                  >
+                    {sheetProduct.novaGroup}
+                  </Text>
+                </View>
+              )}
+              {sheetProduct.nutriScore &&
+                !sheetProduct.nutriScore.toLowerCase().includes("not") && (
+                  <View
+                    style={{
+                      backgroundColor: colors.borderLight,
+                      borderRadius: radius.sm,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                      NutriScore
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: "700",
+                        color: ratingColor(sheetProduct.nutriScore),
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {sheetProduct.nutriScore}
+                    </Text>
+                  </View>
+                )}
+              {sheetReport.gutRisk && (
+                <View
+                  style={{
+                    backgroundColor: colors.borderLight,
+                    borderRadius: radius.sm,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    Gut Score
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: colors.text,
+                    }}
+                  >
+                    {sheetReport.gutRisk.gutScore}/100
+                  </Text>
+                </View>
+              )}
+              {sheetReport.fodmap && (
+                <View
+                  style={{
+                    backgroundColor: colors.borderLight,
+                    borderRadius: radius.sm,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    FODMAP
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: colors.text,
+                    }}
+                  >
+                    {sheetReport.fodmap.fodmapRating}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Allergens */}
+            {sheetProduct.allergensTags.length > 0 && (
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: colors.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  Allergens
                 </Text>
-              </View>
-            ) : sheetProduct && sheetReport ? (
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                style={{ maxHeight: 400 }}
-              >
-                {/* Quick badges row */}
                 <View
                   style={{
                     flexDirection: "row",
-                    gap: 8,
-                    marginBottom: spacing.lg,
                     flexWrap: "wrap",
+                    gap: 6,
                   }}
                 >
-                  {sheetProduct.novaGroup != null && (
+                  {sheetProduct.allergensTags.map((tag) => (
                     <View
+                      key={tag}
                       style={{
-                        backgroundColor: colors.borderLight,
+                        backgroundColor: "#fef2f2",
                         borderRadius: radius.sm,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
                       }}
                     >
-                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                        NOVA
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "700",
-                          color: colors.text,
-                        }}
-                      >
-                        {sheetProduct.novaGroup}
-                      </Text>
-                    </View>
-                  )}
-                  {sheetProduct.nutriScore &&
-                    !sheetProduct.nutriScore.toLowerCase().includes("not") && (
-                      <View
-                        style={{
-                          backgroundColor: colors.borderLight,
-                          borderRadius: radius.sm,
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                          NutriScore
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 16,
-                            fontWeight: "700",
-                            color: ratingColor(sheetProduct.nutriScore),
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {sheetProduct.nutriScore}
-                        </Text>
-                      </View>
-                    )}
-                  {sheetReport.gutRisk && (
-                    <View
-                      style={{
-                        backgroundColor: colors.borderLight,
-                        borderRadius: radius.sm,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                        Gut Score
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "700",
-                          color: colors.text,
-                        }}
-                      >
-                        {sheetReport.gutRisk.gutScore}/100
+                      <Text style={{ fontSize: 12, color: "#b91c1c" }}>
+                        {tag
+                          .replace("en:", "")
+                          .split(/[\s-]+/)
+                          .map(
+                            (w) =>
+                              w.charAt(0).toUpperCase() +
+                              w.slice(1).toLowerCase(),
+                          )
+                          .join(" ")}
                       </Text>
                     </View>
-                  )}
-                  {sheetReport.fodmap && (
-                    <View
-                      style={{
-                        backgroundColor: colors.borderLight,
-                        borderRadius: radius.sm,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                        FODMAP
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "700",
-                          color: colors.text,
-                        }}
-                      >
-                        {sheetReport.fodmap.fodmapRating}
-                      </Text>
-                    </View>
-                  )}
+                  ))}
                 </View>
-
-                {/* Allergens */}
-                {sheetProduct.allergensTags.length > 0 && (
-                  <View style={{ marginBottom: spacing.lg }}>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: colors.textSecondary,
-                        marginBottom: 6,
-                      }}
-                    >
-                      Allergens
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        flexWrap: "wrap",
-                        gap: 6,
-                      }}
-                    >
-                      {sheetProduct.allergensTags.map((tag) => (
-                        <View
-                          key={tag}
-                          style={{
-                            backgroundColor: "#fef2f2",
-                            borderRadius: radius.sm,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                          }}
-                        >
-                          <Text style={{ fontSize: 12, color: "#b91c1c" }}>
-                            {tag
-                              .replace("en:", "")
-                              .split(/[\s-]+/)
-                              .map(
-                                (w) =>
-                                  w.charAt(0).toUpperCase() +
-                                  w.slice(1).toLowerCase(),
-                              )
-                              .join(" ")}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-
-                {/* Additives */}
-                {sheetReport.additives.length > 0 && (
-                  <View style={{ marginBottom: spacing.lg }}>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: colors.textSecondary,
-                        marginBottom: 6,
-                      }}
-                    >
-                      Additives ({sheetReport.additives.length})
-                    </Text>
-                    {sheetReport.additives.slice(0, 5).map((add) => (
-                      <View
-                        key={add.id}
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          paddingVertical: 6,
-                          borderBottomWidth: 1,
-                          borderBottomColor: colors.divider,
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: "500",
-                              color: colors.text,
-                            }}
-                          >
-                            {add.name}
-                            {add.eNumber ? ` (${add.eNumber})` : ""}
-                          </Text>
-                          {add.healthConcerns ? (
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: colors.textMuted,
-                                marginTop: 1,
-                              }}
-                              numberOfLines={1}
-                            >
-                              {add.healthConcerns}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <View
-                          style={{
-                            backgroundColor: colors.borderLight,
-                            borderRadius: radius.sm,
-                            paddingHorizontal: 6,
-                            paddingVertical: 2,
-                            marginLeft: 8,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              fontWeight: "600",
-                              color: ratingColor(add.cspiRating),
-                            }}
-                          >
-                            {add.cspiRating}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                    {sheetReport.additives.length > 5 && (
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: colors.textMuted,
-                          marginTop: 6,
-                        }}
-                      >
-                        +{sheetReport.additives.length - 5} more
-                      </Text>
-                    )}
-                  </View>
-                )}
-
-                {/* Ingredients */}
-                {sheetProduct.ingredients && (
-                  <View style={{ marginBottom: spacing.lg }}>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: colors.textSecondary,
-                        marginBottom: 4,
-                      }}
-                    >
-                      Ingredients
-                    </Text>
-                    <Text
-                      style={{ fontSize: 12, color: colors.textMuted }}
-                      numberOfLines={3}
-                    >
-                      {sheetProduct.ingredients}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Full details button */}
-                <TouchableOpacity
-                  onPress={() => {
-                    setSheetItem(null);
-                    router.push(`/food/${sheetProduct.id}`);
-                  }}
-                  style={{
-                    backgroundColor: colors.primary,
-                    borderRadius: radius.sm,
-                    paddingVertical: 12,
-                    alignItems: "center",
-                    marginBottom: spacing.md,
-                  }}
-                >
-                  <Text
-                    style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}
-                  >
-                    Full Details →
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            ) : (
-              <View
-                style={{ alignItems: "center", paddingVertical: spacing.lg }}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={32}
-                  color={colors.textLight}
-                />
-                <Text
-                  style={{
-                    color: colors.textMuted,
-                    marginTop: spacing.sm,
-                    fontSize: 13,
-                    textAlign: "center",
-                  }}
-                >
-                  No detailed product info found for this item.
-                </Text>
               </View>
             )}
-          </Pressable>
-        </Pressable>
-      </Modal>
 
-      {/* Edit Meal Modal */}
-      <Modal visible={!!editingMeal} animationType="slide" transparent>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            justifyContent: "flex-end",
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl,
-              padding: spacing.xxl,
-              maxHeight: "85%",
-            }}
-          >
-            <Text style={{ ...fonts.h3, marginBottom: spacing.md }}>
-              Edit Meal
-            </Text>
-            <View
-              style={{ flexDirection: "row", marginBottom: spacing.lg, gap: 6 }}
-            >
-              {MEAL_TYPES.map((t) => {
-                const active = editMealType === t;
-                return (
-                  <TouchableOpacity
-                    key={t}
-                    onPress={() => setEditMealType(t)}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      borderRadius: radius.sm,
-                      backgroundColor: active
-                        ? colors.primary
-                        : colors.borderLight,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "600",
-                        color: active ? "#fff" : colors.textMuted,
-                      }}
-                    >
-                      {mealTypeEmoji[t]} {t}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <ScrollView style={{ maxHeight: 360 }}>
-              {editItems.map((item, idx) => (
-                <View
-                  key={item.id || idx}
+            {/* Additives */}
+            {sheetReport.additives.length > 0 && (
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text
                   style={{
-                    backgroundColor: colors.bg,
-                    borderRadius: radius.sm,
-                    padding: spacing.md,
-                    marginBottom: 8,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: colors.textSecondary,
+                    marginBottom: 6,
                   }}
                 >
+                  Additives ({sheetReport.additives.length})
+                </Text>
+                {sheetReport.additives.slice(0, 5).map((add) => (
                   <View
+                    key={add.id}
                     style={{
                       flexDirection: "row",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      marginBottom: 8,
+                      paddingVertical: 6,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.divider,
                     }}
                   >
-                    <TextInput
-                      value={item.foodName}
-                      onChangeText={(v) => updateEditItem(idx, "foodName", v)}
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "500",
+                          color: colors.text,
+                        }}
+                      >
+                        {add.name}
+                        {add.eNumber ? ` (${add.eNumber})` : ""}
+                      </Text>
+                      {add.healthConcerns ? (
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.textMuted,
+                            marginTop: 1,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {add.healthConcerns}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
                       style={{
-                        flex: 1,
-                        fontWeight: "600",
-                        fontSize: 15,
-                        color: colors.text,
+                        backgroundColor: colors.borderLight,
+                        borderRadius: radius.sm,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        marginLeft: 8,
                       }}
-                    />
-                    <TouchableOpacity
-                      onPress={() => removeEditItem(idx)}
-                      style={{ marginLeft: 8 }}
                     >
-                      <Ionicons
-                        name="close-circle"
-                        size={20}
-                        color={colors.danger}
-                      />
-                    </TouchableOpacity>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: "600",
+                          color: ratingColor(add.cspiRating),
+                        }}
+                      >
+                        {add.cspiRating}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ flexDirection: "row", gap: 6 }}>
-                    {[
-                      { label: "Cal", field: "calories", val: item.calories },
-                      {
-                        label: "Protein",
-                        field: "proteinG",
-                        val: item.proteinG,
-                      },
-                      { label: "Carbs", field: "carbsG", val: item.carbsG },
-                      { label: "Fat", field: "fatG", val: item.fatG },
-                    ].map(({ label, field, val }) => (
-                      <View key={field} style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10, color: colors.textMuted }}>
-                          {label}
-                        </Text>
-                        <TextInput
-                          value={String(val)}
-                          onChangeText={(v) => updateEditItem(idx, field, v)}
-                          keyboardType="numeric"
-                          style={editFieldStyle}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                  <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
-                    {[
-                      { label: "Fiber", field: "fiberG", val: item.fiberG },
-                      { label: "Sugar", field: "sugarG", val: item.sugarG },
-                      {
-                        label: "Na (mg)",
-                        field: "sodiumMg",
-                        val: item.sodiumMg,
-                      },
-                    ].map(({ label, field, val }) => (
-                      <View key={field} style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10, color: colors.textMuted }}>
-                          {label}
-                        </Text>
-                        <TextInput
-                          value={String(val)}
-                          onChangeText={(v) => updateEditItem(idx, field, v)}
-                          keyboardType="numeric"
-                          style={editFieldStyle}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-            <View
+                ))}
+                {sheetReport.additives.length > 5 && (
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.textMuted,
+                      marginTop: 6,
+                    }}
+                  >
+                    +{sheetReport.additives.length - 5} more
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Ingredients */}
+            {sheetProduct.ingredients && (
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: colors.textSecondary,
+                    marginBottom: 4,
+                  }}
+                >
+                  Ingredients
+                </Text>
+                <Text
+                  style={{ fontSize: 12, color: colors.textMuted }}
+                  numberOfLines={3}
+                >
+                  {sheetProduct.ingredients}
+                </Text>
+              </View>
+            )}
+
+            {/* Full details button */}
+            <TouchableOpacity
+              onPress={() => {
+                setSheetItem(null);
+                router.push(`/food/${sheetProduct.id}`);
+              }}
               style={{
-                flexDirection: "row",
-                justifyContent: "flex-end",
-                marginTop: spacing.lg,
-                gap: 12,
+                backgroundColor: colors.primary,
+                borderRadius: radius.sm,
+                paddingVertical: 12,
+                alignItems: "center",
+                marginBottom: spacing.md,
               }}
             >
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
+                Full Details →
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        ) : (
+          <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+            <Ionicons
+              name="information-circle-outline"
+              size={32}
+              color={colors.textLight}
+            />
+            <Text
+              style={{
+                color: colors.textMuted,
+                marginTop: spacing.sm,
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              No detailed product info found for this item.
+            </Text>
+          </View>
+        )}
+      </BottomSheet>
+
+      {/* Edit Meal Modal */}
+      <BottomSheet visible={!!editingMeal} onClose={() => setEditingMeal(null)}>
+        <Text style={{ ...fonts.h3, marginBottom: spacing.md }}>Edit Meal</Text>
+        <View
+          style={{ flexDirection: "row", marginBottom: spacing.lg, gap: 6 }}
+        >
+          {MEAL_TYPES.map((t) => {
+            const active = editMealType === t;
+            return (
               <TouchableOpacity
-                onPress={() => setEditingMeal(null)}
-                style={{ paddingHorizontal: 20, paddingVertical: 10 }}
-              >
-                <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={saveEdit}
-                disabled={updateMutation.isPending}
+                key={t}
+                onPress={() => setEditMealType(t)}
                 style={{
-                  backgroundColor: colors.primary,
-                  paddingHorizontal: 20,
-                  paddingVertical: 10,
+                  flex: 1,
+                  paddingVertical: 8,
                   borderRadius: radius.sm,
+                  backgroundColor: active ? colors.primary : colors.borderLight,
+                  alignItems: "center",
                 }}
               >
-                {updateMutation.isPending ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
-                )}
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color: active ? "#fff" : colors.textMuted,
+                  }}
+                >
+                  {mealTypeEmoji[t]} {t}
+                </Text>
               </TouchableOpacity>
-            </View>
-          </View>
+            );
+          })}
         </View>
-      </Modal>
+        <ScrollView style={{ maxHeight: 360 }}>
+          {editItems.map((item, idx) => {
+            const cfg = editItemConfigs[idx] ?? {
+              servingG: item.servingWeightG ?? 100,
+              multiplier: 1,
+              customText: "",
+            };
+            const totalG = cfg.servingG * cfg.multiplier;
+            const origG = item.servingWeightG ?? 100;
+            const scale = totalG / origG;
+            const origServing = item.servingWeightG ?? 100;
+            const presets: { label: string; grams: number }[] = [
+              { label: `${origServing}g`, grams: origServing },
+              { label: "50g", grams: 50 },
+              { label: "100g", grams: 100 },
+              { label: "150g", grams: 150 },
+              { label: "200g", grams: 200 },
+            ];
+            const seen = new Set<number>();
+            const uniquePresets = presets.filter((p) => {
+              if (seen.has(p.grams)) return false;
+              seen.add(p.grams);
+              return true;
+            });
+            return (
+              <View
+                key={item.id || idx}
+                style={{
+                  backgroundColor: colors.bg,
+                  borderRadius: radius.sm,
+                  padding: spacing.md,
+                  marginBottom: 8,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontWeight: "600",
+                      fontSize: 15,
+                      color: colors.text,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.foodName}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => removeEditItem(idx)}
+                    style={{ marginLeft: 8 }}
+                  >
+                    <Ionicons
+                      name="close-circle"
+                      size={20}
+                      color={colors.danger}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: colors.textMuted,
+                    marginBottom: 4,
+                  }}
+                >
+                  Serving size:
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    marginBottom: 6,
+                  }}
+                >
+                  {uniquePresets.map((preset) => (
+                    <TouchableOpacity
+                      key={preset.label}
+                      onPress={() => {
+                        setEditItemConfigs((prev) => ({
+                          ...prev,
+                          [idx]: {
+                            ...cfg,
+                            servingG: preset.grams,
+                            customText: "",
+                          },
+                        }));
+                      }}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 6,
+                        backgroundColor:
+                          cfg.servingG === preset.grams && cfg.customText === ""
+                            ? colors.primary
+                            : colors.borderLight,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "600",
+                          color:
+                            cfg.servingG === preset.grams &&
+                            cfg.customText === ""
+                              ? "#fff"
+                              : colors.textMuted,
+                        }}
+                      >
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: colors.textMuted,
+                    }}
+                  >
+                    Custom (g):
+                  </Text>
+                  <TextInput
+                    value={cfg.customText}
+                    onChangeText={(v) => {
+                      const n = Number(v);
+                      setEditItemConfigs((prev) => ({
+                        ...prev,
+                        [idx]: {
+                          ...cfg,
+                          customText: v,
+                          ...(n > 0 ? { servingG: n } : {}),
+                        },
+                      }));
+                    }}
+                    keyboardType="numeric"
+                    placeholder="e.g. 75"
+                    placeholderTextColor={colors.textLight}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor:
+                        cfg.customText !== "" ? colors.primary : colors.border,
+                      borderRadius: 6,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      fontSize: 12,
+                      color: colors.text,
+                      backgroundColor: colors.card,
+                    }}
+                  />
+                </View>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: colors.textMuted,
+                    marginBottom: 4,
+                  }}
+                >
+                  Multiplier:
+                </Text>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+                  {[1, 2, 3, 4, 5].map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      onPress={() => {
+                        setEditItemConfigs((prev) => ({
+                          ...prev,
+                          [idx]: { ...cfg, multiplier: m },
+                        }));
+                      }}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 5,
+                        borderRadius: 6,
+                        backgroundColor:
+                          cfg.multiplier === m
+                            ? colors.primary
+                            : colors.borderLight,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "600",
+                          color:
+                            cfg.multiplier === m ? "#fff" : colors.textMuted,
+                        }}
+                      >
+                        {m}×
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                  {totalG}g total · {Math.round(item.calories * scale)} cal ·{" "}
+                  {Math.round(item.proteinG * scale)}g P ·{" "}
+                  {Math.round(item.carbsG * scale)}g C ·{" "}
+                  {Math.round(item.fatG * scale)}g F
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "flex-end",
+            marginTop: spacing.lg,
+            gap: 12,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setEditingMeal(null)}
+            style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+          >
+            <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={saveEdit}
+            disabled={updateMutation.isPending}
+            style={{
+              backgroundColor: colors.primary,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: radius.sm,
+            }}
+          >
+            {updateMutation.isPending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
+
+      {/* Swap Food Search Modal */}
+      <BottomSheet
+        visible={swapIndex !== null}
+        onClose={() => {
+          setSwapIndex(null);
+          setSwapSearch("");
+        }}
+        maxHeight="80%"
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: spacing.md,
+          }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
+            Swap food item
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setSwapIndex(null);
+              setSwapSearch("");
+            }}
+          >
+            <Ionicons name="close" size={24} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <TextInput
+          placeholder="Search foods..."
+          placeholderTextColor={colors.textLight}
+          value={swapSearch}
+          onChangeText={setSwapSearch}
+          autoFocus
+          style={{
+            backgroundColor: colors.bg,
+            borderRadius: radius.sm,
+            padding: spacing.md,
+            fontSize: 15,
+            color: colors.text,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.md,
+          }}
+        />
+        <ScrollView
+          style={{ maxHeight: 400 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {swapSearchResults.isLoading && (
+            <ActivityIndicator
+              color={colors.primary}
+              style={{ marginVertical: spacing.lg }}
+            />
+          )}
+          {swapSearchResults.data?.map((food) => (
+            <TouchableOpacity
+              key={food.id || food.name}
+              onPress={() => selectSwapFood(food)}
+              style={{
+                paddingVertical: spacing.sm,
+                paddingHorizontal: spacing.md,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.borderLight,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: colors.text,
+                }}
+                numberOfLines={1}
+              >
+                {food.name}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  marginTop: 2,
+                }}
+              >
+                {food.calories100g != null
+                  ? `${Math.round(food.calories100g)} cal/100g`
+                  : ""}
+                {food.brand ? ` · ${food.brand}` : ""}
+                {food.dataSource ? ` · ${food.dataSource}` : ""}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {debouncedSwapSearch.length >= 2 &&
+            !swapSearchResults.isLoading &&
+            swapSearchResults.data?.length === 0 && (
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: colors.textMuted,
+                  padding: spacing.lg,
+                }}
+              >
+                No results found
+              </Text>
+            )}
+          {debouncedSwapSearch.length < 2 && (
+            <Text
+              style={{
+                textAlign: "center",
+                color: colors.textMuted,
+                padding: spacing.lg,
+              }}
+            >
+              Type at least 2 characters to search
+            </Text>
+          )}
+        </ScrollView>
+      </BottomSheet>
     </ScrollView>
   );
 }

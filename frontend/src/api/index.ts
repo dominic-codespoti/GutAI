@@ -33,6 +33,7 @@ interface UpdateProfileRequest {
   displayName?: string;
   allergies?: string[];
   dietaryPreferences?: string[];
+  gutConditions?: string[];
   timezoneId?: string;
   onboardingCompleted?: boolean;
 }

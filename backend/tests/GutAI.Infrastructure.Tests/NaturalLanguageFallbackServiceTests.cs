@@ -1,6 +1,7 @@
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
+using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.ExternalApis;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -1146,5 +1147,183 @@ public class NaturalLanguageFallbackServiceTests
 
         var result = await CreateService().ParseAsync("a protein shake and a banana");
         result.Should().HaveCount(2);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  NormalizeFoodName
+    // ════════════════════════════════════════════════════════
+
+    [Theory]
+    [InlineData("Egg, whole, raw, fresh", "egg whole raw fresh")]
+    [InlineData("Chicken, broilers or fryers, breast", "chicken broiler or fryer breast")]
+    [InlineData("Bananas, raw", "banana raw")]
+    [InlineData("USDA commodity, chicken", "chicken")]
+    public void NormalizeFoodName_Works(string input, string expected)
+    {
+        FoodSearchIndex.NormalizeFoodName(input).Should().Be(expected);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  PickBestMatch — prefers plain over weird
+    // ════════════════════════════════════════════════════════
+
+    [Fact]
+    public void PickBestMatch_PrefersPlainChicken_OverFrozenNuggets()
+    {
+        var candidates = new List<FoodProductDto>
+        {
+            MakeFood("Chicken, broilers or fryers, breast, skinless, boneless, meat only, raw"),
+            MakeFood("Chicken, nuggets, frozen, breaded, reheated"),
+            MakeFood("Chicken, breast, raw"),
+        };
+
+        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "chicken");
+        result!.Name.Should().NotContain("nuggets");
+        result.Name.Should().NotContain("frozen");
+    }
+
+    [Fact]
+    public void PickBestMatch_PrefersExactMatch()
+    {
+        var candidates = new List<FoodProductDto>
+        {
+            MakeFood("Egg, dried, whole, stabilized, glucose reduced"),
+            MakeFood("Egg, whole, raw, fresh"),
+            MakeFood("Egg"),
+        };
+
+        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "egg");
+        result!.Name.Should().Be("Egg");
+    }
+
+    [Fact]
+    public void PickBestMatch_PenalizesAlaskaNative()
+    {
+        var candidates = new List<FoodProductDto>
+        {
+            MakeFood("Fish, salmon, sockeye (red), raw (Alaska Native)"),
+            MakeFood("Salmon, Atlantic, wild, raw"),
+        };
+
+        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "salmon");
+        result!.Name.Should().Be("Salmon, Atlantic, wild, raw");
+    }
+
+    [Fact]
+    public void PickBestMatch_PenalizesBabyFood()
+    {
+        var candidates = new List<FoodProductDto>
+        {
+            MakeFood("Bananas, raw"),
+            MakeFood("Babyfood, fruit, bananas, strained"),
+        };
+
+        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "banana");
+        result!.Name.Should().Be("Bananas, raw");
+    }
+
+    [Fact]
+    public void PickBestMatch_MultiWordQuery_TokenCoverage()
+    {
+        var candidates = new List<FoodProductDto>
+        {
+            MakeFood("Chicken, raw"),
+            MakeFood("Grilled chicken breast"),
+            MakeFood("Chicken, canned, drained"),
+        };
+
+        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "grilled chicken");
+        result!.Name.Should().Be("Grilled chicken breast");
+    }
+
+    [Fact]
+    public void PickBestMatch_PenalizesHighCarbChicken()
+    {
+        var candidates = new List<FoodProductDto>
+        {
+            new() { Name = "Chicken, breaded, frozen", Calories100g = 250, Protein100g = 12, Carbs100g = 45, Fat100g = 10 },
+            new() { Name = "Chicken, breast, raw", Calories100g = 165, Protein100g = 31, Carbs100g = 0, Fat100g = 3.6m },
+        };
+
+        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "chicken");
+        result!.Name.Should().Be("Chicken, breast, raw");
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  ComputeConfidence
+    // ════════════════════════════════════════════════════════
+
+    [Fact]
+    public void ComputeConfidence_ExactMatch_Returns1()
+    {
+        var food = MakeFood("Egg");
+        var confidence = NaturalLanguageFallbackService.ComputeConfidence([food], food, "egg");
+        confidence.Should().Be(1.0m);
+    }
+
+    [Fact]
+    public void ComputeConfidence_GoodMatch_ReturnsHigh()
+    {
+        var food = MakeFood("Egg, whole, raw, fresh");
+        var confidence = NaturalLanguageFallbackService.ComputeConfidence([food], food, "egg");
+        confidence.Should().BeGreaterOrEqualTo(0.5m);
+    }
+
+    [Fact]
+    public void ComputeConfidence_WeirdMatch_ReturnsLow()
+    {
+        var food = MakeFood("Agutuk, fish with shortening (Alaskan ice cream) (Alaska Native)");
+        var confidence = NaturalLanguageFallbackService.ComputeConfidence([food], food, "ice cream");
+        confidence.Should().BeLessThan(0.5m);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  ParseAsync — MatchConfidence is set
+    // ════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ParseAsync_SetsMatchConfidence()
+    {
+        SetupFood("banana", "Banana", cal: 89, protein: 1.1m, carbs: 23, fat: 0.3m);
+
+        var result = await CreateService().ParseAsync("banana");
+        result.Should().HaveCount(1);
+        result[0].MatchConfidence.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task ParseAsync_GenericEstimate_HasZeroConfidence()
+    {
+        _foodApiMock.Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await CreateService().ParseAsync("xyznonexistentfood");
+        result.Should().HaveCount(1);
+        result[0].MatchConfidence.Should().Be(0m);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  EstimateUnitWeightG (renamed from EstimateServingWeightG)
+    // ════════════════════════════════════════════════════════
+
+    [Fact]
+    public void EstimateUnitWeightG_WeightUnit_ReturnsConversionFactor()
+    {
+        NaturalLanguageFallbackService.EstimateUnitWeightG(MakeFood("chicken"), "g", "chicken")
+            .Should().Be(1m);
+    }
+
+    [Fact]
+    public void EstimateUnitWeightG_VolumeUnit_ReturnsVolumeEstimate()
+    {
+        NaturalLanguageFallbackService.EstimateUnitWeightG(MakeFood("rice"), "cup", "rice")
+            .Should().Be(185m);
+    }
+
+    [Fact]
+    public void EstimateServingWeightG_StillWorks_AsForwardingMethod()
+    {
+        NaturalLanguageFallbackService.EstimateServingWeightG(MakeFood("chicken"), "oz", "chicken")
+            .Should().Be(28.35m);
     }
 }

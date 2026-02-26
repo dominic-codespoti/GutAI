@@ -1,13 +1,14 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Modal,
   ActivityIndicator,
   RefreshControl,
+  BackHandler,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../../src/stores/auth";
@@ -17,8 +18,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { confirm } from "../../src/utils/confirm";
 import { toast } from "../../src/stores/toast";
 import { ErrorState } from "../../components/ErrorState";
+import { BottomSheet } from "../../components/BottomSheet";
+import { AllergyChips } from "../../components/AllergyChips";
+import { GoalField } from "../../components/GoalField";
 import type { UserFoodAlert, FoodAdditive } from "../../src/types";
 import { ratingColor } from "../../src/utils/colors";
+import { GUT_CONDITION_OPTIONS } from "../../src/utils/options";
 import {
   colors,
   shadow,
@@ -45,8 +50,9 @@ export default function ProfileScreen() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [editingGoals, setEditingGoals] = useState(false);
   const [displayName, setDisplayName] = useState("");
-  const [allergies, setAllergies] = useState("");
+  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [dietaryPreferences, setDietaryPreferences] = useState("");
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [calGoal, setCalGoal] = useState("");
   const [proteinGoal, setProteinGoal] = useState("");
   const [carbGoal, setCarbGoal] = useState("");
@@ -103,6 +109,7 @@ export default function ProfileScreen() {
       displayName?: string;
       allergies?: string[];
       dietaryPreferences?: string[];
+      gutConditions?: string[];
     }) => userApi.updateProfile(data),
     onSuccess: ({ data }) => {
       setUser(data);
@@ -131,8 +138,9 @@ export default function ProfileScreen() {
 
   const openProfileEdit = () => {
     setDisplayName(user?.displayName ?? "");
-    setAllergies((user?.allergies ?? []).join(", "));
+    setSelectedAllergies(user?.allergies ?? []);
     setDietaryPreferences((user?.dietaryPreferences ?? []).join(", "));
+    setSelectedConditions(user?.gutConditions ?? []);
     setEditingProfile(true);
   };
 
@@ -145,21 +153,29 @@ export default function ProfileScreen() {
     setEditingGoals(true);
   };
 
+  const toggleAllergy = (a: string) => {
+    setSelectedAllergies((prev) =>
+      prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
+    );
+  };
+
+  const toggleCondition = (c: string) => {
+    setSelectedConditions((prev) =>
+      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+    );
+  };
+
   const saveProfile = () => {
     profileMutation.mutate({
       displayName: displayName || undefined,
-      allergies: allergies
-        ? allergies
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [],
+      allergies: selectedAllergies,
       dietaryPreferences: dietaryPreferences
         ? dietaryPreferences
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean)
         : [],
+      gutConditions: selectedConditions,
     });
   };
 
@@ -183,6 +199,27 @@ export default function ProfileScreen() {
     await Promise.all([refetchCorr(), refetchAlerts()]);
     setRefreshing(false);
   }, [refetchCorr, refetchAlerts]);
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (showAdditiveBrowser) {
+          setShowAdditiveBrowser(false);
+          return true;
+        }
+        if (editingGoals) {
+          setEditingGoals(false);
+          return true;
+        }
+        if (editingProfile) {
+          setEditingProfile(false);
+          return true;
+        }
+        return false;
+      });
+      return () => handler.remove();
+    }
+  }, [showAdditiveBrowser, editingGoals, editingProfile]);
 
   return (
     <ScrollView
@@ -261,6 +298,17 @@ export default function ProfileScreen() {
               }}
             >
               🥗 {user.dietaryPreferences.join(", ")}
+            </Text>
+          )}
+          {user?.gutConditions && user.gutConditions.length > 0 && (
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginTop: 4,
+              }}
+            >
+              🫃 {user.gutConditions.join(", ")}
             </Text>
           )}
           <TouchableOpacity
@@ -627,316 +675,315 @@ export default function ProfileScreen() {
       </View>
 
       {/* Edit Profile Modal */}
-      <Modal visible={editingProfile} animationType="slide" transparent>
-        <View
+      <BottomSheet
+        visible={editingProfile}
+        onClose={() => setEditingProfile(false)}
+      >
+        <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
+          Edit Profile
+        </Text>
+        <Text style={{ ...fonts.caption, marginBottom: 4 }}>Display Name</Text>
+        <TextInput
+          value={displayName}
+          onChangeText={setDisplayName}
+          style={inputStyle}
+          placeholder="Your name"
+          placeholderTextColor={colors.textLight}
+        />
+        <Text
           style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            justifyContent: "flex-end",
+            ...fonts.caption,
+            marginBottom: 4,
+            marginTop: spacing.md,
           }}
         >
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl,
-              padding: spacing.xxl,
-            }}
-          >
-            <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
-              Edit Profile
-            </Text>
-            <Text style={{ ...fonts.caption, marginBottom: 4 }}>
-              Display Name
-            </Text>
-            <TextInput
-              value={displayName}
-              onChangeText={setDisplayName}
-              style={inputStyle}
-              placeholder="Your name"
-              placeholderTextColor={colors.textLight}
-            />
-            <Text
-              style={{
-                ...fonts.caption,
-                marginBottom: 4,
-                marginTop: spacing.md,
-              }}
-            >
-              Allergies
-            </Text>
-            <TextInput
-              value={allergies}
-              onChangeText={setAllergies}
-              style={inputStyle}
-              placeholder="e.g. peanuts, shellfish"
-              placeholderTextColor={colors.textLight}
-            />
-            <Text
-              style={{
-                ...fonts.caption,
-                marginBottom: 4,
-                marginTop: spacing.md,
-              }}
-            >
-              Dietary Preferences
-            </Text>
-            <TextInput
-              value={dietaryPreferences}
-              onChangeText={setDietaryPreferences}
-              style={inputStyle}
-              placeholder="e.g. vegetarian, keto"
-              placeholderTextColor={colors.textLight}
-            />
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "flex-end",
-                marginTop: spacing.xl,
-                gap: 12,
-              }}
-            >
+          Allergies
+        </Text>
+        <View style={{ marginBottom: spacing.sm }}>
+          <AllergyChips selected={selectedAllergies} onToggle={toggleAllergy} />
+        </View>
+
+        <Text
+          style={{
+            ...fonts.caption,
+            marginBottom: 4,
+            marginTop: spacing.md,
+          }}
+        >
+          Dietary Preferences
+        </Text>
+        <TextInput
+          value={dietaryPreferences}
+          onChangeText={setDietaryPreferences}
+          style={inputStyle}
+          placeholder="e.g. vegetarian, keto"
+          placeholderTextColor={colors.textLight}
+        />
+
+        <Text
+          style={{
+            ...fonts.caption,
+            marginBottom: 4,
+            marginTop: spacing.md,
+          }}
+        >
+          Gut Conditions
+        </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 8,
+            marginBottom: spacing.sm,
+          }}
+        >
+          {GUT_CONDITION_OPTIONS.map((c) => {
+            const active = selectedConditions.includes(c.id);
+            return (
               <TouchableOpacity
-                onPress={() => setEditingProfile(false)}
-                style={{ paddingHorizontal: 20, paddingVertical: 10 }}
-              >
-                <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={saveProfile}
-                disabled={profileMutation.isPending}
+                key={c.id}
+                onPress={() => toggleCondition(c.id)}
                 style={{
-                  backgroundColor: colors.primary,
-                  paddingHorizontal: 20,
-                  paddingVertical: 10,
-                  borderRadius: radius.sm,
+                  backgroundColor: active
+                    ? colors.primaryBg
+                    : colors.borderLight,
+                  borderWidth: 1,
+                  borderColor: active ? colors.primaryLight : colors.border,
+                  borderRadius: radius.full,
+                  paddingHorizontal: spacing.lg,
+                  paddingVertical: spacing.sm,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
                 }}
               >
-                {profileMutation.isPending ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
-                )}
+                <Text style={{ fontSize: 14 }}>{c.emoji}</Text>
+                <Text
+                  style={{
+                    fontWeight: "600",
+                    color: active ? colors.primary : colors.textMuted,
+                    fontSize: 13,
+                  }}
+                >
+                  {c.label}
+                </Text>
               </TouchableOpacity>
-            </View>
-          </View>
+            );
+          })}
         </View>
-      </Modal>
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "flex-end",
+            marginTop: spacing.xl,
+            gap: 12,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setEditingProfile(false)}
+            style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+          >
+            <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={saveProfile}
+            disabled={profileMutation.isPending}
+            style={{
+              backgroundColor: colors.primary,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: radius.sm,
+            }}
+          >
+            {profileMutation.isPending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
       {/* Edit Goals Modal */}
-      <Modal visible={editingGoals} animationType="slide" transparent>
+      <BottomSheet
+        visible={editingGoals}
+        onClose={() => setEditingGoals(false)}
+      >
+        <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
+          Edit Daily Goals
+        </Text>
+        {[
+          { label: "Calories (cal)", value: calGoal, set: setCalGoal },
+          { label: "Protein (g)", value: proteinGoal, set: setProteinGoal },
+          { label: "Carbs (g)", value: carbGoal, set: setCarbGoal },
+          { label: "Fat (g)", value: fatGoal, set: setFatGoal },
+          { label: "Fiber (g)", value: fiberGoal, set: setFiberGoal },
+        ].map(({ label, value, set }) => (
+          <GoalField
+            key={label}
+            label={label}
+            value={value}
+            onChangeText={set}
+          />
+        ))}
         <View
           style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
+            flexDirection: "row",
             justifyContent: "flex-end",
+            marginTop: spacing.xl,
+            gap: 12,
           }}
         >
-          <View
+          <TouchableOpacity
+            onPress={() => setEditingGoals(false)}
+            style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+          >
+            <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={saveGoals}
+            disabled={goalsMutation.isPending}
             style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl,
-              padding: spacing.xxl,
+              backgroundColor: colors.primary,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: radius.sm,
             }}
           >
-            <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
-              Edit Daily Goals
-            </Text>
-            {[
-              { label: "Calories (cal)", value: calGoal, set: setCalGoal },
-              { label: "Protein (g)", value: proteinGoal, set: setProteinGoal },
-              { label: "Carbs (g)", value: carbGoal, set: setCarbGoal },
-              { label: "Fat (g)", value: fatGoal, set: setFatGoal },
-              { label: "Fiber (g)", value: fiberGoal, set: setFiberGoal },
-            ].map(({ label, value, set }) => (
-              <View key={label} style={{ marginBottom: spacing.sm }}>
-                <Text style={{ ...fonts.caption, marginBottom: 4 }}>
-                  {label}
-                </Text>
-                <TextInput
-                  value={value}
-                  onChangeText={set}
-                  keyboardType="numeric"
-                  style={inputStyle}
-                />
-              </View>
-            ))}
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "flex-end",
-                marginTop: spacing.xl,
-                gap: 12,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => setEditingGoals(false)}
-                style={{ paddingHorizontal: 20, paddingVertical: 10 }}
-              >
-                <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={saveGoals}
-                disabled={goalsMutation.isPending}
-                style={{
-                  backgroundColor: colors.primary,
-                  paddingHorizontal: 20,
-                  paddingVertical: 10,
-                  borderRadius: radius.sm,
-                }}
-              >
-                {goalsMutation.isPending ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+            {goalsMutation.isPending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+            )}
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </BottomSheet>
 
       {/* Additive Browser Modal */}
-      <Modal visible={showAdditiveBrowser} animationType="slide" transparent>
+      <BottomSheet
+        visible={showAdditiveBrowser}
+        onClose={() => setShowAdditiveBrowser(false)}
+        maxHeight="80%"
+      >
         <View
           style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            justifyContent: "flex-end",
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: spacing.lg,
           }}
         >
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl,
-              padding: spacing.xxl,
-              maxHeight: "80%",
-            }}
+          <Text style={fonts.h3}>Browse Additives</Text>
+          <TouchableOpacity
+            onPress={() => setShowAdditiveBrowser(false)}
+            style={{ padding: 4 }}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: spacing.lg,
-              }}
-            >
-              <Text style={fonts.h3}>Browse Additives</Text>
-              <TouchableOpacity
-                onPress={() => setShowAdditiveBrowser(false)}
-                style={{ padding: 4 }}
-              >
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              placeholder="Search additives..."
-              placeholderTextColor={colors.textLight}
-              value={additiveSearch}
-              onChangeText={setAdditiveSearch}
-              style={{ ...inputStyle, marginBottom: spacing.md }}
-            />
-            <ScrollView style={{ maxHeight: 400 }}>
-              {(allAdditives ?? [])
-                .filter(
-                  (a) =>
-                    !additiveSearch ||
-                    a.name
-                      .toLowerCase()
-                      .includes(additiveSearch.toLowerCase()) ||
-                    (a.eNumber &&
-                      a.eNumber
-                        .toLowerCase()
-                        .includes(additiveSearch.toLowerCase())),
-                )
-                .map((add) => {
-                  const isWatched = (alerts ?? []).some(
-                    (al: UserFoodAlert) => al.additiveId === add.id,
-                  );
-                  return (
-                    <View
-                      key={add.id}
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        <TextInput
+          placeholder="Search additives..."
+          placeholderTextColor={colors.textLight}
+          value={additiveSearch}
+          onChangeText={setAdditiveSearch}
+          style={{ ...inputStyle, marginBottom: spacing.md }}
+        />
+        <ScrollView style={{ maxHeight: 400 }}>
+          {(allAdditives ?? [])
+            .filter(
+              (a) =>
+                !additiveSearch ||
+                a.name.toLowerCase().includes(additiveSearch.toLowerCase()) ||
+                (a.eNumber &&
+                  a.eNumber
+                    .toLowerCase()
+                    .includes(additiveSearch.toLowerCase())),
+            )
+            .map((add) => {
+              const isWatched = (alerts ?? []).some(
+                (al: UserFoodAlert) => al.additiveId === add.id,
+              );
+              return (
+                <View
+                  key={add.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.divider,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        paddingVertical: 12,
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.divider,
+                        fontWeight: "600",
+                        color: colors.text,
+                        fontSize: 14,
                       }}
                     >
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontWeight: "600",
-                            color: colors.text,
-                            fontSize: 14,
-                          }}
-                        >
-                          {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: ratingColor(add.cspiRating),
-                            fontWeight: "600",
-                          }}
-                        >
-                          {add.cspiRating}
-                        </Text>
-                      </View>
-                      {isWatched ? (
-                        <View
-                          style={{
-                            backgroundColor: colors.primaryBg,
-                            borderRadius: 6,
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              fontWeight: "600",
-                              color: colors.primary,
-                            }}
-                          >
-                            ✓ Watching
-                          </Text>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          onPress={() => addAlertMutation.mutate(add.id)}
-                          style={{
-                            backgroundColor: colors.dangerBg,
-                            borderRadius: 6,
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              fontWeight: "600",
-                              color: colors.danger,
-                            }}
-                          >
-                            + Watch
-                          </Text>
-                        </TouchableOpacity>
-                      )}
+                      {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: ratingColor(add.cspiRating),
+                        fontWeight: "600",
+                      }}
+                    >
+                      {add.cspiRating}
+                    </Text>
+                  </View>
+                  {isWatched ? (
+                    <View
+                      style={{
+                        backgroundColor: colors.primaryBg,
+                        borderRadius: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "600",
+                          color: colors.primary,
+                        }}
+                      >
+                        ✓ Watching
+                      </Text>
                     </View>
-                  );
-                })}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => addAlertMutation.mutate(add.id)}
+                      style={{
+                        backgroundColor: colors.dangerBg,
+                        borderRadius: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "600",
+                          color: colors.danger,
+                        }}
+                      >
+                        + Watch
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+        </ScrollView>
+      </BottomSheet>
     </ScrollView>
   );
 }

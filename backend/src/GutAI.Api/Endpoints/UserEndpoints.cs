@@ -39,6 +39,7 @@ public static class UserEndpoints
             dailyFiberGoalG = user.DailyFiberGoalG,
             allergies = user.Allergies,
             dietaryPreferences = user.DietaryPreferences,
+            gutConditions = user.GutConditions,
             onboardingCompleted = user.OnboardingCompleted,
             timezoneId = user.TimezoneId,
             createdAt = user.CreatedAt
@@ -69,9 +70,16 @@ public static class UserEndpoints
         if (request.DietaryPreferences.Any(d => d.Length > 100))
             return Results.BadRequest(new { error = "Each dietary preference must not exceed 100 characters" });
 
+        if (request.GutConditions.Length > 20)
+            return Results.BadRequest(new { error = "Cannot have more than 20 gut conditions" });
+
+        if (request.GutConditions.Any(c => c.Length > 100))
+            return Results.BadRequest(new { error = "Each gut condition must not exceed 100 characters" });
+
         user.DisplayName = request.DisplayName ?? user.DisplayName;
         user.Allergies = request.Allergies ?? user.Allergies;
         user.DietaryPreferences = request.DietaryPreferences ?? user.DietaryPreferences;
+        user.GutConditions = request.GutConditions ?? user.GutConditions;
         user.TimezoneId = request.TimezoneId ?? user.TimezoneId;
         if (request.OnboardingCompleted.HasValue)
             user.OnboardingCompleted = request.OnboardingCompleted.Value;
@@ -83,6 +91,7 @@ public static class UserEndpoints
             displayName = DisplayNameOrFallback(user),
             allergies = user.Allergies,
             dietaryPreferences = user.DietaryPreferences,
+            gutConditions = user.GutConditions,
             timezoneId = user.TimezoneId,
             onboardingCompleted = user.OnboardingCompleted,
             dailyCalorieGoal = user.DailyCalorieGoal,

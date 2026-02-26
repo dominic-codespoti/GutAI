@@ -88,7 +88,7 @@ export default function LoginScreen() {
               ...shadowMd,
             }}
           >
-            <Text style={{ fontSize: 36 }}>🫃</Text>
+            <Ionicons name="leaf" size={36} color={colors.primary} />
           </View>
           <Text
             style={{

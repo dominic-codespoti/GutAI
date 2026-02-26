@@ -25,6 +25,7 @@ public record FoodProductDto
     public string? ExternalId { get; init; }
     public string? ServingSize { get; init; }
     public decimal? ServingQuantity { get; init; }
+    public decimal MatchConfidence { get; init; }
     public int? SafetyScore { get; init; }
     public string? SafetyRating { get; init; }
     public NutritionInfo? NutritionInfo { get; init; }
@@ -72,6 +73,7 @@ public record ParsedFoodItemDto
     public decimal ServingWeightG { get; init; }
     public string? ServingSize { get; init; }
     public decimal? ServingQuantity { get; init; }
+    public decimal MatchConfidence { get; init; }
 }
 
 public record CorrelationDto

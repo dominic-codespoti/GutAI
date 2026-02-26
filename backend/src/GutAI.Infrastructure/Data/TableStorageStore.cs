@@ -135,6 +135,7 @@ public class TableStorageStore : ITableStore
             { "DailyFiberGoalG", user.DailyFiberGoalG },
             { "Allergies", StringArrayToJson(user.Allergies) },
             { "DietaryPreferences", StringArrayToJson(user.DietaryPreferences) },
+            { "GutConditions", StringArrayToJson(user.GutConditions) },
             { "OnboardingCompleted", user.OnboardingCompleted },
             { "TimezoneId", user.TimezoneId }
         };
@@ -160,6 +161,7 @@ public class TableStorageStore : ITableStore
         DailyFiberGoalG = e.GetInt32("DailyFiberGoalG") ?? 25,
         Allergies = JsonToStringArray(e.GetString("Allergies")),
         DietaryPreferences = JsonToStringArray(e.GetString("DietaryPreferences")),
+        GutConditions = JsonToStringArray(e.GetString("GutConditions")),
         OnboardingCompleted = e.GetBoolean("OnboardingCompleted") ?? false,
         TimezoneId = e.GetString("TimezoneId")
     };

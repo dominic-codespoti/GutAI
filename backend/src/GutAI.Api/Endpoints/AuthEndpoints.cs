@@ -264,6 +264,7 @@ public static class AuthEndpoints
         OnboardingCompleted = u.OnboardingCompleted,
         Allergies = u.Allergies,
         DietaryPreferences = u.DietaryPreferences,
+        GutConditions = u.GutConditions,
         TimezoneId = u.TimezoneId
     };
 }
