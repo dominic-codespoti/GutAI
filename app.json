@@ -7,6 +7,12 @@
     },
     "android": {
       "package": "com.djapplications.gutai"
+    },
+    "ios": {
+      "bundleIdentifier": "com.djapplications.gutai",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     }
   }
 }
