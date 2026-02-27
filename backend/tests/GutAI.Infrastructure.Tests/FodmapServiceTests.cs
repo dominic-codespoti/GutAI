@@ -41,7 +41,7 @@ public class FodmapServiceTests
     public void SingleHighTrigger_Drops25Points()
     {
         var result = _sut.Assess(MakeProduct("Garlic Sauce", "garlic, oil, salt"));
-        result.FodmapScore.Should().Be(65);
+        result.FodmapScore.Should().Be(55);
         result.FodmapRating.Should().Be("Moderate FODMAP");
     }
 
@@ -49,10 +49,10 @@ public class FodmapServiceTests
     public void TwoHighTriggers_Drops50Points()
     {
         var result = _sut.Assess(MakeProduct("Garlic Onion Dip", "onion, garlic, cream"));
-        // onion=High(35), garlic=High(35) — both Fructan, deduped to 1 trigger (-35)
-        // cream → Lactose Moderate trigger (-12)
-        // Total: 100 - 35 - 12 = 53
-        result.FodmapScore.Should().Be(53);
+        // onion=High(45), garlic=High(45) — both Fructan, deduped to 1 trigger (-45)
+        // cream → Lactose Moderate trigger (-15)
+        // Total: 100 - 45 - 15 = 40
+        result.FodmapScore.Should().Be(40);
         result.FodmapRating.Should().Be("High FODMAP");
     }
 
@@ -60,10 +60,10 @@ public class FodmapServiceTests
     public void ManyHighTriggers_ClampedAt0()
     {
         var result = _sut.Assess(MakeProduct("Everything Bagel", "wheat flour, onion, garlic, honey, apple, inulin"));
-        // wheat/onion/garlic/inulin → 1 Fructan trigger (-35)
-        // honey → 1 Excess Fructose trigger (-35)
-        // apple → 1 "Excess Fructose + Sorbitol" trigger (-35) — different SubCategory from honey
-        // Total: 3 unique triggers → score = 100 - 105 = clamped at 0
+        // wheat/onion/garlic/inulin → 1 Fructan trigger (-45)
+        // honey → 1 Excess Fructose trigger (-45)
+        // apple → 1 "Excess Fructose + Sorbitol" trigger (-45) — different SubCategory from honey
+        // Total: 3 unique triggers → score = 100 - 135 = clamped at 0
         result.FodmapScore.Should().Be(0);
         result.FodmapRating.Should().Be("Very High FODMAP");
     }
@@ -72,7 +72,7 @@ public class FodmapServiceTests
     public void ModerateTrigger_Drops12Points()
     {
         var result = _sut.Assess(MakeProduct("Asparagus Soup", "asparagus, water, salt"));
-        result.FodmapScore.Should().Be(88);
+        result.FodmapScore.Should().Be(85);
         result.FodmapRating.Should().Be("Low FODMAP");
     }
 
@@ -411,7 +411,7 @@ public class FodmapServiceTests
     [Fact]
     public void ModerateOnly_SummaryMentionsMonitor()
     {
-        var result = _sut.Assess(MakeProduct(ingredients: "asparagus, oil"));
+        var result = _ut.Assess(MakeProduct(ingredients: "asparagus, oil"));
         result.Summary.Should().Contain("personal experience can vary");
     }
 
@@ -572,39 +572,37 @@ public class FodmapServiceTests
     [Fact]
     public void Score80_IsLowFodmap()
     {
-        // 1 high trigger = 75, so need combo that gives exactly 80
-        // 1 moderate(12) + 1 low(5) = 17, score = 83 → Low FODMAP
+        // 1 moderate(15) + 1 low(5) = 20, score = 80 → Low FODMAP
         var result = _sut.Assess(MakeProduct(ingredients: "asparagus, erythritol"));
-        result.FodmapScore.Should().Be(83);
+        result.FodmapScore.Should().Be(80);
         result.FodmapRating.Should().Be("Low FODMAP");
     }
 
     [Fact]
-    public void Score60To79_IsModerateFodmap()
+    public void Score65To79_IsModerateFodmap()
     {
-        // 1 high = 65 → Moderate (>= 65 threshold)
-        var result = _sut.Assess(MakeProduct(ingredients: "garlic, salt"));
-        result.FodmapScore.Should().Be(65);
+        // 2 moderate triggers (15+15=30), score = 70 → Moderate FODMAP
+        var result = _sut.Assess(MakeProduct(ingredients: "asparagus, cream"));
+        result.FodmapScore.Should().Be(70);
         result.FodmapRating.Should().Be("Moderate FODMAP");
     }
 
     [Fact]
-    public void Score40To59_IsHighFodmap()
+    public void Score40To64_IsHighFodmap()
     {
-        // garlic+onion share Fructan subcategory, so only 1 unique trigger, score=65
-        // Need different subcategories to get into High FODMAP range
-        // garlic(Fructan/High=35) + sorbitol(Sorbitol/High=35) = score 30 → "Very High FODMAP" (<40)
-        // Use garlic(Fructan/High=35) + cream(Lactose/Moderate=12) + avocado(Sorbitol/Moderate=12) = 100-35-12-12=41 → "High FODMAP"
-        var result = _sut.Assess(MakeProduct(ingredients: "garlic, cream, avocado"));
-        result.FodmapScore.Should().Be(41);
+        // 1 high trigger (45), score = 55 → High FODMAP
+        var result = _sut.Assess(MakeProduct(ingredients: "garlic, salt"));
+        result.FodmapScore.Should().Be(55);
         result.FodmapRating.Should().Be("High FODMAP");
     }
 
     [Fact]
     public void ScoreBelow40_IsVeryHighFodmap()
     {
-        var result = _sut.Assess(MakeProduct(ingredients: "garlic, onion, sorbitol, maltitol"));
-        result.FodmapScore.Should().BeLessThan(40);
+        // 1 high (45) + 1 moderate (15) = 60 → still High FODMAP range.
+        // 1 high (45) + 2 moderates (15+15=30) = 75 penalty, score = 25 → "Very High FODMAP" (<40)
+        var result = _sut.Assess(MakeProduct(ingredients: "garlic, cream, avocado"));
+        result.FodmapScore.Should().Be(25);
         result.FodmapRating.Should().Be("Very High FODMAP");
     }
 

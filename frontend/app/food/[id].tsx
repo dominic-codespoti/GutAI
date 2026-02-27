@@ -156,7 +156,7 @@ export default function FoodDetailScreen() {
   const dietWarnings: string[] = [];
   if (product) {
     const name = product.name.toLowerCase();
-    const ingredients = (product.ingredientsText ?? "").toLowerCase();
+    const ingredients = (product.ingredients ?? "").toLowerCase();
     const allergens = (product.allergensTags ?? []).map((a) => a.toLowerCase());
     if (dietPrefs.includes("Vegan") || dietPrefs.includes("Vegetarian")) {
       const animal = [
@@ -203,11 +203,11 @@ export default function FoodDetailScreen() {
       dietWarnings.push("May contain gluten");
     if (
       dietPrefs.includes("Keto") &&
-      product.carbohydrates != null &&
-      product.carbohydrates > 15
+      product.carbs100g != null &&
+      product.carbs100g > 15
     )
       dietWarnings.push(
-        `High carbs for keto (${Math.round(product.carbohydrates)}g per serving)`,
+        `High carbs for keto (${Math.round(product.carbs100g)}g per serving)`,
       );
     if (
       dietPrefs.includes("Low-FODMAP") &&

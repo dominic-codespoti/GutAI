@@ -118,13 +118,6 @@ jobs:
       - name: Print API URL
         run: echo "✅ API deployed to ${{ steps.deploy.outputs.apiUrl }}"
 
-      - name: Set .NET development stack
-        run: |
-          az containerapp update \
-            --name gutai-prod-api \
-            --resource-group ${{ env.AZURE_RG }} \
-            --runtime dotnet
-
   smoke-test:
     name: Smoke Test
     needs: deploy-infra
