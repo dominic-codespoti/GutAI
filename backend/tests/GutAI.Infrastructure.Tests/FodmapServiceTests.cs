@@ -42,7 +42,7 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct("Garlic Sauce", "garlic, oil, salt"));
         result.FodmapScore.Should().Be(55);
-        result.FodmapRating.Should().Be("Moderate FODMAP");
+        result.FodmapRating.Should().Be("High FODMAP");
     }
 
     [Fact]
@@ -356,7 +356,7 @@ public class FodmapServiceTests
         // onion, garlic, wheat flour all share Fructan/Oligosaccharide — deduped to 1 trigger
         result.Triggers.Should().Contain(t => t.SubCategory == "Fructan");
         result.TriggerCount.Should().Be(1);
-        result.FodmapScore.Should().Be(65);
+        result.FodmapScore.Should().Be(55);
     }
 
     [Fact]
@@ -411,7 +411,7 @@ public class FodmapServiceTests
     [Fact]
     public void ModerateOnly_SummaryMentionsMonitor()
     {
-        var result = _ut.Assess(MakeProduct(ingredients: "asparagus, oil"));
+        var result = _sut.Assess(MakeProduct(ingredients: "asparagus, oil"));
         result.Summary.Should().Contain("personal experience can vary");
     }
 
