@@ -219,12 +219,12 @@ public class GlycemicIndexService
         else if (sugarRatio > 0.3m) baseGI += 8;
 
         // Adjust down for fiber
-        if (fiber > 5) baseGI -= 12;
-        else if (fiber > 2) baseGI -= 6;
+        if (fiber > 5) baseGI -= 6;
+        else if (fiber > 2) baseGI -= 3;
 
         // Adjust down for protein and fat (slow gastric emptying)
-        if (protein > 10) baseGI -= 8;
-        else if (protein > 5) baseGI -= 4;
+        if (protein > 10) baseGI -= 4;
+        else if (protein > 5) baseGI -= 2;
 
         if (fat > 10) baseGI -= 6;
         else if (fat > 5) baseGI -= 3;
@@ -248,6 +248,8 @@ public class GlycemicIndexService
     static readonly (string Pattern, GlycemicMatchDto Entry)[] GiDatabase =
     [
         // ── Breads & Bakery ──
+            ("baguette", new() { Food = "Baguette", GI = 75, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Rapid starch digestion" }),
+            ("brioche", new() { Food = "Brioche", GI = 70, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Rich but still high GI" }),
         ("white bread", new() { Food = "White bread", GI = 75, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Refined wheat, rapid digestion" }),
         ("whole wheat bread", new() { Food = "Whole wheat bread", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Despite whole grain, still high GI" }),
         ("wholemeal bread", new() { Food = "Wholemeal bread", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Similar to whole wheat" }),

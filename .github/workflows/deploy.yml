@@ -12,7 +12,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/gutai-api
+  IMAGE_NAME: ${{ github.repository_owner }}/gutai-api
   AZURE_RG: gutai-prod
 
 jobs:
@@ -31,18 +31,26 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.meta.outputs.tags }}
+      image: ${{ steps.image_vars.outputs.full_image }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set outputs
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Lowercase image name
         id: lower
         run: echo "image_name=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+      - name: Set full image output
+        id: image_vars
+        run: echo "full_image=${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}:sha-${{ steps.vars.outputs.sha_short }}" >> $GITHUB_OUTPUT
+
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/metadata-action@v5
@@ -85,8 +93,9 @@ jobs:
       - name: Deploy Bicep
         id: deploy
         run: |
-          IMAGE_NAME_LOWER=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')
-          IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:sha-${GITHUB_SHA::7}"
+          # Use the exact image pushed in the previous job
+          IMAGE="${{ needs.build-and-push.outputs.image }}"
+
           az deployment group create \
             --resource-group ${{ env.AZURE_RG }} \
             --template-file infra/main.bicep \
@@ -97,8 +106,8 @@ jobs:
               calorieNinjasApiKey='${{ secrets.CALORIENINJAS_API_KEY }}' \
               edamamAppId='${{ secrets.EDAMAM_APP_ID }}' \
               edamamAppKey='${{ secrets.EDAMAM_APP_KEY }}' \
-              ghcrUsername='${{ github.actor }}' \
-              ghcrPassword='${{ secrets.GITHUB_TOKEN }}'
+              ghcrUsername='${{ github.repository_owner }}' \
+              ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}'
 
           API_URL=$(az deployment group show \
             --resource-group ${{ env.AZURE_RG }} \
