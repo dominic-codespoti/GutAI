@@ -155,20 +155,38 @@ public class GutRiskService
             }
         }
 
+        // 3b. Whole food name matching — for products with no ingredients list (USDA whole foods)
+        if (string.IsNullOrWhiteSpace(product.Ingredients) && !string.IsNullOrWhiteSpace(product.Name))
+        {
+            var lowerName = product.Name.ToLowerInvariant();
+            var isLactoseFree = MatchUtils.IsLactoseFree(lowerName);
+            var isDairyFree = MatchUtils.IsDairyFree(lowerName);
+            foreach (var (pattern, regex, info) in WholeFoodRiskPatterns)
+            {
+                bool matched = regex != null ? regex.IsMatch(lowerName) : lowerName.Contains(pattern);
+                if (matched && !HasFlag(flags, info.Name))
+                {
+                    if ((isLactoseFree || isDairyFree) && info.Category == "Dairy/Lactose")
+                        continue;
+                    flags.Add(MakeFlag("WholeFoodName", info.ENumber, info.Name, info.Category, info.RiskLevel, info.Explanation));
+                }
+            }
+        }
+
         // 4. Flag high NOVA group
         if (product.NovaGroup >= 4)
             flags.Add(MakeFlag("Processing", $"NOVA-{product.NovaGroup}", "Ultra-Processed Food", "Processing Level", "Medium",
-                "Ultra-processed foods (NOVA 4) are associated with increased gut inflammation, altered microbiome diversity, and higher risk of IBS symptoms."));
+                "Ultra-processed foods (NOVA 4) have been studied for potential links to changes in gut microbiome diversity and digestive comfort."));
 
         // 5. Flag high sodium (>600mg per 100g)
         if (product.Sodium100g > 0.6m)
             flags.Add(MakeFlag("Nutrient", "HIGH-NA", "High Sodium", "Nutrient Concern", "Low",
-                $"Contains {product.Sodium100g * 1000:0}mg sodium per 100g. High sodium intake can affect gut barrier function and microbiome composition."));
+                $"Contains {product.Sodium100g * 1000:0}mg sodium per 100g. Some research has explored links between sodium intake and gut function."));
 
         // 6. Flag very high sugar (>25g per 100g)
         if (product.Sugar100g > 25m)
             flags.Add(MakeFlag("Nutrient", "HIGH-SUGAR", "High Sugar Content", "Nutrient Concern", "Low",
-                $"Contains {product.Sugar100g:0}g sugar per 100g. Excess sugar feeds harmful gut bacteria and can worsen IBS symptoms."));
+                $"Contains {product.Sugar100g:0}g sugar per 100g. High sugar intake has been associated with changes in gut bacteria composition."));
 
         // 7. Stacking penalties
         var emulsifierCount = flags.Count(f => f.Category is "Emulsifier" or "Emulsifier/Thickener");
@@ -335,9 +353,9 @@ public class GutRiskService
         var categories = flags.Select(f => f.Category).Distinct().ToList();
 
         if (highCount > 0)
-            return $"Contains {highCount} high-risk gut irritant(s) including {string.Join(", ", flags.Where(f => f.RiskLevel == "High").Select(f => f.Name).Take(3))}. Consider alternatives if you have IBS, IBD, or gut sensitivity.";
+            return $"Contains {highCount} ingredient(s) of higher concern including {string.Join(", ", flags.Where(f => f.RiskLevel == "High").Select(f => f.Name).Take(3))}. Individuals with digestive sensitivities may want to explore alternatives.";
 
-        return $"Contains {flags.Count} item(s) of concern in categories: {string.Join(", ", categories.Take(3))}. Monitor for symptoms if you have gut sensitivity.";
+        return $"Contains {flags.Count} item(s) of note in categories: {string.Join(", ", categories.Take(3))}. Individuals with digestive sensitivities may want to be mindful.";
     }
 
     static string ComputeConfidence(List<GutRiskFlagDto> flags)
@@ -365,9 +383,9 @@ public class GutRiskService
     {
         // ── Emulsifiers (damage mucus layer, increase intestinal permeability) ──
         ["E433"] = new("E433", "Polysorbate 80", "Emulsifier", "High",
-            "Directly damages the gut mucus layer, promotes intestinal inflammation, and is linked to increased risk of Crohn's disease and metabolic syndrome in animal studies."),
+            "Some research, primarily in animal models, suggests potential effects on the gut mucus layer and intestinal inflammation. Human evidence is still evolving."),
         ["E466"] = new("E466", "Carboxymethyl Cellulose (CMC)", "Emulsifier", "High",
-            "Erodes the protective gut mucus barrier, promotes bacterial overgrowth in the mucus layer, and triggers low-grade intestinal inflammation."),
+            "Some studies have explored potential effects on the gut mucus barrier and bacterial balance. Research is ongoing."),
         ["E471"] = new("E471", "Mono- and Diglycerides", "Emulsifier", "Medium",
             "Common emulsifier that may affect gut barrier integrity at high intake levels."),
         ["E472E"] = new("E472E", "DATEM", "Emulsifier", "Medium",
@@ -377,9 +395,9 @@ public class GutRiskService
         ["E436"] = new("E436", "Polysorbate 65", "Emulsifier", "Medium",
             "Polysorbate family emulsifier with potential gut mucus disruption."),
         ["E407"] = new("E407", "Carrageenan", "Emulsifier/Thickener", "High",
-            "Triggers intestinal inflammation even in small amounts. Widely used in research to induce gut inflammation in animal models. Linked to ulcerative colitis flares."),
+            "Has been studied for potential gut effects. Some animal research has explored its role in intestinal inflammation, though human relevance is debated."),
         ["E407A"] = new("E407A", "Processed Eucheuma Seaweed (PES)", "Emulsifier/Thickener", "High",
-            "Semi-refined carrageenan with similar inflammatory properties to E407."),
+            "Semi-refined carrageenan — studied for similar potential effects as E407."),
         ["E415"] = new("E415", "Xanthan Gum", "Thickener", "Low",
             "Generally well-tolerated but can cause bloating and gas in high amounts, especially in people with SIBO."),
         ["E410"] = new("E410", "Locust Bean Gum", "Thickener", "Low",
@@ -411,15 +429,15 @@ public class GutRiskService
 
         // ── Sugar Alcohols (high FODMAP — osmotic diarrhea, bloating, gas) ──
         ["E420"] = new("E420", "Sorbitol", "Sugar Alcohol", "High",
-            "High-FODMAP polyol. Poorly absorbed, draws water into the intestine causing bloating, cramps, and osmotic diarrhea. Major IBS trigger."),
+            "High-FODMAP polyol. Poorly absorbed, draws water into the intestine which may cause bloating, cramps, and diarrhea. Frequently reported as a source of discomfort for FODMAP-sensitive individuals."),
         ["E421"] = new("E421", "Mannitol", "Sugar Alcohol", "High",
-            "High-FODMAP polyol. Causes significant bloating and diarrhea in IBS patients even in small amounts (>0.5g)."),
+            "High-FODMAP polyol. May cause significant bloating and diarrhea, particularly at higher doses (>0.5g)."),
         ["E953"] = new("E953", "Isomalt", "Sugar Alcohol", "High",
-            "High-FODMAP. Causes dose-dependent GI distress — bloating, flatulence, and diarrhea."),
+            "High-FODMAP. May cause dose-dependent GI distress — bloating, flatulence, and diarrhea."),
         ["E965"] = new("E965", "Maltitol", "Sugar Alcohol", "High",
-            "High-FODMAP. One of the worst sugar alcohols for gut symptoms. Causes severe bloating and diarrhea in sensitive individuals."),
+            "High-FODMAP. One of the less well-tolerated sugar alcohols. May cause bloating and diarrhea, particularly at higher doses."),
         ["E967"] = new("E967", "Xylitol", "Sugar Alcohol", "High",
-            "FODMAP polyol that causes bloating, gas, and diarrhea. Dose-dependent — symptoms common above 10g."),
+            "FODMAP polyol that may cause bloating, gas, and diarrhea. Dose-dependent — symptoms commonly reported above 10g."),
         ["E968"] = new("E968", "Erythritol", "Sugar Alcohol", "Low",
             "Best-tolerated sugar alcohol (90% absorbed in small intestine), but can still cause nausea and bloating at high doses."),
         ["E966"] = new("E966", "Lactitol", "Sugar Alcohol", "High",
@@ -453,7 +471,7 @@ public class GutRiskService
         ["E223"] = new("E223", "Sodium Metabisulfite", "Preservative/Sulfite", "Medium",
             "Sulfite preservative used in dried fruits and wine. Common trigger for GI symptoms in sensitive people."),
         ["E250"] = new("E250", "Sodium Nitrite", "Preservative", "Medium",
-            "Used in processed meats. Associated with increased intestinal inflammation and altered gut microbiome. May form carcinogenic nitrosamines."),
+            "Used in processed meats. Some research has explored potential links to intestinal changes and nitrosamine formation."),
         ["E252"] = new("E252", "Potassium Nitrate", "Preservative", "Medium",
             "Converts to nitrite in the body. Similar gut inflammation concerns as E250."),
 
@@ -463,9 +481,9 @@ public class GutRiskService
         ["E110"] = new("E110", "Sunset Yellow", "Artificial Colorant", "Low",
             "Azo dye associated with increased intestinal permeability in some studies."),
         ["E129"] = new("E129", "Allura Red AC", "Artificial Colorant", "Medium",
-            "Common food dye shown to promote intestinal inflammation and increase susceptibility to colitis in animal models."),
+            "Some animal studies have explored potential effects on intestinal inflammation."),
         ["E171"] = new("E171", "Titanium Dioxide", "Colorant/Whitener", "High",
-            "Nanoparticles accumulate in gut tissue, disrupt microbiome, and promote intestinal inflammation. Banned in the EU since 2022."),
+            "Some research has raised concerns about nanoparticle accumulation and potential gut effects. Banned in the EU since 2022."),
 
         // ── Phosphate Additives (gut & kidney stress) ──
         ["E338"] = new("E338", "Phosphoric Acid", "Acidity Regulator", "Low",
@@ -892,6 +910,65 @@ public class GutRiskService
             "High capsaicin content. Can irritate gut lining and accelerate transit — common IBS trigger.")),
         ("hot pepper", null, new("", "Hot Pepper", "Spicy/Irritant", "Low",
             "Contains capsaicin which can irritate the gut lining and accelerate transit.")),
+    ];
+
+    static readonly (string pattern, Regex? regex, AdditiveInfo info)[] WholeFoodRiskPatterns =
+    [
+        // Fructan sources
+        ("garlic", null, new("", "Garlic", "High-FODMAP Ingredient", "High",
+            "Garlic is very high in fructans — one of the most common FODMAP triggers.")),
+        ("onion", null, new("", "Onion", "High-FODMAP Ingredient", "High",
+            "Onion is very high in fructans — one of the most common IBS triggers.")),
+        ("shallot", null, new("", "Shallot", "High-FODMAP Ingredient", "Medium",
+            "Shallots contain fructans. Related to onion — common IBS trigger.")),
+        ("leek", null, new("", "Leek", "High-FODMAP Ingredient", "Medium",
+            "Leeks contain fructans. Common trigger for bloating and gas.")),
+        ("kimchi", null, new("", "Kimchi", "High-FODMAP Ingredient", "Medium",
+            "Kimchi contains garlic and onion — both high in fructans.")),
+        ("bread", null, new("", "Bread", "High-FODMAP Ingredient", "Medium",
+            "Most bread is wheat-based and contains fructans.")),
+
+        // GOS sources
+        ("lentil", null, new("", "Lentils", "GOS Source", "Medium",
+            "Lentils are high in galacto-oligosaccharides (GOS). Common cause of bloating and gas.")),
+        ("chickpea", null, new("", "Chickpeas", "GOS Source", "Medium",
+            "Chickpeas are high in GOS. Common cause of bloating and gas.")),
+        ("black bean", null, new("", "Black Beans", "GOS Source", "Medium",
+            "Black beans are high in GOS. Common trigger for gas and bloating.")),
+        ("kidney bean", null, new("", "Kidney Beans", "GOS Source", "Medium",
+            "Kidney beans are high in GOS. Common trigger for gas and bloating.")),
+
+        // Fructose sources
+        ("honey", null, new("", "Honey", "Fructose Source", "Medium",
+            "Honey is high in excess fructose. Can overwhelm absorption capacity.")),
+        ("watermelon", null, new("", "Watermelon", "Fructose Source", "Low",
+            "Watermelon contains excess fructose and mannitol. Dual FODMAP trigger.")),
+        ("mango", null, new("", "Mango", "Fructose Source", "Low",
+            "Mango contains excess fructose. May trigger symptoms at higher servings.")),
+
+        // Polyol sources
+        ("mushroom", null, new("", "Mushroom", "Polyol Source", "Medium",
+            "Most mushrooms are high in mannitol (polyol). Common FODMAP trigger.")),
+        ("cauliflower", null, new("", "Cauliflower", "Polyol Source", "Medium",
+            "Cauliflower contains significant mannitol (polyol).")),
+        ("cherry", new Regex(@"\bcherr(y|ies)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), new("", "Cherry", "Polyol Source", "Medium",
+            "Cherries contain sorbitol and excess fructose. Dual FODMAP trigger.")),
+        ("blackberry", null, new("", "Blackberry", "Polyol Source", "Low",
+            "Blackberries contain moderate polyols.")),
+        ("blackberries", null, new("", "Blackberries", "Polyol Source", "Low",
+            "Blackberries contain moderate polyols.")),
+        ("avocado", null, new("", "Avocado", "Polyol Source", "Low",
+            "Avocado contains sorbitol. Dose-dependent — small amounts often tolerated.")),
+        ("apple", MatchUtils.WordBoundary("apple"), new("", "Apple", "Polyol Source", "Medium",
+            "Apples contain both excess fructose and sorbitol — double FODMAP load.")),
+        ("pear", MatchUtils.WordBoundary("pear"), new("", "Pear", "Polyol Source", "Medium",
+            "Pears have very high excess fructose and sorbitol.")),
+        ("peach", null, new("", "Peach", "Polyol Source", "Low",
+            "Peaches contain moderate sorbitol.")),
+
+        // Dairy / Lactose
+        ("milk", new Regex(@"\bmilk\b(?! thistle)", RegexOptions.Compiled | RegexOptions.IgnoreCase), new("", "Milk", "Dairy/Lactose", "Medium",
+            "Milk contains lactose — trigger for lactose-intolerant individuals.")),
     ];
 
     record AdditiveInfo(string ENumber, string Name, string Category, string RiskLevel, string Explanation);

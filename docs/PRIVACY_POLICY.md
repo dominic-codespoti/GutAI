@@ -132,7 +132,7 @@ We may update this privacy policy from time to time. Changes will be reflected b
 
 If you have questions about this privacy policy or your data, contact us at:
 
-**Email:** privacy@gutai.app
+**Email:** support@workoutquestapp.com
 
 ---
 

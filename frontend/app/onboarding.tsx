@@ -28,6 +28,7 @@ import {
   spacing,
   fonts,
 } from "../src/utils/theme";
+import { SafeScreen } from "../components/SafeScreen";
 
 export default function OnboardingScreen() {
   const { setUser } = useAuthStore();
@@ -111,7 +112,7 @@ export default function OnboardingScreen() {
 
       const { data } = await userApi.getProfile();
       setUser(data);
-      toast.success("Welcome to GutAI! 🎉");
+      toast.success("Welcome to GutLens! 🎉");
       router.replace("/(tabs)");
     } catch {
       toast.error("Setup failed, you can update later in Profile");
@@ -146,7 +147,7 @@ export default function OnboardingScreen() {
           marginBottom: spacing.sm,
         }}
       >
-        Welcome to GutAI
+        Welcome to GutLens
       </Text>
       <Text
         style={{
@@ -343,115 +344,119 @@ export default function OnboardingScreen() {
   ];
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.xxl, paddingBottom: 100 }}
-    >
-      {/* Progress dots */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "center",
-          marginBottom: spacing.xxxl,
-          gap: spacing.sm,
-        }}
+    <SafeScreen>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        contentContainerStyle={{ padding: spacing.xxl, paddingBottom: 100 }}
       >
-        {steps.map((_, i) => (
-          <View
-            key={i}
-            style={{
-              width: i === step ? 24 : 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor:
-                i === step
-                  ? colors.primaryLight
-                  : i < step
-                    ? colors.primaryBorder
-                    : colors.border,
-            }}
-          />
-        ))}
-      </View>
-
-      {steps[step]}
-
-      {/* Navigation */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          marginTop: spacing.xxxl,
-        }}
-      >
-        {step > 0 ? (
-          <TouchableOpacity
-            onPress={() => setStep(step - 1)}
-            style={{
-              paddingHorizontal: spacing.xxl,
-              paddingVertical: spacing.md,
-            }}
-          >
-            <Text
+        {/* Progress dots */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "center",
+            marginBottom: spacing.xxxl,
+            gap: spacing.sm,
+          }}
+        >
+          {steps.map((_, i) => (
+            <View
+              key={i}
               style={{
-                color: colors.textMuted,
-                fontWeight: "600",
-                fontSize: 16,
+                width: i === step ? 24 : 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor:
+                  i === step
+                    ? colors.primaryLight
+                    : i < step
+                      ? colors.primaryBorder
+                      : colors.border,
+              }}
+            />
+          ))}
+        </View>
+
+        {steps[step]}
+
+        {/* Navigation */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            marginTop: spacing.xxxl,
+          }}
+        >
+          {step > 0 ? (
+            <TouchableOpacity
+              onPress={() => setStep(step - 1)}
+              style={{
+                paddingHorizontal: spacing.xxl,
+                paddingVertical: spacing.md,
               }}
             >
-              Back
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <View />
-        )}
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontWeight: "600",
+                  fontSize: 16,
+                }}
+              >
+                Back
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View />
+          )}
 
-        {step < steps.length - 1 ? (
-          <TouchableOpacity
-            onPress={() => setStep(step + 1)}
-            style={{
-              backgroundColor: colors.primaryLight,
-              paddingHorizontal: 28,
-              paddingVertical: spacing.md,
-              borderRadius: radius.md,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-              Next
-            </Text>
-          </TouchableOpacity>
-        ) : (
+          {step < steps.length - 1 ? (
+            <TouchableOpacity
+              onPress={() => setStep(step + 1)}
+              style={{
+                backgroundColor: colors.primaryLight,
+                paddingHorizontal: 28,
+                paddingVertical: spacing.md,
+                borderRadius: radius.md,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+                Next
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={finish}
+              disabled={saving}
+              style={{
+                backgroundColor: colors.primaryLight,
+                paddingHorizontal: 28,
+                paddingVertical: spacing.md,
+                borderRadius: radius.md,
+              }}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text
+                  style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}
+                >
+                  Get Started
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {step === 0 && (
           <TouchableOpacity
             onPress={finish}
-            disabled={saving}
-            style={{
-              backgroundColor: colors.primaryLight,
-              paddingHorizontal: 28,
-              paddingVertical: spacing.md,
-              borderRadius: radius.md,
-            }}
+            style={{ alignItems: "center", marginTop: spacing.lg }}
           >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                Get Started
-              </Text>
-            )}
+            <Text style={{ color: colors.textMuted, fontSize: 14 }}>
+              Skip setup →
+            </Text>
           </TouchableOpacity>
         )}
-      </View>
-
-      {step === 0 && (
-        <TouchableOpacity
-          onPress={finish}
-          style={{ alignItems: "center", marginTop: spacing.lg }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 14 }}>
-            Skip setup →
-          </Text>
-        </TouchableOpacity>
-      )}
-    </ScrollView>
+      </ScrollView>
+    </SafeScreen>
   );
 }

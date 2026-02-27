@@ -1,0 +1,3108 @@
+[
+  {
+    "search_term": "banana",
+    "actual_name": "Banana and chocolate bar raw",
+    "brand": null,
+    "id": "387dc0a5-d536-4d84-b0e2-e79790623363",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 100,
+      "protein": 0.03,
+      "carbs": 57,
+      "fat": 9.9,
+      "fiber": 7.7,
+      "sugar": 52,
+      "sodium": 2.4
+    },
+    "novaGroup": null,
+    "nutriScore": "unknown",
+    "gutRisk": {
+      "score": 97,
+      "rating": "Good",
+      "flagCount": 2,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 2,
+      "confidence": "High",
+      "summary": "Contains 2 item(s) of concern in categories: Nutrient Concern. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "High Sodium",
+          "category": "Nutrient Concern",
+          "risk": "Low",
+          "fodmapClass": ""
+        },
+        {
+          "name": "High Sugar Content",
+          "category": "Nutrient Concern",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 46,
+      "giCategory": "Low",
+      "gl": 26.2,
+      "glCategory": "High",
+      "matchCount": 2,
+      "matches": [
+        {
+          "food": "Chocolate",
+          "gi": 40,
+          "source": "Sydney GI Tables"
+        },
+        {
+          "food": "Banana",
+          "gi": 51,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "apple",
+    "actual_name": "Appletiser - 100% Apple Juice",
+    "brand": "Appletiser",
+    "id": "03f9636d-d0e7-4d71-8d51-b87f64234b52",
+    "ingredients": "Carbonated Apple Juice from Concentrate (100%)",
+    "nutrition": {
+      "calories": 46,
+      "protein": 0,
+      "carbs": 10.8,
+      "fat": 0,
+      "fiber": 0,
+      "sugar": 10.2,
+      "sodium": 0
+    },
+    "novaGroup": null,
+    "nutriScore": "e",
+    "gutRisk": {
+      "score": 82,
+      "rating": "Good",
+      "flagCount": 2,
+      "highRisk": 0,
+      "medRisk": 1,
+      "lowRisk": 1,
+      "confidence": "Medium",
+      "summary": "Contains 2 item(s) of concern in categories: Fructose Source. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Apple Juice",
+          "category": "Fructose Source",
+          "risk": "Medium",
+          "fodmapClass": "ExcessFructose"
+        },
+        {
+          "name": "Apple",
+          "category": "Fructose Source",
+          "risk": "Low",
+          "fodmapClass": "ExcessFructose"
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 50,
+      "rating": "High FODMAP",
+      "triggerCount": 2,
+      "highCount": 2,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Monosaccharide",
+        "Monosaccharide + Polyol"
+      ],
+      "summary": "Contains 2 high-FODMAP trigger(s): Apple Juice (Excess Fructose), Apple (Fructose + Sorbitol). FODMAP categories affected: Monosaccharide, Monosaccharide + Polyol. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Apple Juice (Excess Fructose)",
+          "category": "Monosaccharide",
+          "severity": "High",
+          "sub": "Excess Fructose"
+        },
+        {
+          "name": "Apple (Fructose + Sorbitol)",
+          "category": "Monosaccharide + Polyol",
+          "severity": "High",
+          "sub": "Excess Fructose + Sorbitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 41,
+      "giCategory": "Low",
+      "gl": 4.4,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Apple juice",
+          "gi": 41,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "avocado",
+    "actual_name": "Avocados, raw, Florida",
+    "brand": null,
+    "id": "68e6d91a-d529-4319-8143-dd3528410eca",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 120,
+      "protein": 2.23,
+      "carbs": 7.82,
+      "fat": 10.06,
+      "fiber": 5.6,
+      "sugar": 2.42,
+      "sodium": 0.002
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Polyol"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Polyol. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Avocado (Sorbitol)",
+          "category": "Polyol",
+          "severity": "Moderate",
+          "sub": "Sorbitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 45,
+      "giCategory": "Low",
+      "gl": 3.5,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Avocados, raw, Florida",
+          "gi": 45,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "blueberries",
+    "actual_name": "Blueberries, raw",
+    "brand": null,
+    "id": "291ff26f-1ea2-4556-a419-340e5e310b3d",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 57,
+      "protein": 0.74,
+      "carbs": 14.49,
+      "fat": 0.33,
+      "fiber": 2.4,
+      "sugar": 9.96,
+      "sodium": 0.001
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 53,
+      "giCategory": "Low",
+      "gl": 7.7,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Blueberry",
+          "gi": 53,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "strawberries",
+    "actual_name": "Strawberries, raw",
+    "brand": null,
+    "id": "b740cc59-97f4-488c-aae5-8c01e779449f",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 31,
+      "protein": 0.64,
+      "carbs": 7.63,
+      "fat": 0.22,
+      "fiber": 1.8,
+      "sugar": 0,
+      "sodium": 0.01
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 40,
+      "giCategory": "Low",
+      "gl": 3.1,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Strawberry",
+          "gi": 40,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "mango",
+    "actual_name": "Mangos, raw",
+    "brand": null,
+    "id": "2bd8e223-4487-451b-99bd-e5ffa2b0ba48",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 60,
+      "protein": 0.82,
+      "carbs": 14.98,
+      "fat": 0.38,
+      "fiber": 1.6,
+      "sugar": 13.66,
+      "sodium": 0.001
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Monosaccharide"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Monosaccharide. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Mango (Excess Fructose)",
+          "category": "Monosaccharide",
+          "severity": "Moderate",
+          "sub": "Excess Fructose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 51,
+      "giCategory": "Low",
+      "gl": 7.6,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Mango",
+          "gi": 51,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "watermelon",
+    "actual_name": "Watermelon, raw",
+    "brand": null,
+    "id": "58d6aae5-d211-415b-8b29-5c2eda9cb442",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 30,
+      "protein": 0.61,
+      "carbs": 7.55,
+      "fat": 0.15,
+      "fiber": 0.4,
+      "sugar": 6.2,
+      "sodium": 0.001
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Monosaccharide + Polyol"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Watermelon (Fructose + Mannitol). FODMAP categories affected: Monosaccharide + Polyol. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Watermelon (Fructose + Mannitol)",
+          "category": "Monosaccharide + Polyol",
+          "severity": "High",
+          "sub": "Excess Fructose + Mannitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 76,
+      "giCategory": "High",
+      "gl": 5.7,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Watermelon",
+          "gi": 76,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "High GI foods cause rapid blood sugar spikes which can trigger insulin surges, promote inflammation, and feed pathogenic gut bacteria."
+    }
+  },
+  {
+    "search_term": "orange",
+    "actual_name": "Orange peel, raw",
+    "brand": null,
+    "id": "06e6370e-ff93-483a-bc80-785cd00c19d1",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 97,
+      "protein": 1.5,
+      "carbs": 25.0,
+      "fat": 0.2,
+      "fiber": 10.6,
+      "sugar": 0,
+      "sodium": 0.003
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 43,
+      "giCategory": "Low",
+      "gl": 10.8,
+      "glCategory": "Medium",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Orange",
+          "gi": 43,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "grapes",
+    "actual_name": "Grapes, muscadine, raw",
+    "brand": null,
+    "id": "dded4d98-d4ab-4dfc-9879-92712ffc9bf5",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 57,
+      "protein": 0.81,
+      "carbs": 13.93,
+      "fat": 0.47,
+      "fiber": 3.9,
+      "sugar": 0,
+      "sodium": 0.001
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 46,
+      "giCategory": "Low",
+      "gl": 6.4,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Grapes",
+          "gi": 46,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "cherries",
+    "actual_name": "Cherries, sweet, raw",
+    "brand": null,
+    "id": "5139b8ea-c2bd-4355-b8b4-635a5003e88e",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 63,
+      "protein": 1.06,
+      "carbs": 16.01,
+      "fat": 0.2,
+      "fiber": 2.1,
+      "sugar": 12.82,
+      "sodium": 0
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 64,
+      "giCategory": "Medium",
+      "gl": 10.2,
+      "glCategory": "Medium",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Cherries, sweet, raw",
+          "gi": 64,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  },
+  {
+    "search_term": "broccoli",
+    "actual_name": "Broccoli, raw",
+    "brand": null,
+    "id": "a917a7d3-2778-45c5-a320-57f298a78174",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 32,
+      "protein": 2.57,
+      "carbs": 6.29,
+      "fat": 0.34,
+      "fiber": 2.4,
+      "sugar": 0,
+      "sodium": 0.036
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 49,
+      "giCategory": "Low",
+      "gl": 3.1,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Broccoli, raw",
+          "gi": 49,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "spinach",
+    "actual_name": "Spinach, raw",
+    "brand": null,
+    "id": "baf50e04-0b21-45c6-8316-48f02195b089",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 23,
+      "protein": 2.86,
+      "carbs": 3.63,
+      "fat": 0.39,
+      "fiber": 2.2,
+      "sugar": 0.42,
+      "sodium": 0.079
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 49,
+      "giCategory": "Low",
+      "gl": 1.8,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Spinach, raw",
+          "gi": 49,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "sweet potato",
+    "actual_name": "Sweet potato leaves, raw",
+    "brand": null,
+    "id": "13ff25ec-8431-4e4a-9054-0ed8ab5a6811",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 42,
+      "protein": 2.49,
+      "carbs": 8.82,
+      "fat": 0.51,
+      "fiber": 5.3,
+      "sugar": 0,
+      "sodium": 0.006
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Polyol"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Polyol. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Sweet Potato (Mannitol)",
+          "category": "Polyol",
+          "severity": "Moderate",
+          "sub": "Mannitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 63,
+      "giCategory": "Medium",
+      "gl": 5.6,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Sweet potato",
+          "gi": 63,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "garlic",
+    "actual_name": "Garlic, raw",
+    "brand": null,
+    "id": "d18d5cc7-9230-403e-b8c5-98e6e595fe0b",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 143,
+      "protein": 6.62,
+      "carbs": 28.2,
+      "fat": 0.38,
+      "fiber": 2.7,
+      "sugar": 0,
+      "sodium": 0
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Garlic (Fructan). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Garlic (Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "Fructan"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 45,
+      "giCategory": "Low",
+      "gl": 12.7,
+      "glCategory": "Medium",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Garlic, raw",
+          "gi": 45,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "onion",
+    "actual_name": "Onions, raw",
+    "brand": null,
+    "id": "dab272ef-5ab5-4e8c-997f-a20356210eb3",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 40,
+      "protein": 1.1,
+      "carbs": 9.34,
+      "fat": 0.1,
+      "fiber": 1.7,
+      "sugar": 4.24,
+      "sodium": 0.004
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Onion (Fructan). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Onion (Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "Fructan"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 63,
+      "giCategory": "Medium",
+      "gl": 5.9,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Onions, raw",
+          "gi": 63,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  },
+  {
+    "food": "mushroom",
+    "error": "HTTPConnectionPool(host='localhost', port=5000): Read timed out. (read timeout=30)"
+  },
+  {
+    "search_term": "cauliflower",
+    "actual_name": "Cauliflower, raw",
+    "brand": null,
+    "id": "cb8e802c-ef89-4ce5-b850-baa932246cf7",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 25,
+      "protein": 1.92,
+      "carbs": 4.97,
+      "fat": 0.28,
+      "fiber": 2.0,
+      "sugar": 1.91,
+      "sodium": 0.03
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Polyol"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Polyol. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Cauliflower (Mannitol)",
+          "category": "Polyol",
+          "severity": "Moderate",
+          "sub": "Mannitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 63,
+      "giCategory": "Medium",
+      "gl": 3.1,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Cauliflower, raw",
+          "gi": 63,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  },
+  {
+    "search_term": "kale",
+    "actual_name": "Kale, raw",
+    "brand": null,
+    "id": "020a9ed2-3589-4f40-9982-aa276b4d304a",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 35,
+      "protein": 2.92,
+      "carbs": 4.42,
+      "fat": 1.49,
+      "fiber": 4.1,
+      "sugar": 0,
+      "sodium": 0.053
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 49,
+      "giCategory": "Low",
+      "gl": 2.2,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Kale, raw",
+          "gi": 49,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "carrot",
+    "actual_name": "Carrots, raw",
+    "brand": null,
+    "id": "c1f1228c-8f0d-44be-887c-78dcc5f28a55",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 41,
+      "protein": 0.93,
+      "carbs": 9.58,
+      "fat": 0.24,
+      "fiber": 2.8,
+      "sugar": 4.74,
+      "sodium": 0.069
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 57,
+      "giCategory": "Medium",
+      "gl": 5.5,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Carrots, raw",
+          "gi": 57,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  },
+  {
+    "search_term": "celery",
+    "actual_name": "Celery, raw",
+    "brand": null,
+    "id": "e6cc80d7-410f-4e27-941e-71c9ca58562e",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 14,
+      "protein": 0.69,
+      "carbs": 2.97,
+      "fat": 0.17,
+      "fiber": 1.6,
+      "sugar": 1.34,
+      "sodium": 0.08
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Polyol"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Polyol. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Celery (Mannitol)",
+          "category": "Polyol",
+          "severity": "Moderate",
+          "sub": "Mannitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 63,
+      "giCategory": "Medium",
+      "gl": 1.9,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Celery, raw",
+          "gi": 63,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  },
+  {
+    "search_term": "chicken breast",
+    "actual_name": "Chicken breast, roll, oven-roasted",
+    "brand": null,
+    "id": "865ce3dd-8a12-4f2b-95f0-b345dbd61c47",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 134,
+      "protein": 14.59,
+      "carbs": 1.79,
+      "fat": 7.65,
+      "fiber": 0,
+      "sugar": 0.43,
+      "sodium": 0.883
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 96,
+      "rating": "Good",
+      "flagCount": 1,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 1,
+      "confidence": "High",
+      "summary": "Contains 1 item(s) of concern in categories: Nutrient Concern. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "High Sodium",
+          "category": "Nutrient Concern",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 44,
+      "giCategory": "Low",
+      "gl": 0.8,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Chicken breast, roll, oven-roasted",
+          "gi": 44,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "salmon",
+    "actual_name": "Salmon nuggets, cooked as purchased, unheated",
+    "brand": null,
+    "id": "6a7eb97d-72dd-4aa9-8111-ab2c685a0fb1",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 189,
+      "protein": 11.97,
+      "carbs": 11.85,
+      "fat": 10.43,
+      "fiber": 0,
+      "sugar": 0,
+      "sodium": 0.167
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 41,
+      "giCategory": "Low",
+      "gl": 4.9,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Salmon nuggets, cooked as purchased, unheated",
+          "gi": 41,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "eggs",
+    "actual_name": "Eggs, Grade A, Large, egg yolk",
+    "brand": null,
+    "id": "425e664a-b908-426c-9f40-47683205c9b5",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 334,
+      "protein": 16.2,
+      "carbs": 1.02,
+      "fat": 28.8,
+      "fiber": 0,
+      "sugar": 0,
+      "sodium": 0
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 41,
+      "giCategory": "Low",
+      "gl": 0.4,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Eggs, Grade A, Large, egg yolk",
+          "gi": 41,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "ground beef",
+    "actual_name": "Beef, grass-fed, ground, raw",
+    "brand": null,
+    "id": "912f0f2e-d450-4ef0-a884-7503b0d76cd7",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 198,
+      "protein": 19.42,
+      "carbs": 0,
+      "fat": 12.73,
+      "fiber": 0,
+      "sugar": 0,
+      "sodium": 0.068
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": null,
+      "giCategory": "Unknown",
+      "gl": null,
+      "glCategory": "Unknown",
+      "matchCount": 0,
+      "matches": [],
+      "summary": "Insufficient data to estimate glycemic impact."
+    }
+  },
+  {
+    "search_term": "tofu",
+    "actual_name": "Tofu yogurt",
+    "brand": null,
+    "id": "98e02579-514c-4779-8ab5-050252f25008",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 94,
+      "protein": 3.5,
+      "carbs": 15.96,
+      "fat": 1.8,
+      "fiber": 0.2,
+      "sugar": 1.24,
+      "sodium": 0.035
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Disaccharide"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Disaccharide. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Yogurt (Lactose)",
+          "category": "Disaccharide",
+          "severity": "Moderate",
+          "sub": "Lactose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 36,
+      "giCategory": "Low",
+      "gl": 5.7,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Yogurt (plain)",
+          "gi": 36,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "white rice",
+    "actual_name": "Blue Dragon - White Rice Vinegar imp",
+    "brand": "Blue Dragon",
+    "id": "69840863-414a-4204-b7ff-68ed39601728",
+    "ingredients": "white rice vinegar 100%",
+    "nutrition": {
+      "calories": 15,
+      "protein": 0.5,
+      "carbs": 0.5,
+      "fat": 0.5,
+      "fiber": 0,
+      "sugar": 0,
+      "sodium": 0.004
+    },
+    "novaGroup": null,
+    "nutriScore": "not-applicable",
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 73,
+      "giCategory": "High",
+      "gl": 0.4,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "White rice",
+          "gi": 73,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "High GI foods cause rapid blood sugar spikes which can trigger insulin surges, promote inflammation, and feed pathogenic gut bacteria."
+    }
+  },
+  {
+    "search_term": "oatmeal",
+    "actual_name": "Bread, oatmeal",
+    "brand": null,
+    "id": "994124d0-7a8b-49b7-9aee-8fe1d6ae815d",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 269,
+      "protein": 8.4,
+      "carbs": 48.5,
+      "fat": 4.4,
+      "fiber": 4.0,
+      "sugar": 8.14,
+      "sodium": 0.447
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 55,
+      "giCategory": "Low",
+      "gl": 26.7,
+      "glCategory": "High",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Oatmeal",
+          "gi": 55,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "search_term": "quinoa",
+    "actual_name": "Quinoa, cooked",
+    "brand": null,
+    "id": "28c7f43f-e8d7-4071-8d94-9e796a8e125f",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 120,
+      "protein": 4.4,
+      "carbs": 21.3,
+      "fat": 1.92,
+      "fiber": 2.8,
+      "sugar": 0.87,
+      "sodium": 0.007
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 53,
+      "giCategory": "Low",
+      "gl": 11.3,
+      "glCategory": "Medium",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Quinoa",
+          "gi": 53,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "lentils",
+    "actual_name": "Lentils, raw",
+    "brand": null,
+    "id": "65fc9b3e-51fe-410e-a144-baf1e94eff84",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 352,
+      "protein": 24.63,
+      "carbs": 63.35,
+      "fat": 1.06,
+      "fiber": 10.7,
+      "sugar": 2.03,
+      "sodium": 0.006
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Lentil (GOS). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Lentil (GOS)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "GOS"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 32,
+      "giCategory": "Low",
+      "gl": 20.3,
+      "glCategory": "High",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Lentils",
+          "gi": 32,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "chickpeas",
+    "actual_name": "Chickpea flour (besan)",
+    "brand": null,
+    "id": "e4972a68-6673-4c87-a31c-e9fd0142f434",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 387,
+      "protein": 22.39,
+      "carbs": 57.82,
+      "fat": 6.69,
+      "fiber": 10.8,
+      "sugar": 10.85,
+      "sodium": 0.064
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Chickpea (GOS). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Chickpea (GOS)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "GOS"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 28,
+      "giCategory": "Low",
+      "gl": 16.2,
+      "glCategory": "Medium",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Chickpeas",
+          "gi": 28,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "greek yogurt",
+    "actual_name": "Brooklea - Authentic Greek Yogurt",
+    "brand": "Brooklea",
+    "id": "29e9a4b0-daed-4ef5-8fe4-6dfe9bc8d2b8",
+    "ingredients": "Milk",
+    "nutrition": {
+      "calories": 57,
+      "protein": 10.4,
+      "carbs": 3.9,
+      "fat": 0,
+      "fiber": 0,
+      "sugar": 3.5,
+      "sodium": 9e-05
+    },
+    "novaGroup": 1,
+    "nutriScore": "a",
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Disaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Milk (Lactose). FODMAP categories affected: Disaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Milk (Lactose)",
+          "category": "Disaccharide",
+          "severity": "High",
+          "sub": "Lactose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 32,
+      "giCategory": "Low",
+      "gl": 1.2,
+      "glCategory": "Low",
+      "matchCount": 2,
+      "matches": [
+        {
+          "food": "Yogurt (plain)",
+          "gi": 36,
+          "source": "Sydney GI Tables"
+        },
+        {
+          "food": "Whole milk",
+          "gi": 27,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "food": "cheddar cheese",
+    "error": "HTTPConnectionPool(host='localhost', port=5000): Read timed out. (read timeout=30)"
+  },
+  {
+    "search_term": "whole milk",
+    "actual_name": "Yogurt, plain, whole milk",
+    "brand": null,
+    "id": "babb150f-5ee6-43b9-9eb4-89ccde321f7e",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 61,
+      "protein": 3.47,
+      "carbs": 4.66,
+      "fat": 3.25,
+      "fiber": 0,
+      "sugar": 4.66,
+      "sodium": 0.046
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Disaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Milk (Lactose). FODMAP categories affected: Disaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Milk (Lactose)",
+          "category": "Disaccharide",
+          "severity": "High",
+          "sub": "Lactose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 32,
+      "giCategory": "Low",
+      "gl": 1.5,
+      "glCategory": "Low",
+      "matchCount": 2,
+      "matches": [
+        {
+          "food": "Yogurt (plain)",
+          "gi": 36,
+          "source": "Sydney GI Tables"
+        },
+        {
+          "food": "Whole milk",
+          "gi": 27,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "cottage cheese",
+    "actual_name": "Pilos - Cottage Cheese",
+    "brand": "Pilos",
+    "id": "2093938c-669d-4d1f-9b25-376af8aafc05",
+    "ingredients": "60% cottage cheese (pasteurized milk, Pasteurized lactic cultures , rennet);39.2% pasteurized sour cream; salt; milk proteins",
+    "nutrition": {
+      "calories": 97,
+      "protein": 11,
+      "carbs": 2,
+      "fat": 5,
+      "fiber": 0,
+      "sugar": 0,
+      "sodium": 0.3
+    },
+    "novaGroup": 4,
+    "nutriScore": "c",
+    "gutRisk": {
+      "score": 92,
+      "rating": "Good",
+      "flagCount": 1,
+      "highRisk": 0,
+      "medRisk": 1,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "Contains 1 item(s) of concern in categories: Processing Level. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Disaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Cottage Cheese (Lactose). FODMAP categories affected: Disaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Cottage Cheese (Lactose)",
+          "category": "Disaccharide",
+          "severity": "High",
+          "sub": "Lactose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 27,
+      "giCategory": "Low",
+      "gl": 0.5,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Whole milk",
+          "gi": 27,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "bread",
+    "actual_name": "Bread, egg",
+    "brand": null,
+    "id": "17d0ff2b-ad0b-4b5e-baf7-725ab042c670",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 287,
+      "protein": 9.5,
+      "carbs": 47.8,
+      "fat": 6.0,
+      "fiber": 2.3,
+      "sugar": 1.78,
+      "sodium": 0.38
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 42,
+      "giCategory": "Low",
+      "gl": 20.1,
+      "glCategory": "High",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Bread, egg",
+          "gi": 42,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "search_term": "pasta",
+    "actual_name": "Pasta, dry, enriched",
+    "brand": null,
+    "id": "a870b9a3-fc65-45c4-bc15-6a9227208793",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 371,
+      "protein": 13.04,
+      "carbs": 74.67,
+      "fat": 1.51,
+      "fiber": 3.2,
+      "sugar": 2.67,
+      "sodium": 0.006
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Pasta (Fructan). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Pasta (Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "Fructan"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 49,
+      "giCategory": "Low",
+      "gl": 36.6,
+      "glCategory": "High",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Pasta (white)",
+          "gi": 49,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "search_term": "peanut butter",
+    "actual_name": "Peanut butter, reduced sodium",
+    "brand": null,
+    "id": "968a9edc-e25a-49be-b9e2-652c1f79eb55",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 590,
+      "protein": 24.0,
+      "carbs": 21.83,
+      "fat": 49.9,
+      "fiber": 6.6,
+      "sugar": 9.29,
+      "sodium": 0.203
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 37,
+      "giCategory": "Low",
+      "gl": 8.1,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Peanut butter, reduced sodium",
+          "gi": 37,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "honey",
+    "actual_name": "Honey",
+    "brand": null,
+    "id": "30c38719-cc89-45c0-887e-5d7a38725bf8",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 304,
+      "protein": 0.3,
+      "carbs": 82.4,
+      "fat": 0,
+      "fiber": 0.2,
+      "sugar": 82.12,
+      "sodium": 0.004
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 96,
+      "rating": "Good",
+      "flagCount": 1,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 1,
+      "confidence": "High",
+      "summary": "Contains 1 item(s) of concern in categories: Nutrient Concern. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "High Sugar Content",
+          "category": "Nutrient Concern",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Monosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Honey (Excess Fructose). FODMAP categories affected: Monosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Honey (Excess Fructose)",
+          "category": "Monosaccharide",
+          "severity": "High",
+          "sub": "Excess Fructose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 61,
+      "giCategory": "Medium",
+      "gl": 50.3,
+      "glCategory": "High",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Honey",
+          "gi": 61,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "search_term": "olive oil",
+    "actual_name": "Bertolli - Mediterranean Olive Oil",
+    "brand": "Bertolli",
+    "id": "9586a6b0-e8b3-404a-b982-1281cb5acb87",
+    "ingredients": "Vegetable oils (rapeseed, palm, olive (10%)), water, salt (1.1%), buttermilk (_milk_), emulsifiers (mono - & diglycerides of fatty acids, lecithin), natural flavourings, vitamins A & D.",
+    "nutrition": {
+      "calories": 531,
+      "protein": 0.5,
+      "carbs": 0.5,
+      "fat": 59,
+      "fiber": null,
+      "sugar": 0.5,
+      "sodium": 0.44
+    },
+    "novaGroup": 4,
+    "nutriScore": "d",
+    "gutRisk": {
+      "score": 59,
+      "rating": "Poor",
+      "flagCount": 7,
+      "highRisk": 0,
+      "medRisk": 2,
+      "lowRisk": 5,
+      "confidence": "Low",
+      "summary": "Contains 7 item(s) of concern in categories: Emulsifier, Dairy/Lactose, Hidden FODMAP Risk. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Buttermilk",
+          "category": "Dairy/Lactose",
+          "risk": "Medium",
+          "fodmapClass": "Lactose"
+        },
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Lecithins",
+          "category": "Emulsifier",
+          "risk": "Low",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Natural Flavours",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Natural Flavouring",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Ultra-Processed + Emulsifier",
+          "category": "Stacking Penalty",
+          "risk": "Low",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Multiple Fructan Sources",
+          "category": "Stacking Penalty",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Disaccharide"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Disaccharide. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Buttermilk (Lactose)",
+          "category": "Disaccharide",
+          "severity": "Moderate",
+          "sub": "Lactose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 27,
+      "giCategory": "Low",
+      "gl": 0.1,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Whole milk",
+          "gi": 27,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "protein bar",
+    "actual_name": "nakd peanut butter protein bar",
+    "brand": "Nakd",
+    "id": "c3016ac3-52e8-4f76-801a-76a2eda38d04",
+    "ingredients": "Dates (39%), peanuts (30%), peanut butter (10%), peanut flour (10%), chicory fibre (10%), sea salt, natural flavouring.",
+    "nutrition": {
+      "calories": 443,
+      "protein": 17.4,
+      "carbs": 39.3,
+      "fat": 21.9,
+      "fiber": 9.6,
+      "sugar": 26.8,
+      "sodium": 0.149
+    },
+    "novaGroup": 4,
+    "nutriScore": "c",
+    "gutRisk": {
+      "score": 73,
+      "rating": "Fair",
+      "flagCount": 6,
+      "highRisk": 0,
+      "medRisk": 1,
+      "lowRisk": 5,
+      "confidence": "Low",
+      "summary": "Contains 6 item(s) of concern in categories: Hidden FODMAP Risk, Processing Level, Nutrient Concern. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Natural Flavours",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Natural Flavouring",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Flavouring",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "High Sugar Content",
+          "category": "Nutrient Concern",
+          "risk": "Low",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Multiple Fructan Sources",
+          "category": "Stacking Penalty",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Chicory Root Fiber (Fructan). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Chicory Root Fiber (Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "Fructan"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 42,
+      "giCategory": "Low",
+      "gl": 16.5,
+      "glCategory": "Medium",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Dates",
+          "gi": 42,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "granola",
+    "actual_name": "Granola LU",
+    "brand": "LU",
+    "id": "65b84b28-1ca0-42cf-8d5b-f647c6598d22",
+    "ingredients": "Farine de bl\u00e9 34 %, chocolat 33 % (sucre, p\u00e2te de cacao, graisses v\u00e9g\u00e9tales (palme et karit\u00e9 en proportions variables), dextrose, beurre de cacao, l\u00e9cithines de soja), huile de palme, sucre, poudres \u00e0 lever (carbonates d'ammonium, carbonates de sodium, diphosphates), sel, colorant (carot\u00e8nes), ar\u00f4me, lait \u00e9cr\u00e9m\u00e9 en poudre. Peut contenir des \u0153ufs et des fruits \u00e0 coque.",
+    "nutrition": {
+      "calories": 503,
+      "protein": 5.7,
+      "carbs": 60,
+      "fat": 26,
+      "fiber": 3.3,
+      "sugar": 36,
+      "sodium": 0.4
+    },
+    "novaGroup": 4,
+    "nutriScore": "e",
+    "gutRisk": {
+      "score": 88,
+      "rating": "Good",
+      "flagCount": 2,
+      "highRisk": 0,
+      "medRisk": 1,
+      "lowRisk": 1,
+      "confidence": "High",
+      "summary": "Contains 2 item(s) of concern in categories: Processing Level, Nutrient Concern. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        },
+        {
+          "name": "High Sugar Content",
+          "category": "Nutrient Concern",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Monosaccharide"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Monosaccharide. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Port Wine (Fructose)",
+          "category": "Monosaccharide",
+          "severity": "Moderate",
+          "sub": "Excess Fructose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 60,
+      "giCategory": "Medium",
+      "gl": 36,
+      "glCategory": "High",
+      "matchCount": 2,
+      "matches": [
+        {
+          "food": "Granola",
+          "gi": 56,
+          "source": "Sydney GI Tables"
+        },
+        {
+          "food": "Cola",
+          "gi": 63,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "search_term": "almond milk",
+    "actual_name": "Lidl - unsweetened Almond milk",
+    "brand": "Lidl",
+    "id": "dd34d571-6dcc-4c19-b9d6-d6481dcbcc13",
+    "ingredients": "Eau, 2,3% amandes', sel de mer, stabilisant: gomme gellane; \u00e9mulsifiant: l\u00e9cithines\u00b9 (tournesol). 'issu de production biologique. **sans sucres ajout\u00e9s. CE PRODUIT CONTIENT DES SUCRES NATURELLEMENT PR\u00c9SENTS. ***Teneur en lactose &lt;0,01 g/100 ml. Peut contenir des traces de soja, de c\u00e9r\u00e9ales contenant du gluten (avoine, bl\u00e9, orge, seigle) et d'autres fruits \u00e0 coque (noix, noisettes).",
+    "nutrition": {
+      "calories": 16,
+      "protein": 0.5,
+      "carbs": 0,
+      "fat": 1.5,
+      "fiber": 0.2,
+      "sugar": null,
+      "sodium": 0.06
+    },
+    "novaGroup": 4,
+    "nutriScore": "b",
+    "gutRisk": {
+      "score": 80,
+      "rating": "Good",
+      "flagCount": 2,
+      "highRisk": 0,
+      "medRisk": 2,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "Contains 2 item(s) of concern in categories: Dairy/Lactose, Processing Level. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Lactose",
+          "category": "Dairy/Lactose",
+          "risk": "Medium",
+          "fodmapClass": "Lactose"
+        },
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Disaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Lactose. FODMAP categories affected: Disaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Lactose",
+          "category": "Disaccharide",
+          "severity": "High",
+          "sub": "Lactose"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 27,
+      "giCategory": "Low",
+      "gl": null,
+      "glCategory": "Unknown",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Whole milk",
+          "gi": 27,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "kombucha",
+    "actual_name": "Remedy - Kombucha",
+    "brand": "Remedy",
+    "id": "9d6c50d1-1aea-4d95-90cf-c932e48d2e19",
+    "ingredients": "Raw kombucha (carbonated water, sugar, black tea leaves, green tea leaves, traditional kombucha culture), flavour enhancer erythritol, hibiscus tea, lemon juice, natural blueberry flavouring, natural blackberry flavouring, natural strawberry flavouring, natural caramel flavouring, sweetener: steviol glycosides.",
+    "nutrition": {
+      "calories": 0.183654729109276,
+      "protein": 0.0459136822773182,
+      "carbs": 0.486685032139576,
+      "fat": 0.0459136822773182,
+      "fiber": 0.0459136822773182,
+      "sugar": 0,
+      "sodium": null
+    },
+    "novaGroup": 4,
+    "nutriScore": "unknown",
+    "gutRisk": {
+      "score": 80,
+      "rating": "Good",
+      "flagCount": 3,
+      "highRisk": 0,
+      "medRisk": 1,
+      "lowRisk": 2,
+      "confidence": "Medium",
+      "summary": "Contains 3 item(s) of concern in categories: Sugar Alcohol, Hidden FODMAP Risk, Processing Level. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Erythritol",
+          "category": "Sugar Alcohol",
+          "risk": "Low",
+          "fodmapClass": "Polyols"
+        },
+        {
+          "name": "Flavouring",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 71,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 3,
+      "highCount": 0,
+      "modCount": 2,
+      "lowCount": 1,
+      "categories": [
+        "Monosaccharide",
+        "Polyol"
+      ],
+      "summary": "Contains 3 FODMAP concern(s) in Monosaccharide, Polyol. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Blackberry (Sorbitol)",
+          "category": "Polyol",
+          "severity": "Moderate",
+          "sub": "Sorbitol"
+        },
+        {
+          "name": "Kombucha (Mixed FODMAP)",
+          "category": "Monosaccharide",
+          "severity": "Moderate",
+          "sub": "Excess Fructose"
+        },
+        {
+          "name": "Erythritol (Polyol)",
+          "category": "Polyol",
+          "severity": "Low",
+          "sub": "Erythritol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 46,
+      "giCategory": "Low",
+      "gl": 0.2,
+      "glCategory": "Low",
+      "matchCount": 2,
+      "matches": [
+        {
+          "food": "Strawberry",
+          "gi": 40,
+          "source": "Sydney GI Tables"
+        },
+        {
+          "food": "Blueberry",
+          "gi": 53,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "hummus",
+    "actual_name": "Hummus, home prepared",
+    "brand": null,
+    "id": "1cf4c512-d504-4383-905b-67b8102a9e18",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 177,
+      "protein": 4.86,
+      "carbs": 20.12,
+      "fat": 8.59,
+      "fiber": 4.0,
+      "sugar": 0.27,
+      "sodium": 0.242
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 75,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 1,
+      "highCount": 1,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Hummus (GOS + Fructan). FODMAP categories affected: Oligosaccharide. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Hummus (GOS + Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "GOS"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 46,
+      "giCategory": "Low",
+      "gl": 9.3,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Hummus, home prepared",
+          "gi": 46,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity."
+    }
+  },
+  {
+    "search_term": "dark chocolate",
+    "actual_name": "Green and black - Dark chocolate",
+    "brand": "Green and black",
+    "id": "82ae36f0-1dbb-4328-b3e1-32b8313691b4",
+    "ingredients": "p\u00e2te de cacao*, beurre de cacao*, cacao maigre en poudre*, sucre de canne*, extrait de vanille*, * ingr\u00e9dients issus de l'agriculture biologique",
+    "nutrition": {
+      "calories": 605.555555555556,
+      "protein": 10,
+      "carbs": 23.8888888888889,
+      "fat": 50,
+      "fiber": 12.7777777777778,
+      "sugar": 13.8888888888889,
+      "sodium": 0.0522222222222222
+    },
+    "novaGroup": 3,
+    "nutriScore": "d",
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 40,
+      "giCategory": "Low",
+      "gl": 9.6,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Chocolate",
+          "gi": 40,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. High fiber content provides prebiotic benefits and helps moderate the glycemic response."
+    }
+  },
+  {
+    "search_term": "rice cakes",
+    "actual_name": "Marmite Rice Cakes",
+    "brand": "Marmite",
+    "id": "ed6f2e1d-0e15-476c-a8de-2033661d1001",
+    "ingredients": "Rice, yeast extract 14% (contains barley, wheat, oats, rye), salt, carrot juice concentrate, onion juice concentrate, vitamins (thiamin, riboflavin, niacin, vitamin B12, folic acid), natural flavouring (Contains celery).",
+    "nutrition": {
+      "calories": 363,
+      "protein": 12.6,
+      "carbs": 70.4,
+      "fat": 2.7,
+      "fiber": null,
+      "sugar": 0.6,
+      "sodium": 0.039
+    },
+    "novaGroup": 4,
+    "nutriScore": "a",
+    "gutRisk": {
+      "score": 40,
+      "rating": "Poor",
+      "flagCount": 10,
+      "highRisk": 0,
+      "medRisk": 2,
+      "lowRisk": 8,
+      "confidence": "Low",
+      "summary": "Contains 10 item(s) of concern in categories: High-FODMAP Ingredient, Hidden FODMAP Risk, Processing Level. Monitor for symptoms if you have gut sensitivity.",
+      "flags": [
+        {
+          "name": "Onion",
+          "category": "High-FODMAP Ingredient",
+          "risk": "Medium",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Ultra-Processed Food",
+          "category": "Processing Level",
+          "risk": "Medium",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Wheat",
+          "category": "High-FODMAP Ingredient",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Barley",
+          "category": "High-FODMAP Ingredient",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Rye",
+          "category": "High-FODMAP Ingredient",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Natural Flavours",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Natural Flavouring",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Flavouring",
+          "category": "Hidden FODMAP Risk",
+          "risk": "Low",
+          "fodmapClass": "Fructans"
+        },
+        {
+          "name": "Multiple Fructan Sources",
+          "category": "Stacking Penalty",
+          "risk": "Low",
+          "fodmapClass": ""
+        },
+        {
+          "name": "Concentrated FODMAP Source",
+          "category": "Stacking Penalty",
+          "risk": "Low",
+          "fodmapClass": ""
+        }
+      ]
+    },
+    "fodmap": {
+      "score": 63,
+      "rating": "Moderate FODMAP",
+      "triggerCount": 2,
+      "highCount": 1,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide",
+        "Polyol"
+      ],
+      "summary": "Contains 1 high-FODMAP trigger(s): Wheat (Fructan). FODMAP categories affected: Oligosaccharide, Polyol. Avoid during elimination phase.",
+      "triggers": [
+        {
+          "name": "Wheat (Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "High",
+          "sub": "Fructan"
+        },
+        {
+          "name": "Celery (Mannitol)",
+          "category": "Polyol",
+          "severity": "Moderate",
+          "sub": "Mannitol"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 68,
+      "giCategory": "Medium",
+      "gl": 47.9,
+      "glCategory": "High",
+      "matchCount": 2,
+      "matches": [
+        {
+          "food": "Rice cakes",
+          "gi": 82,
+          "source": "Sydney GI Tables"
+        },
+        {
+          "food": "Oats (rolled)",
+          "gi": 55,
+          "source": "Sydney GI Tables"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "search_term": "corn tortilla",
+    "actual_name": "Stockwell & Co. - Tortilla Chips",
+    "brand": "Stockwell & Co.",
+    "id": "8b72a48f-ade8-4d8b-90cd-53d1a6fb8b48",
+    "ingredients": "maize, sunflower oil, cornflour, salt.",
+    "nutrition": {
+      "calories": 500,
+      "protein": 6,
+      "carbs": 63.2,
+      "fat": 23.2,
+      "fiber": 4,
+      "sugar": 1.2,
+      "sodium": 0.316
+    },
+    "novaGroup": 3,
+    "nutriScore": "c",
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 88,
+      "rating": "Low FODMAP",
+      "triggerCount": 1,
+      "highCount": 0,
+      "modCount": 1,
+      "lowCount": 0,
+      "categories": [
+        "Oligosaccharide"
+      ],
+      "summary": "Contains 1 FODMAP concern(s) in Oligosaccharide. May be tolerable in small portions \u2014 monitor symptoms.",
+      "triggers": [
+        {
+          "name": "Tortilla (Fructan)",
+          "category": "Oligosaccharide",
+          "severity": "Moderate",
+          "sub": "Fructan"
+        }
+      ]
+    },
+    "glycemic": {
+      "gi": 39,
+      "giCategory": "Low",
+      "gl": 24.6,
+      "glCategory": "High",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Stockwell & Co. - Tortilla Chips",
+          "gi": 39,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Low GI \u2014 slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity. The high glycemic load means this portion delivers a significant glucose hit \u2014 consider smaller portions or pairing with fat/protein."
+    }
+  },
+  {
+    "food": "salsa",
+    "error": "HTTPConnectionPool(host='localhost', port=5000): Read timed out. (read timeout=30)"
+  },
+  {
+    "search_term": "kimchi",
+    "actual_name": "Cabbage, kimchi",
+    "brand": null,
+    "id": "4c07bc20-de68-4be1-b278-00e4ebd8ae5b",
+    "ingredients": "",
+    "nutrition": {
+      "calories": 15,
+      "protein": 1.1,
+      "carbs": 2.4,
+      "fat": 0.5,
+      "fiber": 1.6,
+      "sugar": 1.06,
+      "sodium": 0.498
+    },
+    "novaGroup": null,
+    "nutriScore": null,
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 63,
+      "giCategory": "Medium",
+      "gl": 1.5,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Cabbage, kimchi",
+          "gi": 63,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  },
+  {
+    "search_term": "sauerkraut",
+    "actual_name": "Sauerkraut",
+    "brand": null,
+    "id": "dd69ccf9-0084-4173-a08e-6f72daa35d97",
+    "ingredients": "carrots",
+    "nutrition": {
+      "calories": 15,
+      "protein": 0.80000001192093,
+      "carbs": 1.8999999761581,
+      "fat": 0,
+      "fiber": null,
+      "sugar": 1.1000000238419,
+      "sodium": 0.52
+    },
+    "novaGroup": 1,
+    "nutriScore": "b",
+    "gutRisk": {
+      "score": 100,
+      "rating": "Good",
+      "flagCount": 0,
+      "highRisk": 0,
+      "medRisk": 0,
+      "lowRisk": 0,
+      "confidence": "High",
+      "summary": "No gut-concerning additives or ingredients detected. This product appears gut-friendly.",
+      "flags": []
+    },
+    "fodmap": {
+      "score": 100,
+      "rating": "Low FODMAP",
+      "triggerCount": 0,
+      "highCount": 0,
+      "modCount": 0,
+      "lowCount": 0,
+      "categories": [],
+      "summary": "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.",
+      "triggers": []
+    },
+    "glycemic": {
+      "gi": 63,
+      "giCategory": "Medium",
+      "gl": 1.2,
+      "glCategory": "Low",
+      "matchCount": 1,
+      "matches": [
+        {
+          "food": "Sauerkraut",
+          "gi": 63,
+          "source": "Estimated"
+        }
+      ],
+      "summary": "Medium GI \u2014 moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein."
+    }
+  }
+]

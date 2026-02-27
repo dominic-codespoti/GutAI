@@ -26,6 +26,7 @@ import {
   mealTypeEmoji,
 } from "../../src/utils/theme";
 import Svg, { Circle } from "react-native-svg";
+import { SafeScreen } from "../../components/SafeScreen";
 
 function CalorieRing({
   eaten,
@@ -280,7 +281,7 @@ export default function DashboardScreen() {
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <SafeScreen edges={["top"]}>
       <ScrollView
         style={{ flex: 1 }}
         refreshControl={
@@ -962,6 +963,6 @@ export default function DashboardScreen() {
           <Ionicons name="add" size={30} color="#fff" />
         </Animated.View>
       </TouchableOpacity>
-    </View>
+    </SafeScreen>
   );
 }

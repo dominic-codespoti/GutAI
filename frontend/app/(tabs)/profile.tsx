@@ -32,6 +32,7 @@ import {
   spacing,
   fonts,
 } from "../../src/utils/theme";
+import { SafeScreen } from "../../components/SafeScreen";
 
 const inputStyle = {
   borderWidth: 1,
@@ -222,218 +223,123 @@ export default function ProfileScreen() {
   }, [showAdditiveBrowser, editingGoals, editingProfile]);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <View style={{ padding: spacing.xl }}>
-        {/* User Card */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xxl,
-            alignItems: "center",
-            marginBottom: spacing.lg,
-            ...shadowMd,
-          }}
-        >
+    <SafeScreen edges={["top"]}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={{ padding: spacing.xl }}>
+          {/* User Card */}
           <View
             style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: colors.primaryBg,
+              backgroundColor: colors.card,
+              borderRadius: radius.lg,
+              padding: spacing.xxl,
               alignItems: "center",
-              justifyContent: "center",
-              marginBottom: spacing.md,
-              borderWidth: 3,
-              borderColor: colors.primaryBorder,
+              marginBottom: spacing.lg,
+              ...shadowMd,
             }}
           >
-            <Text
-              style={{ fontSize: 32, fontWeight: "700", color: colors.primary }}
-            >
-              {user?.displayName?.[0]?.toUpperCase() ?? "?"}
-            </Text>
-          </View>
-          <Text style={fonts.h2}>{user?.displayName}</Text>
-          <Text style={{ ...fonts.body, marginTop: 2 }}>{user?.email}</Text>
-          {user?.allergies && user.allergies.length > 0 && (
             <View
               style={{
-                flexDirection: "row",
+                width: 80,
+                height: 80,
+                borderRadius: 40,
+                backgroundColor: colors.primaryBg,
                 alignItems: "center",
-                marginTop: spacing.sm,
-                backgroundColor: colors.warningBg,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: radius.sm,
+                justifyContent: "center",
+                marginBottom: spacing.md,
+                borderWidth: 3,
+                borderColor: colors.primaryBorder,
               }}
             >
               <Text
-                style={{
-                  fontSize: 12,
-                  color: colors.warning,
-                  fontWeight: "600",
-                }}
+                style={{ fontSize: 32, fontWeight: "700", color: colors.primary }}
               >
-                ⚠️ {user.allergies.join(", ")}
+                {user?.displayName?.[0]?.toUpperCase() ?? "?"}
               </Text>
             </View>
-          )}
-          {user?.dietaryPreferences && user.dietaryPreferences.length > 0 && (
-            <Text
-              style={{
-                fontSize: 12,
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              🥗 {user.dietaryPreferences.join(", ")}
-            </Text>
-          )}
-          {user?.gutConditions && user.gutConditions.length > 0 && (
-            <Text
-              style={{
-                fontSize: 12,
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              🫃 {user.gutConditions.join(", ")}
-            </Text>
-          )}
-          <TouchableOpacity
-            onPress={openProfileEdit}
-            style={{
-              marginTop: spacing.md,
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.secondaryBg,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: radius.sm,
-            }}
-          >
-            <Ionicons name="pencil" size={14} color={colors.secondary} />
-            <Text
-              style={{
-                color: colors.secondary,
-                fontWeight: "600",
-                marginLeft: 6,
-                fontSize: 13,
-              }}
-            >
-              Edit Profile
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Daily Goals */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.md,
-            padding: spacing.lg,
-            marginBottom: spacing.md,
-            ...shadow,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: spacing.md,
-            }}
-          >
-            <Text style={fonts.h4}>Daily Goals</Text>
+            <Text style={fonts.h2}>{user?.displayName}</Text>
+            <Text style={{ ...fonts.body, marginTop: 2 }}>{user?.email}</Text>
+            {user?.allergies && user.allergies.length > 0 && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginTop: spacing.sm,
+                  backgroundColor: colors.warningBg,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: radius.sm,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.warning,
+                    fontWeight: "600",
+                  }}
+                >
+                  ⚠️ {user.allergies.join(", ")}
+                </Text>
+              </View>
+            )}
+            {user?.dietaryPreferences && user.dietaryPreferences.length > 0 && (
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  marginTop: 4,
+                }}
+              >
+                🥗 {user.dietaryPreferences.join(", ")}
+              </Text>
+            )}
+            {user?.gutConditions && user.gutConditions.length > 0 && (
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  marginTop: 4,
+                }}
+              >
+                🫃 {user.gutConditions.join(", ")}
+              </Text>
+            )}
             <TouchableOpacity
-              onPress={openGoalsEdit}
+              onPress={openProfileEdit}
               style={{
+                marginTop: spacing.md,
                 flexDirection: "row",
                 alignItems: "center",
                 backgroundColor: colors.secondaryBg,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
                 borderRadius: radius.sm,
               }}
             >
-              <Ionicons name="pencil" size={12} color={colors.secondary} />
+              <Ionicons name="pencil" size={14} color={colors.secondary} />
               <Text
                 style={{
                   color: colors.secondary,
                   fontWeight: "600",
-                  marginLeft: 4,
-                  fontSize: 12,
+                  marginLeft: 6,
+                  fontSize: 13,
                 }}
               >
-                Edit
+                Edit Profile
               </Text>
             </TouchableOpacity>
           </View>
-          {[
-            {
-              label: "Calories",
-              value: user?.dailyCalorieGoal ?? 0,
-              unit: "cal",
-              color: colors.primary,
-            },
-            {
-              label: "Protein",
-              value: user?.dailyProteinGoalG ?? 0,
-              unit: "g",
-              color: colors.protein,
-            },
-            {
-              label: "Carbs",
-              value: user?.dailyCarbGoalG ?? 0,
-              unit: "g",
-              color: colors.carbs,
-            },
-            {
-              label: "Fat",
-              value: user?.dailyFatGoalG ?? 0,
-              unit: "g",
-              color: colors.fat,
-            },
-            {
-              label: "Fiber",
-              value: user?.dailyFiberGoalG ?? 0,
-              unit: "g",
-              color: colors.fiber,
-            },
-          ].map(({ label, value, unit, color }) => (
-            <View
-              key={label}
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                paddingVertical: 8,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.divider,
-              }}
-            >
-              <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
-                {label}
-              </Text>
-              <Text style={{ fontWeight: "700", color, fontSize: 14 }}>
-                {value} {unit}
-              </Text>
-            </View>
-          ))}
-        </View>
 
-        {/* Additive Alerts */}
-        {alerts && alerts.length > 0 && (
+          {/* Daily Goals */}
           <View
             style={{
               backgroundColor: colors.card,
@@ -446,477 +352,119 @@ export default function ProfileScreen() {
             <View
               style={{
                 flexDirection: "row",
+                justifyContent: "space-between",
                 alignItems: "center",
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={{ fontSize: 16, marginRight: 6 }}>⚠️</Text>
-              <Text style={fonts.h4}>Food Additive Alerts</Text>
-            </View>
-            {alerts.map((a: UserFoodAlert) => (
-              <View
-                key={a.additiveId}
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  paddingVertical: 10,
-                  borderTopWidth: 1,
-                  borderTopColor: colors.divider,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontWeight: "600",
-                      color: colors.text,
-                      fontSize: 14,
-                    }}
-                  >
-                    {a.name}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: colors.warning,
-                      fontWeight: "500",
-                    }}
-                  >
-                    {a.cspiRating}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() =>
-                    confirm(
-                      "Remove Alert",
-                      `Stop alerting for ${a.name}?`,
-                      () => removeAlertMutation.mutate(a.additiveId),
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="close-circle"
-                    size={22}
-                    color={colors.danger}
-                  />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Browse Additives */}
-        <TouchableOpacity
-          onPress={() => setShowAdditiveBrowser(true)}
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.md,
-            padding: spacing.lg,
-            marginBottom: spacing.md,
-            flexDirection: "row",
-            alignItems: "center",
-            ...shadow,
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: radius.sm,
-              backgroundColor: colors.accentBg,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: spacing.md,
-            }}
-          >
-            <Ionicons name="flask-outline" size={18} color={colors.accent} />
-          </View>
-          <Text
-            style={{
-              color: colors.text,
-              fontWeight: "600",
-              flex: 1,
-              fontSize: 15,
-            }}
-          >
-            Browse & Add Additive Alerts
-          </Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </TouchableOpacity>
-
-        {/* Correlations */}
-        {correlations && correlations.length > 0 && (
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: radius.md,
-              padding: spacing.lg,
-              marginBottom: spacing.md,
-              ...shadow,
-            }}
-          >
-            <Text style={{ ...fonts.h4, marginBottom: spacing.md }}>
-              Food-Symptom Correlations
-            </Text>
-            {correlations.slice(0, 5).map((c, i) => (
-              <View
-                key={i}
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  paddingVertical: 10,
-                  borderTopWidth: i > 0 ? 1 : 0,
-                  borderTopColor: colors.divider,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontWeight: "600",
-                      color: colors.text,
-                      fontSize: 14,
-                    }}
-                  >
-                    {c.foodOrAdditive}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    → {c.symptomName}
-                  </Text>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text
-                    style={{
-                      fontWeight: "700",
-                      color: colors.danger,
-                      fontSize: 14,
-                    }}
-                  >
-                    {c.occurrences}x
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                    avg {c.averageSeverity.toFixed(1)}/10
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Settings */}
-        <TouchableOpacity
-          onPress={() => router.push("/settings")}
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.md,
-            padding: spacing.lg,
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: spacing.sm,
-            ...shadow,
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: radius.sm,
-              backgroundColor: colors.borderLight,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: spacing.md,
-            }}
-          >
-            <Ionicons
-              name="settings-outline"
-              size={18}
-              color={colors.textSecondary}
-            />
-          </View>
-          <Text
-            style={{
-              color: colors.text,
-              fontWeight: "600",
-              flex: 1,
-              fontSize: 15,
-            }}
-          >
-            Settings
-          </Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </TouchableOpacity>
-
-        {/* Logout */}
-        <TouchableOpacity
-          onPress={handleLogout}
-          style={{
-            backgroundColor: colors.dangerBg,
-            borderRadius: radius.md,
-            padding: spacing.lg,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            marginTop: spacing.sm,
-            borderWidth: 1,
-            borderColor: colors.dangerBorder,
-          }}
-        >
-          <Ionicons name="log-out-outline" size={20} color={colors.danger} />
-          <Text
-            style={{
-              color: colors.danger,
-              fontWeight: "600",
-              marginLeft: 8,
-              fontSize: 15,
-            }}
-          >
-            Log Out
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Edit Profile Modal */}
-      <BottomSheet
-        visible={editingProfile}
-        onClose={() => setEditingProfile(false)}
-      >
-        <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
-          Edit Profile
-        </Text>
-        <Text style={{ ...fonts.caption, marginBottom: 4 }}>Display Name</Text>
-        <TextInput
-          value={displayName}
-          onChangeText={setDisplayName}
-          style={inputStyle}
-          placeholder="Your name"
-          placeholderTextColor={colors.textLight}
-        />
-        <Text
-          style={{
-            ...fonts.caption,
-            marginBottom: 4,
-            marginTop: spacing.md,
-          }}
-        >
-          Allergies
-        </Text>
-        <View style={{ marginBottom: spacing.sm }}>
-          <AllergyChips selected={selectedAllergies} onToggle={toggleAllergy} />
-        </View>
-
-        <Text
-          style={{
-            ...fonts.caption,
-            marginBottom: 4,
-            marginTop: spacing.md,
-          }}
-        >
-          Dietary Preferences
-        </Text>
-        <TextInput
-          value={dietaryPreferences}
-          onChangeText={setDietaryPreferences}
-          style={inputStyle}
-          placeholder="e.g. vegetarian, keto"
-          placeholderTextColor={colors.textLight}
-        />
-
-        <Text
-          style={{
-            ...fonts.caption,
-            marginBottom: 4,
-            marginTop: spacing.md,
-          }}
-        >
-          Gut Conditions
-        </Text>
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 8,
-            marginBottom: spacing.sm,
-          }}
-        >
-          {GUT_CONDITION_OPTIONS.map((c) => {
-            const active = selectedConditions.includes(c.id);
-            return (
+              <Text style={fonts.h4}>Daily Goals</Text>
               <TouchableOpacity
-                key={c.id}
-                onPress={() => toggleCondition(c.id)}
+                onPress={openGoalsEdit}
                 style={{
-                  backgroundColor: active
-                    ? colors.primaryBg
-                    : colors.borderLight,
-                  borderWidth: 1,
-                  borderColor: active ? colors.primaryLight : colors.border,
-                  borderRadius: radius.full,
-                  paddingHorizontal: spacing.lg,
-                  paddingVertical: spacing.sm,
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 4,
+                  backgroundColor: colors.secondaryBg,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: radius.sm,
                 }}
               >
-                <Text style={{ fontSize: 14 }}>{c.emoji}</Text>
+                <Ionicons name="pencil" size={12} color={colors.secondary} />
                 <Text
                   style={{
+                    color: colors.secondary,
                     fontWeight: "600",
-                    color: active ? colors.primary : colors.textMuted,
-                    fontSize: 13,
+                    marginLeft: 4,
+                    fontSize: 12,
                   }}
                 >
-                  {c.label}
+                  Edit
                 </Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
+            </View>
+            {[
+              {
+                label: "Calories",
+                value: user?.dailyCalorieGoal ?? 0,
+                unit: "cal",
+                color: colors.primary,
+              },
+              {
+                label: "Protein",
+                value: user?.dailyProteinGoalG ?? 0,
+                unit: "g",
+                color: colors.protein,
+              },
+              {
+                label: "Carbs",
+                value: user?.dailyCarbGoalG ?? 0,
+                unit: "g",
+                color: colors.carbs,
+              },
+              {
+                label: "Fat",
+                value: user?.dailyFatGoalG ?? 0,
+                unit: "g",
+                color: colors.fat,
+              },
+              {
+                label: "Fiber",
+                value: user?.dailyFiberGoalG ?? 0,
+                unit: "g",
+                color: colors.fiber,
+              },
+            ].map(({ label, value, unit, color }) => (
+              <View
+                key={label}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 8,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.divider,
+                }}
+              >
+                <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
+                  {label}
+                </Text>
+                <Text style={{ fontWeight: "700", color, fontSize: 14 }}>
+                  {value} {unit}
+                </Text>
+              </View>
+            ))}
+          </View>
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "flex-end",
-            marginTop: spacing.xl,
-            gap: 12,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setEditingProfile(false)}
-            style={{ paddingHorizontal: 20, paddingVertical: 10 }}
-          >
-            <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={saveProfile}
-            disabled={profileMutation.isPending}
-            style={{
-              backgroundColor: colors.primary,
-              paddingHorizontal: 20,
-              paddingVertical: 10,
-              borderRadius: radius.sm,
-            }}
-          >
-            {profileMutation.isPending ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
-
-      {/* Edit Goals Modal */}
-      <BottomSheet
-        visible={editingGoals}
-        onClose={() => setEditingGoals(false)}
-      >
-        <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
-          Edit Daily Goals
-        </Text>
-        {[
-          { label: "Calories (cal)", value: calGoal, set: setCalGoal },
-          { label: "Protein (g)", value: proteinGoal, set: setProteinGoal },
-          { label: "Carbs (g)", value: carbGoal, set: setCarbGoal },
-          { label: "Fat (g)", value: fatGoal, set: setFatGoal },
-          { label: "Fiber (g)", value: fiberGoal, set: setFiberGoal },
-        ].map(({ label, value, set }) => (
-          <GoalField
-            key={label}
-            label={label}
-            value={value}
-            onChangeText={set}
-          />
-        ))}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "flex-end",
-            marginTop: spacing.xl,
-            gap: 12,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setEditingGoals(false)}
-            style={{ paddingHorizontal: 20, paddingVertical: 10 }}
-          >
-            <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={saveGoals}
-            disabled={goalsMutation.isPending}
-            style={{
-              backgroundColor: colors.primary,
-              paddingHorizontal: 20,
-              paddingVertical: 10,
-              borderRadius: radius.sm,
-            }}
-          >
-            {goalsMutation.isPending ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
-
-      {/* Additive Browser Modal */}
-      <BottomSheet
-        visible={showAdditiveBrowser}
-        onClose={() => setShowAdditiveBrowser(false)}
-        maxHeight="80%"
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: spacing.lg,
-          }}
-        >
-          <Text style={fonts.h3}>Browse Additives</Text>
-          <TouchableOpacity
-            onPress={() => setShowAdditiveBrowser(false)}
-            style={{ padding: 4 }}
-          >
-            <Ionicons name="close" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-        <TextInput
-          placeholder="Search additives..."
-          placeholderTextColor={colors.textLight}
-          value={additiveSearch}
-          onChangeText={setAdditiveSearch}
-          style={{ ...inputStyle, marginBottom: spacing.md }}
-        />
-        <ScrollView style={{ maxHeight: 400 }}>
-          {(allAdditives ?? [])
-            .filter(
-              (a) =>
-                !additiveSearch ||
-                a.name.toLowerCase().includes(additiveSearch.toLowerCase()) ||
-                (a.eNumber &&
-                  a.eNumber
-                    .toLowerCase()
-                    .includes(additiveSearch.toLowerCase())),
-            )
-            .map((add) => {
-              const isWatched = (alerts ?? []).some(
-                (al: UserFoodAlert) => al.additiveId === add.id,
-              );
-              return (
+          {/* Additive Alerts */}
+          {alerts && alerts.length > 0 && (
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: radius.md,
+                padding: spacing.lg,
+                marginBottom: spacing.md,
+                ...shadow,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: spacing.md,
+                }}
+              >
+                <Text style={{ fontSize: 16, marginRight: 6 }}>⚠️</Text>
+                <Text style={fonts.h4}>Food Additive Alerts</Text>
+              </View>
+              {alerts.map((a: UserFoodAlert) => (
                 <View
-                  key={add.id}
+                  key={a.additiveId}
                   style={{
                     flexDirection: "row",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    paddingVertical: 12,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.divider,
+                    paddingVertical: 10,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.divider,
                   }}
                 >
                   <View style={{ flex: 1 }}>
@@ -927,63 +475,518 @@ export default function ProfileScreen() {
                         fontSize: 14,
                       }}
                     >
-                      {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                      {a.name}
                     </Text>
                     <Text
                       style={{
                         fontSize: 12,
-                        color: ratingColor(add.cspiRating),
-                        fontWeight: "600",
+                        color: colors.warning,
+                        fontWeight: "500",
                       }}
                     >
-                      {add.cspiRating}
+                      {a.cspiRating}
                     </Text>
                   </View>
-                  {isWatched ? (
-                    <View
-                      style={{
-                        backgroundColor: colors.primaryBg,
-                        borderRadius: 6,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: colors.primary,
-                        }}
-                      >
-                        ✓ Watching
-                      </Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => addAlertMutation.mutate(add.id)}
-                      style={{
-                        backgroundColor: colors.dangerBg,
-                        borderRadius: 6,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: colors.danger,
-                        }}
-                      >
-                        + Watch
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    onPress={() =>
+                      confirm(
+                        "Remove Alert",
+                        `Stop alerting for ${a.name}?`,
+                        () => removeAlertMutation.mutate(a.additiveId),
+                      )
+                    }
+                  >
+                    <Ionicons
+                      name="close-circle"
+                      size={22}
+                      color={colors.danger}
+                    />
+                  </TouchableOpacity>
                 </View>
+              ))}
+            </View>
+          )}
+
+          {/* Browse Additives */}
+          <TouchableOpacity
+            onPress={() => setShowAdditiveBrowser(true)}
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: radius.md,
+              padding: spacing.lg,
+              marginBottom: spacing.md,
+              flexDirection: "row",
+              alignItems: "center",
+              ...shadow,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: radius.sm,
+                backgroundColor: colors.accentBg,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: spacing.md,
+              }}
+            >
+              <Ionicons name="flask-outline" size={18} color={colors.accent} />
+            </View>
+            <Text
+              style={{
+                color: colors.text,
+                fontWeight: "600",
+                flex: 1,
+                fontSize: 15,
+              }}
+            >
+              Browse & Add Additive Alerts
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Correlations */}
+          {correlations && correlations.length > 0 && (
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: radius.md,
+                padding: spacing.lg,
+                marginBottom: spacing.md,
+                ...shadow,
+              }}
+            >
+              <Text style={{ ...fonts.h4, marginBottom: spacing.md }}>
+                Food-Symptom Correlations
+              </Text>
+              {correlations.slice(0, 5).map((c, i) => (
+                <View
+                  key={i}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    paddingVertical: 10,
+                    borderTopWidth: i > 0 ? 1 : 0,
+                    borderTopColor: colors.divider,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontWeight: "600",
+                        color: colors.text,
+                        fontSize: 14,
+                      }}
+                    >
+                      {c.foodOrAdditive}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                      → {c.symptomName}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text
+                      style={{
+                        fontWeight: "700",
+                        color: colors.danger,
+                        fontSize: 14,
+                      }}
+                    >
+                      {c.occurrences}x
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                      avg {c.averageSeverity.toFixed(1)}/10
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Settings */}
+          <TouchableOpacity
+            onPress={() => router.push("/settings")}
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: radius.md,
+              padding: spacing.lg,
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: spacing.sm,
+              ...shadow,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: radius.sm,
+                backgroundColor: colors.borderLight,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: spacing.md,
+              }}
+            >
+              <Ionicons
+                name="settings-outline"
+                size={18}
+                color={colors.textSecondary}
+              />
+            </View>
+            <Text
+              style={{
+                color: colors.text,
+                fontWeight: "600",
+                flex: 1,
+                fontSize: 15,
+              }}
+            >
+              Settings
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Logout */}
+          <TouchableOpacity
+            onPress={handleLogout}
+            style={{
+              backgroundColor: colors.dangerBg,
+              borderRadius: radius.md,
+              padding: spacing.lg,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: spacing.sm,
+              borderWidth: 1,
+              borderColor: colors.dangerBorder,
+            }}
+          >
+            <Ionicons name="log-out-outline" size={20} color={colors.danger} />
+            <Text
+              style={{
+                color: colors.danger,
+                fontWeight: "600",
+                marginLeft: 8,
+                fontSize: 15,
+              }}
+            >
+              Log Out
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Edit Profile Modal */}
+        <BottomSheet
+          visible={editingProfile}
+          onClose={() => setEditingProfile(false)}
+        >
+          <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
+            Edit Profile
+          </Text>
+          <Text style={{ ...fonts.caption, marginBottom: 4 }}>Display Name</Text>
+          <TextInput
+            value={displayName}
+            onChangeText={setDisplayName}
+            style={inputStyle}
+            placeholder="Your name"
+            placeholderTextColor={colors.textLight}
+          />
+          <Text
+            style={{
+              ...fonts.caption,
+              marginBottom: 4,
+              marginTop: spacing.md,
+            }}
+          >
+            Allergies
+          </Text>
+          <View style={{ marginBottom: spacing.sm }}>
+            <AllergyChips selected={selectedAllergies} onToggle={toggleAllergy} />
+          </View>
+
+          <Text
+            style={{
+              ...fonts.caption,
+              marginBottom: 4,
+              marginTop: spacing.md,
+            }}
+          >
+            Dietary Preferences
+          </Text>
+          <TextInput
+            value={dietaryPreferences}
+            onChangeText={setDietaryPreferences}
+            style={inputStyle}
+            placeholder="e.g. vegetarian, keto"
+            placeholderTextColor={colors.textLight}
+          />
+
+          <Text
+            style={{
+              ...fonts.caption,
+              marginBottom: 4,
+              marginTop: spacing.md,
+            }}
+          >
+            Gut Conditions
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 8,
+              marginBottom: spacing.sm,
+            }}
+          >
+            {GUT_CONDITION_OPTIONS.map((c) => {
+              const active = selectedConditions.includes(c.id);
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => toggleCondition(c.id)}
+                  style={{
+                    backgroundColor: active
+                      ? colors.primaryBg
+                      : colors.borderLight,
+                    borderWidth: 1,
+                    borderColor: active ? colors.primaryLight : colors.border,
+                    borderRadius: radius.full,
+                    paddingHorizontal: spacing.lg,
+                    paddingVertical: spacing.sm,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Text style={{ fontSize: 14 }}>{c.emoji}</Text>
+                  <Text
+                    style={{
+                      fontWeight: "600",
+                      color: active ? colors.primary : colors.textMuted,
+                      fontSize: 13,
+                    }}
+                  >
+                    {c.label}
+                  </Text>
+                </TouchableOpacity>
               );
             })}
-        </ScrollView>
-      </BottomSheet>
-    </ScrollView>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "flex-end",
+              marginTop: spacing.xl,
+              gap: 12,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setEditingProfile(false)}
+              style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+            >
+              <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={saveProfile}
+              disabled={profileMutation.isPending}
+              style={{
+                backgroundColor: colors.primary,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: radius.sm,
+              }}
+            >
+              {profileMutation.isPending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </BottomSheet>
+
+        {/* Edit Goals Modal */}
+        <BottomSheet
+          visible={editingGoals}
+          onClose={() => setEditingGoals(false)}
+        >
+          <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
+            Edit Daily Goals
+          </Text>
+          {[
+            { label: "Calories (cal)", value: calGoal, set: setCalGoal },
+            { label: "Protein (g)", value: proteinGoal, set: setProteinGoal },
+            { label: "Carbs (g)", value: carbGoal, set: setCarbGoal },
+            { label: "Fat (g)", value: fatGoal, set: setFatGoal },
+            { label: "Fiber (g)", value: fiberGoal, set: setFiberGoal },
+          ].map(({ label, value, set }) => (
+            <GoalField
+              key={label}
+              label={label}
+              value={value}
+              onChangeText={set}
+            />
+          ))}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "flex-end",
+              marginTop: spacing.xl,
+              gap: 12,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setEditingGoals(false)}
+              style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+            >
+              <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={saveGoals}
+              disabled={goalsMutation.isPending}
+              style={{
+                backgroundColor: colors.primary,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: radius.sm,
+              }}
+            >
+              {goalsMutation.isPending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </BottomSheet>
+
+        {/* Additive Browser Modal */}
+        <BottomSheet
+          visible={showAdditiveBrowser}
+          onClose={() => setShowAdditiveBrowser(false)}
+          maxHeight="80%"
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: spacing.lg,
+            }}
+          >
+            <Text style={fonts.h3}>Browse Additives</Text>
+            <TouchableOpacity
+              onPress={() => setShowAdditiveBrowser(false)}
+              style={{ padding: 4 }}
+            >
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            placeholder="Search additives..."
+            placeholderTextColor={colors.textLight}
+            value={additiveSearch}
+            onChangeText={setAdditiveSearch}
+            style={{ ...inputStyle, marginBottom: spacing.md }}
+          />
+          <ScrollView style={{ maxHeight: 400 }}>
+            {(allAdditives ?? [])
+              .filter(
+                (a) =>
+                  !additiveSearch ||
+                  a.name.toLowerCase().includes(additiveSearch.toLowerCase()) ||
+                  (a.eNumber &&
+                    a.eNumber
+                      .toLowerCase()
+                      .includes(additiveSearch.toLowerCase())),
+              )
+              .map((add) => {
+                const isWatched = (alerts ?? []).some(
+                  (al: UserFoodAlert) => al.additiveId === add.id,
+                );
+                return (
+                  <View
+                    key={add.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 12,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.divider,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontWeight: "600",
+                          color: colors.text,
+                          fontSize: 14,
+                        }}
+                      >
+                        {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: ratingColor(add.cspiRating),
+                          fontWeight: "600",
+                        }}
+                      >
+                        {add.cspiRating}
+                      </Text>
+                    </View>
+                    {isWatched ? (
+                      <View
+                        style={{
+                          backgroundColor: colors.primaryBg,
+                          borderRadius: 6,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: colors.primary,
+                          }}
+                        >
+                          ✓ Watching
+                        </Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => addAlertMutation.mutate(add.id)}
+                        style={{
+                          backgroundColor: colors.dangerBg,
+                          borderRadius: 6,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: colors.danger,
+                          }}
+                        >
+                          + Watch
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
+          </ScrollView>
+        </BottomSheet>
+      </ScrollView>
+    </SafeScreen>
   );
 }

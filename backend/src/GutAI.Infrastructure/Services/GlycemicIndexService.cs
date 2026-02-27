@@ -9,12 +9,17 @@ public class GlycemicIndexService
         var matches = new List<GlycemicMatchDto>();
         var lower = (product.Ingredients ?? "").ToLowerInvariant();
         var name = (product.Name ?? "").ToLowerInvariant();
+        var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients);
         var matchedPatterns = new List<string>();
 
         // Match ingredients against GI database (sorted longest-first for specificity)
         foreach (var (pattern, entry) in GiDatabase.OrderByDescending(x => x.Pattern.Length))
         {
-            if (lower.Contains(pattern) || name.Contains(pattern))
+            bool matched = hasIngredients
+                ? lower.Contains(pattern)
+                : name.Contains(pattern);
+
+            if (matched)
             {
                 // Skip if a more specific pattern already covers this one
                 if (matchedPatterns.Any(mp => mp.Contains(pattern)))
@@ -69,26 +74,26 @@ public class GlycemicIndexService
         var recommendations = new List<string>();
         if (avgGI >= 70)
         {
-            recommendations.Add("Pair with protein or healthy fat to slow glucose absorption.");
-            recommendations.Add("Consider a lower-GI alternative to reduce blood sugar spikes.");
+            recommendations.Add("Pairing with protein or healthy fat may help moderate glucose absorption.");
+            recommendations.Add("A lower-GI alternative could potentially help moderate blood sugar response.");
         }
         else if (avgGI >= 56)
         {
-            recommendations.Add("Moderate GI — pair with fiber-rich foods for better blood sugar control.");
+            recommendations.Add("Moderate GI — fiber-rich foods alongside may help moderate blood sugar response.");
         }
 
         if (estimatedGL >= 20)
         {
-            recommendations.Add("High glycemic load — watch portion size to limit blood sugar impact.");
+            recommendations.Add("High glycemic load — portion size can influence blood sugar response.");
         }
 
         if (product.Fiber100g is > 3)
         {
-            recommendations.Add("Good fiber content helps slow glucose absorption and feeds beneficial gut bacteria.");
+            recommendations.Add("Good fiber content may help moderate glucose absorption and support gut bacteria diversity.");
         }
         else if (product.Fiber100g is < 1 && product.Carbs100g is > 30)
         {
-            recommendations.Add("Low fiber with high carbs — consider adding a fiber source to this meal.");
+            recommendations.Add("Low fiber with high carbs — adding a fiber source to this meal is one option to explore.");
         }
 
         return new GlycemicAssessmentDto
@@ -150,7 +155,7 @@ public class GlycemicIndexService
             Matches = matches,
             GutImpactSummary = BuildGutImpactSummary(avgGI, null, null),
             Recommendations = avgGI >= 70
-                ? ["Pair with protein or healthy fat to slow glucose absorption."]
+                ? ["Pairing with protein or healthy fat may help moderate glucose absorption."]
                 : [],
         };
     }
@@ -174,14 +179,14 @@ public class GlycemicIndexService
         var parts = new List<string>();
 
         if (gi >= 70)
-            parts.Add("High GI foods cause rapid blood sugar spikes which can trigger insulin surges, promote inflammation, and feed pathogenic gut bacteria.");
+            parts.Add("High GI foods are associated with faster blood sugar rises, which some research links to inflammation and changes in gut bacteria composition.");
         else if (gi >= 56)
-            parts.Add("Medium GI — moderate blood sugar impact. Generally acceptable for gut health when eaten with fiber or protein.");
+            parts.Add("Medium GI — moderate blood sugar impact. Often paired with fiber or protein for a more balanced response.");
         else
-            parts.Add("Low GI — slow glucose release supports stable blood sugar, reduces inflammation, and promotes healthy gut microbiome diversity.");
+            parts.Add("Low GI — associated with more gradual glucose release, which some research links to better blood sugar stability and microbiome diversity.");
 
         if (gl is >= 20)
-            parts.Add("The high glycemic load means this portion delivers a significant glucose hit — consider smaller portions or pairing with fat/protein.");
+            parts.Add("The high glycemic load suggests a higher glucose delivery per serving — smaller portions or pairing with fat/protein are options some people explore.");
 
         if (product?.Fiber100g is > 5)
             parts.Add("High fiber content provides prebiotic benefits and helps moderate the glycemic response.");
@@ -195,6 +200,10 @@ public class GlycemicIndexService
         if (product.Carbs100g is null or 0) return null;
 
         var carbs = product.Carbs100g.Value;
+
+        // Very low carb foods shouldn't get a GI estimate — GI is meaningless
+        if (carbs < 5) return null;
+
         var fiber = product.Fiber100g ?? 0;
         var sugar = product.Sugar100g ?? 0;
         var protein = product.Protein100g ?? 0;
@@ -203,7 +212,7 @@ public class GlycemicIndexService
         // Higher sugar ratio → higher GI estimate
         // Higher fiber, protein, fat → lower GI estimate
         var sugarRatio = carbs > 0 ? sugar / carbs : 0;
-        var baseGI = 55m; // Start at medium
+        var baseGI = carbs < 10 ? 35m : 55m; // Low-carb foods get a lower starting point
 
         // Adjust up for high sugar
         if (sugarRatio > 0.6m) baseGI += 15;
@@ -293,6 +302,7 @@ public class GlycemicIndexService
         ("strawberr", new() { Food = "Strawberry", GI = 40, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
         ("blueberr", new() { Food = "Blueberry", GI = 53, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
         ("cherry", new() { Food = "Cherry", GI = 22, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI" }),
+        ("cherries", new() { Food = "Cherries", GI = 22, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI" }),
         ("pear", new() { Food = "Pear", GI = 38, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
         ("peach", new() { Food = "Peach", GI = 42, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
         ("plum", new() { Food = "Plum", GI = 39, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
@@ -349,5 +359,15 @@ public class GlycemicIndexService
         ("bran flake", new() { Food = "Bran flakes", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
         ("weetabix", new() { Food = "Weetabix", GI = 69, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
         ("cheerios", new() { Food = "Cheerios", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
+
+        // ── Vegetables ──
+        ("carrot", new() { Food = "Carrot", GI = 16, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI when raw; cooked is higher (~41)" }),
+        ("celery", new() { Food = "Celery", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
+        ("broccoli", new() { Food = "Broccoli", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
+        ("spinach", new() { Food = "Spinach", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
+        ("cabbage", new() { Food = "Cabbage", GI = 10, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
+        ("tomato", new() { Food = "Tomato", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
+        ("lettuce", new() { Food = "Lettuce", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
+        ("cucumber", new() { Food = "Cucumber", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
     ];
 }

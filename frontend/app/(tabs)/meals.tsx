@@ -41,6 +41,7 @@ import {
 } from "../../src/utils/theme";
 import { useRouter } from "expo-router";
 import { maybeRequestReview } from "../../src/utils/review";
+import { SafeScreen } from "../../components/SafeScreen";
 
 const editFieldStyle = {
   borderWidth: 1 as const,
@@ -510,489 +511,164 @@ export default function MealsScreen() {
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
-        />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={{ padding: spacing.xl }}>
-        {/* Date Navigation */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            backgroundColor: colors.card,
-            borderRadius: radius.md,
-            padding: spacing.md,
-            marginBottom: spacing.lg,
-            ...shadow,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setSelectedDate(shiftDate(selectedDate, -1))}
-            style={{ padding: 8 }}
+    <SafeScreen edges={["top"]}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ padding: spacing.xl }}>
+          {/* Date Navigation */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: colors.card,
+              borderRadius: radius.md,
+              padding: spacing.md,
+              marginBottom: spacing.lg,
+              ...shadow,
+            }}
           >
-            <Ionicons
-              name="chevron-back"
-              size={22}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() =>
-              setSelectedDate(new Date().toISOString().split("T")[0])
-            }
-          >
-            <Text
-              style={{
-                fontSize: 16,
-                fontWeight: "700",
-                color: colors.text,
-                textAlign: "center",
-              }}
+            <TouchableOpacity
+              onPress={() => setSelectedDate(shiftDate(selectedDate, -1))}
+              style={{ padding: 8 }}
             >
-              {formatDateLabel(selectedDate)}
-            </Text>
-            {!isToday && (
+              <Ionicons
+                name="chevron-back"
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                setSelectedDate(new Date().toISOString().split("T")[0])
+              }
+            >
               <Text
                 style={{
-                  fontSize: 11,
-                  color: colors.textMuted,
+                  fontSize: 16,
+                  fontWeight: "700",
+                  color: colors.text,
                   textAlign: "center",
                 }}
               >
-                {selectedDate}
+                {formatDateLabel(selectedDate)}
               </Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() =>
-              !isToday && setSelectedDate(shiftDate(selectedDate, 1))
-            }
-            style={{ padding: 8, opacity: isToday ? 0.3 : 1 }}
-          >
-            <Ionicons
-              name="chevron-forward"
-              size={22}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* Meal Type Selector with Emojis */}
-        <View
-          style={{ flexDirection: "row", marginBottom: spacing.lg, gap: 6 }}
-        >
-          {MEAL_TYPES.map((type) => {
-            const active = selectedMealType === type;
-            return (
-              <TouchableOpacity
-                key={type}
-                onPress={() => setSelectedMealType(type)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: radius.md,
-                  backgroundColor: active ? colors.primary : colors.card,
-                  alignItems: "center",
-                  ...shadow,
-                  borderWidth: active ? 0 : 1,
-                  borderColor: colors.borderLight,
-                }}
-              >
-                <Text style={{ fontSize: 18, marginBottom: 2 }}>
-                  {mealTypeEmoji[type] ?? "🍽️"}
-                </Text>
+              {!isToday && (
                 <Text
                   style={{
                     fontSize: 11,
-                    fontWeight: "600",
-                    color: active ? "#fff" : colors.textSecondary,
+                    color: colors.textMuted,
+                    textAlign: "center",
                   }}
                 >
-                  {type}
+                  {selectedDate}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                !isToday && setSelectedDate(shiftDate(selectedDate, 1))
+              }
+              style={{ padding: 8, opacity: isToday ? 0.3 : 1 }}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
 
-        {/* Input Buttons Row */}
-        <View
-          style={{ flexDirection: "row", gap: 8, marginBottom: spacing.lg }}
-        >
-          {showNaturalInput ? (
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: radius.md,
-                padding: spacing.lg,
-                ...shadowMd,
-              }}
-            >
-              <TextInput
-                placeholder='e.g. "2 eggs, toast with butter, orange juice"'
-                placeholderTextColor={colors.textLight}
-                value={naturalText}
-                onChangeText={setNaturalText}
-                multiline
-                style={{ fontSize: 15, minHeight: 60, color: colors.text }}
-              />
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "flex-end",
-                  marginTop: spacing.md,
-                  gap: 8,
-                }}
-              >
+          {/* Meal Type Selector with Emojis */}
+          <View
+            style={{ flexDirection: "row", marginBottom: spacing.lg, gap: 6 }}
+          >
+            {MEAL_TYPES.map((type) => {
+              const active = selectedMealType === type;
+              return (
                 <TouchableOpacity
-                  onPress={() => setShowNaturalInput(false)}
-                  style={{ paddingHorizontal: 14, paddingVertical: 8 }}
-                >
-                  <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() =>
-                    naturalText && parseMutation.mutate(naturalText)
-                  }
-                  disabled={parseMutation.isPending}
+                  key={type}
+                  onPress={() => setSelectedMealType(type)}
                   style={{
-                    backgroundColor: colors.primary,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: radius.sm,
-                  }}
-                >
-                  {parseMutation.isPending ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text
-                      style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
-                    >
-                      Parse & Log
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : showManualInput ? (
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: radius.md,
-                padding: spacing.lg,
-                ...shadowMd,
-              }}
-            >
-              <TextInput
-                placeholder="Food name (e.g. Chicken breast)"
-                placeholderTextColor={colors.textLight}
-                value={manualFoodName}
-                onChangeText={setManualFoodName}
-                style={{
-                  fontWeight: "600",
-                  fontSize: 15,
-                  color: colors.text,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.borderLight,
-                  paddingBottom: 8,
-                  marginBottom: spacing.md,
-                }}
-              />
-              <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
-                {[
-                  {
-                    label: "Calories",
-                    value: manualCalories,
-                    set: setManualCalories,
-                  },
-                  {
-                    label: "Protein",
-                    value: manualProtein,
-                    set: setManualProtein,
-                  },
-                  { label: "Carbs", value: manualCarbs, set: setManualCarbs },
-                  { label: "Fat", value: manualFat, set: setManualFat },
-                ].map(({ label, value, set }) => (
-                  <View key={label} style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: colors.textMuted,
-                        marginBottom: 2,
-                      }}
-                    >
-                      {label}
-                    </Text>
-                    <TextInput
-                      placeholder="0"
-                      value={value}
-                      onChangeText={set}
-                      keyboardType="numeric"
-                      style={editFieldStyle}
-                    />
-                  </View>
-                ))}
-              </View>
-              <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
-                {[
-                  { label: "Fiber", value: manualFiber, set: setManualFiber },
-                  { label: "Sugar", value: manualSugar, set: setManualSugar },
-                  {
-                    label: "Na (mg)",
-                    value: manualSodium,
-                    set: setManualSodium,
-                  },
-                  {
-                    label: "Servings",
-                    value: manualServings,
-                    set: setManualServings,
-                  },
-                ].map(({ label, value, set }) => (
-                  <View key={label} style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: colors.textMuted,
-                        marginBottom: 2,
-                      }}
-                    >
-                      {label}
-                    </Text>
-                    <TextInput
-                      placeholder="0"
-                      value={value}
-                      onChangeText={set}
-                      keyboardType="numeric"
-                      style={editFieldStyle}
-                    />
-                  </View>
-                ))}
-              </View>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "flex-end",
-                  marginTop: spacing.md,
-                  gap: 8,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => setShowManualInput(false)}
-                  style={{ paddingHorizontal: 14, paddingVertical: 8 }}
-                >
-                  <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() =>
-                    manualFoodName.trim() && manualMutation.mutate()
-                  }
-                  disabled={manualMutation.isPending || !manualFoodName.trim()}
-                  style={{
-                    backgroundColor: colors.primary,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: radius.sm,
-                    opacity: manualFoodName.trim() ? 1 : 0.5,
-                  }}
-                >
-                  {manualMutation.isPending ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text
-                      style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
-                    >
-                      Log Meal
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : showParsedReview ? (
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: radius.md,
-                padding: spacing.lg,
-                ...shadowMd,
-              }}
-            >
-              <Text
-                style={{
-                  fontWeight: "700",
-                  fontSize: 15,
-                  color: colors.text,
-                  marginBottom: spacing.md,
-                }}
-              >
-                {parsedItems.length} items found — review & edit
-              </Text>
-              {parsedItems.map((item, idx) => (
-                <View
-                  key={idx}
-                  style={{
-                    borderWidth: 1,
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: radius.md,
+                    backgroundColor: active ? colors.primary : colors.card,
+                    alignItems: "center",
+                    ...shadow,
+                    borderWidth: active ? 0 : 1,
                     borderColor: colors.borderLight,
-                    borderRadius: radius.sm,
-                    padding: spacing.md,
-                    marginBottom: spacing.sm,
                   }}
                 >
-                  <View
+                  <Text style={{ fontSize: 18, marginBottom: 2 }}>
+                    {mealTypeEmoji[type] ?? "🍽️"}
+                  </Text>
+                  <Text
                     style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 6,
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: active ? "#fff" : colors.textSecondary,
                     }}
                   >
-                    <TextInput
-                      value={item.name}
-                      onChangeText={(v) => updateParsedItem(idx, "name", v)}
-                      style={{
-                        fontWeight: "600",
-                        fontSize: 14,
-                        color: colors.text,
-                        flex: 1,
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.borderLight,
-                        paddingBottom: 4,
-                      }}
-                    />
-                    <TouchableOpacity
-                      onPress={() => openSwapSearch(idx)}
-                      style={{ marginLeft: 6, padding: 4 }}
-                    >
-                      <Ionicons
-                        name="swap-horizontal"
-                        size={18}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => removeParsedItem(idx)}
-                      style={{ marginLeft: 4, padding: 4 }}
-                    >
-                      <Ionicons
-                        name="close-circle"
-                        size={20}
-                        color={colors.danger}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  <View
-                    style={{ flexDirection: "row", gap: 6, marginBottom: 4 }}
-                  >
-                    {[
-                      { label: "Cal", field: "calories", value: item.calories },
-                      {
-                        label: "Prot",
-                        field: "proteinG",
-                        value: item.proteinG,
-                      },
-                      { label: "Carbs", field: "carbsG", value: item.carbsG },
-                      { label: "Fat", field: "fatG", value: item.fatG },
-                    ].map(({ label, field, value }) => (
-                      <View key={field} style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontSize: 9,
-                            color: colors.textMuted,
-                            marginBottom: 1,
-                          }}
-                        >
-                          {label}
-                        </Text>
-                        <TextInput
-                          value={String(Math.round(value))}
-                          onChangeText={(v) => updateParsedItem(idx, field, v)}
-                          keyboardType="numeric"
-                          style={editFieldStyle}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                  <View style={{ flexDirection: "row", gap: 6 }}>
-                    {[
-                      { label: "Fiber", field: "fiberG", value: item.fiberG },
-                      { label: "Sugar", field: "sugarG", value: item.sugarG },
-                      { label: "Na", field: "sodiumMg", value: item.sodiumMg },
-                      {
-                        label: "Qty",
-                        field: "servingQuantity",
-                        value: item.servingQuantity,
-                      },
-                    ].map(({ label, field, value }) => (
-                      <View key={field} style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontSize: 9,
-                            color: colors.textMuted,
-                            marginBottom: 1,
-                          }}
-                        >
-                          {label}
-                        </Text>
-                        <TextInput
-                          value={String(Math.round(value))}
-                          onChangeText={(v) => updateParsedItem(idx, field, v)}
-                          keyboardType="numeric"
-                          style={editFieldStyle}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Input Buttons Row */}
+          <View
+            style={{ flexDirection: "row", gap: 8, marginBottom: spacing.lg }}
+          >
+            {showNaturalInput ? (
               <View
                 style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginTop: spacing.sm,
+                  flex: 1,
+                  backgroundColor: colors.card,
+                  borderRadius: radius.md,
+                  padding: spacing.lg,
+                  ...shadowMd,
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.textMuted }}>
-                  Total:{" "}
-                  {Math.round(parsedItems.reduce((s, i) => s + i.calories, 0))}{" "}
-                  cal
-                </Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <TextInput
+                  placeholder='e.g. "2 eggs, toast with butter, orange juice"'
+                  placeholderTextColor={colors.textLight}
+                  value={naturalText}
+                  onChangeText={setNaturalText}
+                  multiline
+                  style={{ fontSize: 15, minHeight: 60, color: colors.text }}
+                />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "flex-end",
+                    marginTop: spacing.md,
+                    gap: 8,
+                  }}
+                >
                   <TouchableOpacity
-                    onPress={() => {
-                      setParsedItems([]);
-                      setShowParsedReview(false);
-                    }}
+                    onPress={() => setShowNaturalInput(false)}
                     style={{ paddingHorizontal: 14, paddingVertical: 8 }}
                   >
-                    <Text
-                      style={{ color: colors.textMuted, fontWeight: "600" }}
-                    >
+                    <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
                       Cancel
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() =>
-                      parsedItems.length > 0 && parsedMealMutation.mutate()
+                      naturalText && parseMutation.mutate(naturalText)
                     }
-                    disabled={
-                      parsedMealMutation.isPending || parsedItems.length === 0
-                    }
+                    disabled={parseMutation.isPending}
                     style={{
                       backgroundColor: colors.primary,
                       paddingHorizontal: 16,
@@ -1000,112 +676,438 @@ export default function MealsScreen() {
                       borderRadius: radius.sm,
                     }}
                   >
-                    {parsedMealMutation.isPending ? (
+                    {parseMutation.isPending ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <Text
-                        style={{
-                          color: "#fff",
-                          fontWeight: "600",
-                          fontSize: 14,
-                        }}
+                        style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
                       >
-                        Log Meal ({parsedItems.length} items)
+                        Parse & Log
                       </Text>
                     )}
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
-          ) : (
-            <>
-              <TouchableOpacity
-                onPress={() => setShowNaturalInput(true)}
+            ) : showManualInput ? (
+              <View
                 style={{
                   flex: 1,
-                  backgroundColor: colors.primary,
+                  backgroundColor: colors.card,
                   borderRadius: radius.md,
-                  padding: 14,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  padding: spacing.lg,
                   ...shadowMd,
                 }}
               >
-                <Ionicons name="chatbubble-outline" size={18} color="#fff" />
-                <Text
+                <TextInput
+                  placeholder="Food name (e.g. Chicken breast)"
+                  placeholderTextColor={colors.textLight}
+                  value={manualFoodName}
+                  onChangeText={setManualFoodName}
                   style={{
-                    color: "#fff",
                     fontWeight: "600",
-                    marginLeft: 6,
-                    fontSize: 14,
+                    fontSize: 15,
+                    color: colors.text,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.borderLight,
+                    paddingBottom: 8,
+                    marginBottom: spacing.md,
+                  }}
+                />
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+                  {[
+                    {
+                      label: "Calories",
+                      value: manualCalories,
+                      set: setManualCalories,
+                    },
+                    {
+                      label: "Protein",
+                      value: manualProtein,
+                      set: setManualProtein,
+                    },
+                    { label: "Carbs", value: manualCarbs, set: setManualCarbs },
+                    { label: "Fat", value: manualFat, set: setManualFat },
+                  ].map(({ label, value, set }) => (
+                    <View key={label} style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: colors.textMuted,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                      <TextInput
+                        placeholder="0"
+                        value={value}
+                        onChangeText={set}
+                        keyboardType="numeric"
+                        style={editFieldStyle}
+                      />
+                    </View>
+                  ))}
+                </View>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+                  {[
+                    { label: "Fiber", value: manualFiber, set: setManualFiber },
+                    { label: "Sugar", value: manualSugar, set: setManualSugar },
+                    {
+                      label: "Na (mg)",
+                      value: manualSodium,
+                      set: setManualSodium,
+                    },
+                    {
+                      label: "Servings",
+                      value: manualServings,
+                      set: setManualServings,
+                    },
+                  ].map(({ label, value, set }) => (
+                    <View key={label} style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: colors.textMuted,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                      <TextInput
+                        placeholder="0"
+                        value={value}
+                        onChangeText={set}
+                        keyboardType="numeric"
+                        style={editFieldStyle}
+                      />
+                    </View>
+                  ))}
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "flex-end",
+                    marginTop: spacing.md,
+                    gap: 8,
                   }}
                 >
-                  Describe
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setShowManualInput(true)}
+                  <TouchableOpacity
+                    onPress={() => setShowManualInput(false)}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                  >
+                    <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() =>
+                      manualFoodName.trim() && manualMutation.mutate()
+                    }
+                    disabled={manualMutation.isPending || !manualFoodName.trim()}
+                    style={{
+                      backgroundColor: colors.primary,
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      borderRadius: radius.sm,
+                      opacity: manualFoodName.trim() ? 1 : 0.5,
+                    }}
+                  >
+                    {manualMutation.isPending ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text
+                        style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
+                      >
+                        Log Meal
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : showParsedReview ? (
+              <View
                 style={{
                   flex: 1,
-                  backgroundColor: colors.secondaryBg,
+                  backgroundColor: colors.card,
                   borderRadius: radius.md,
-                  padding: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: colors.secondary,
-                  ...shadow,
+                  padding: spacing.lg,
+                  ...shadowMd,
                 }}
               >
-                <Ionicons
-                  name="create-outline"
-                  size={18}
-                  color={colors.secondary}
-                />
                 <Text
                   style={{
-                    color: colors.secondary,
-                    fontWeight: "600",
-                    marginLeft: 6,
-                    fontSize: 14,
+                    fontWeight: "700",
+                    fontSize: 15,
+                    color: colors.text,
+                    marginBottom: spacing.md,
                   }}
                 >
-                  Manual
+                  {parsedItems.length} items found — review & edit
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push("/(tabs)/scan")}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.accentBg,
-                  borderRadius: radius.md,
-                  padding: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: colors.accent,
-                  ...shadow,
-                }}
-              >
-                <Ionicons
-                  name="search-outline"
-                  size={20}
-                  color={colors.accent}
-                />
-                <Text
+                {parsedItems.map((item, idx) => (
+                  <View
+                    key={idx}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.borderLight,
+                      borderRadius: radius.sm,
+                      padding: spacing.md,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <TextInput
+                        value={item.name}
+                        onChangeText={(v) => updateParsedItem(idx, "name", v)}
+                        style={{
+                          fontWeight: "600",
+                          fontSize: 14,
+                          color: colors.text,
+                          flex: 1,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.borderLight,
+                          paddingBottom: 4,
+                        }}
+                      />
+                      <TouchableOpacity
+                        onPress={() => openSwapSearch(idx)}
+                        style={{ marginLeft: 6, padding: 4 }}
+                      >
+                        <Ionicons
+                          name="swap-horizontal"
+                          size={18}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => removeParsedItem(idx)}
+                        style={{ marginLeft: 4, padding: 4 }}
+                      >
+                        <Ionicons
+                          name="close-circle"
+                          size={20}
+                          color={colors.danger}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View
+                      style={{ flexDirection: "row", gap: 6, marginBottom: 4 }}
+                    >
+                      {[
+                        { label: "Cal", field: "calories", value: item.calories },
+                        {
+                          label: "Prot",
+                          field: "proteinG",
+                          value: item.proteinG,
+                        },
+                        { label: "Carbs", field: "carbsG", value: item.carbsG },
+                        { label: "Fat", field: "fatG", value: item.fatG },
+                      ].map(({ label, field, value }) => (
+                        <View key={field} style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              color: colors.textMuted,
+                              marginBottom: 1,
+                            }}
+                          >
+                            {label}
+                          </Text>
+                          <TextInput
+                            value={String(Math.round(value))}
+                            onChangeText={(v) => updateParsedItem(idx, field, v)}
+                            keyboardType="numeric"
+                            style={editFieldStyle}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 6 }}>
+                      {[
+                        { label: "Fiber", field: "fiberG", value: item.fiberG },
+                        { label: "Sugar", field: "sugarG", value: item.sugarG },
+                        { label: "Na", field: "sodiumMg", value: item.sodiumMg },
+                        {
+                          label: "Qty",
+                          field: "servingQuantity",
+                          value: item.servingQuantity,
+                        },
+                      ].map(({ label, field, value }) => (
+                        <View key={field} style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              color: colors.textMuted,
+                              marginBottom: 1,
+                            }}
+                          >
+                            {label}
+                          </Text>
+                          <TextInput
+                            value={String(Math.round(value))}
+                            onChangeText={(v) => updateParsedItem(idx, field, v)}
+                            keyboardType="numeric"
+                            style={editFieldStyle}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+                <View
                   style={{
-                    color: colors.accent,
-                    fontWeight: "600",
-                    marginTop: 4,
-                    fontSize: 12,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginTop: spacing.sm,
                   }}
                 >
-                  Search
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                    Total:{" "}
+                    {Math.round(parsedItems.reduce((s, i) => s + i.calories, 0))}{" "}
+                    cal
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setParsedItems([]);
+                        setShowParsedReview(false);
+                      }}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                    >
+                      <Text
+                        style={{ color: colors.textMuted, fontWeight: "600" }}
+                      >
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() =>
+                        parsedItems.length > 0 && parsedMealMutation.mutate()
+                      }
+                      disabled={
+                        parsedMealMutation.isPending || parsedItems.length === 0
+                      }
+                      style={{
+                        backgroundColor: colors.primary,
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: radius.sm,
+                      }}
+                    >
+                      {parsedMealMutation.isPending ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text
+                          style={{
+                            color: "#fff",
+                            fontWeight: "600",
+                            fontSize: 14,
+                          }}
+                        >
+                          Log Meal ({parsedItems.length} items)
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={() => setShowNaturalInput(true)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.primary,
+                    borderRadius: radius.md,
+                    padding: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    ...shadowMd,
+                  }}
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color="#fff" />
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontWeight: "600",
+                      marginLeft: 6,
+                      fontSize: 14,
+                    }}
+                  >
+                    Describe
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowManualInput(true)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.secondaryBg,
+                    borderRadius: radius.md,
+                    padding: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: colors.secondary,
+                    ...shadow,
+                  }}
+                >
+                  <Ionicons
+                    name="create-outline"
+                    size={18}
+                    color={colors.secondary}
+                  />
+                  <Text
+                    style={{
+                      color: colors.secondary,
+                      fontWeight: "600",
+                      marginLeft: 6,
+                      fontSize: 14,
+                    }}
+                  >
+                    Manual
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => router.push("/(tabs)/scan")}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.accentBg,
+                    borderRadius: radius.md,
+                    padding: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: colors.accent,
+                    ...shadow,
+                  }}
+                >
+                  <Ionicons
+                    name="search-outline"
+                    size={20}
+                    color={colors.accent}
+                  />
+                  <Text
+                    style={{
+                      color: colors.accent,
+                      fontWeight: "600",
+                      marginTop: 4,
+                      fontSize: 12,
+                    }}
+                  >
+                    Search
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
         </View>
 
         {/* Daily Summary */}
@@ -1476,6 +1478,8 @@ export default function MealsScreen() {
           </View>
         )}
       </View>
+
+      </ScrollView>
 
       {/* Food Info Bottom Sheet */}
       <BottomSheet
@@ -2221,6 +2225,6 @@ export default function MealsScreen() {
           )}
         </ScrollView>
       </BottomSheet>
-    </ScrollView>
+    </SafeScreen>
   );
 }

@@ -285,11 +285,17 @@ public sealed class FoodSearchIndex : IDisposable
         }
 
         // --- Data quality ---
-        if (dto.DataSource == "USDA") score += 5f;
+        if (dto.DataSource == "USDA") score += 12f;
         if (dto.Calories100g.HasValue) score += 2f;
         if (dto.Protein100g.HasValue) score += 1f;
         if (dto.Carbs100g.HasValue) score += 1f;
         if (dto.Fat100g.HasValue) score += 1f;
+
+        // --- Whole food boost: unbranded, single-ingredient foods ---
+        bool isLikelyWholeFood = string.IsNullOrEmpty(dto.Brand) &&
+            (string.IsNullOrEmpty(dto.Ingredients) || !dto.Ingredients.Contains(','));
+        if (isLikelyWholeFood)
+            score += 15f;
 
         // --- Exact name bonuses ---
         if (dto.Name.Equals(queryLower, StringComparison.OrdinalIgnoreCase))

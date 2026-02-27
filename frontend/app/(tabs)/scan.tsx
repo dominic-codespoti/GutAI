@@ -223,104 +223,33 @@ export default function ScanScreen() {
         />
       }
     >
-      <View style={{ padding: 20 }}>
-        {/* Barcode Input */}
-        <View
+      {/* Barcode Input */}
+      <View
+        style={{
+          backgroundColor: "#fff",
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 12,
+        }}
+      >
+        <Text
           style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 12,
+            fontSize: 14,
+            fontWeight: "600",
+            color: "#334155",
+            marginBottom: 8,
           }}
         >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: "#334155",
-              marginBottom: 8,
-            }}
-          >
-            Barcode Lookup
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TextInput
-              placeholder="Enter barcode number"
-              value={barcode}
-              onChangeText={setBarcode}
-              keyboardType="number-pad"
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: "#e2e8f0",
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 16,
-              }}
-            />
-            <TouchableOpacity
-              onPress={openCamera}
-              style={{
-                backgroundColor: "#22c55e",
-                borderRadius: 8,
-                width: 48,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="camera" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          {barcodeQuery.isLoading && (
-            <ActivityIndicator style={{ marginTop: 8 }} />
-          )}
-          {barcodeQuery.isError && (
-            <Text style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>
-              Product not found for this barcode
-            </Text>
-          )}
-          {barcodeQuery.data && (
-            <TouchableOpacity
-              onPress={() => handleSelectProduct(barcodeQuery.data!)}
-              style={{ marginTop: 12 }}
-            >
-              <ProductCard
-                product={barcodeQuery.data}
-                onDetailPress={() => {
-                  const pid = barcodeQuery.data!.id;
-                  if (pid && pid !== "00000000-0000-0000-0000-000000000000") {
-                    router.push(`/food/${pid}`);
-                  }
-                }}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Search */}
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: "#334155",
-              marginBottom: 8,
-            }}
-          >
-            Search Foods
-          </Text>
+          Barcode Lookup
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
           <TextInput
-            placeholder="Search by name..."
-            value={searchText}
-            onChangeText={setSearchText}
+            placeholder="Enter barcode number"
+            value={barcode}
+            onChangeText={setBarcode}
+            keyboardType="number-pad"
             style={{
+              flex: 1,
               borderWidth: 1,
               borderColor: "#e2e8f0",
               borderRadius: 8,
@@ -328,400 +257,402 @@ export default function ScanScreen() {
               fontSize: 16,
             }}
           />
-          {searchResults.isLoading && (
-            <ActivityIndicator style={{ marginTop: 8 }} />
-          )}
-          {searchResults.isError && (
-            <Text style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>
-              Search failed — try again
-            </Text>
-          )}
-          {pendingLookup.isLoading && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 8,
-              }}
-            >
-              <ActivityIndicator size="small" />
-              <Text style={{ marginLeft: 8, color: "#64748b", fontSize: 13 }}>
-                Loading product details...
-              </Text>
-            </View>
-          )}
-          {searchResults.data?.map((product, index) => (
-            <TouchableOpacity
-              key={product.barcode || `search-${index}`}
-              onPress={() => handleSelectProduct(product)}
-              style={{ marginTop: 8 }}
-            >
-              <ProductCard
-                product={product}
-                onDetailPress={() => {
-                  const pid = product.id;
-                  if (pid && pid !== "00000000-0000-0000-0000-000000000000") {
-                    router.push(`/food/${pid}`);
-                  }
-                }}
-              />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Safety Report */}
-        {safetyReport.isLoading && (
-          <ActivityIndicator
-            size="large"
-            color="#22c55e"
-            style={{ marginVertical: 20 }}
-          />
-        )}
-        {safetyReport.isError && (
-          <ErrorState
-            message="Failed to load safety report"
-            onRetry={() => safetyReport.refetch()}
-          />
-        )}
-        {safetyReport.data && (
-          <View
+          <TouchableOpacity
+            onPress={openCamera}
             style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              marginTop: 4,
+              backgroundColor: "#22c55e",
+              borderRadius: 8,
+              width: 48,
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <View
+            <Ionicons name="camera" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        {barcodeQuery.isLoading && (
+          <ActivityIndicator style={{ marginTop: 8 }} />
+        )}
+        {barcodeQuery.isError && (
+          <Text style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>
+            Product not found for this barcode
+          </Text>
+        )}
+        {barcodeQuery.data && (
+          <TouchableOpacity
+            onPress={() => handleSelectProduct(barcodeQuery.data!)}
+            style={{ marginTop: 12 }}
+          >
+            <ProductCard
+              product={barcodeQuery.data}
+              onDetailPress={() => {
+                const pid = barcodeQuery.data!.id;
+                if (pid && pid !== "00000000-0000-0000-0000-000000000000") {
+                  router.push(`/food/${pid}`);
+                }
+              }}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Search */}
+      <View
+        style={{
+          backgroundColor: "#fff",
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: "600",
+            color: "#334155",
+            marginBottom: 8,
+          }}
+        >
+          Search Foods
+        </Text>
+        <TextInput
+          placeholder="Search by name..."
+          value={searchText}
+          onChangeText={setSearchText}
+          style={{
+            borderWidth: 1,
+            borderColor: "#e2e8f0",
+            borderRadius: 8,
+            padding: 12,
+            fontSize: 16,
+          }}
+        />
+        {searchResults.isLoading && (
+          <ActivityIndicator style={{ marginTop: 8 }} />
+        )}
+        {searchResults.isError && (
+          <Text style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>
+            Search failed — try again
+          </Text>
+        )}
+        {pendingLookup.isLoading && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginTop: 8,
+            }}
+          >
+            <ActivityIndicator size="small" />
+            <Text style={{ marginLeft: 8, color: "#64748b", fontSize: 13 }}>
+              Loading product details...
+            </Text>
+          </View>
+        )}
+        {searchResults.data?.map((product, index) => (
+          <TouchableOpacity
+            key={product.barcode || `search-${index}`}
+            onPress={() => handleSelectProduct(product)}
+            style={{ marginTop: 8 }}
+          >
+            <ProductCard
+              product={product}
+              onDetailPress={() => {
+                const pid = product.id;
+                if (pid && pid !== "00000000-0000-0000-0000-000000000000") {
+                  router.push(`/food/${pid}`);
+                }
+              }}
+            />
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Safety Report */}
+      {safetyReport.isLoading && (
+        <ActivityIndicator
+          size="large"
+          color="#22c55e"
+          style={{ marginVertical: 20 }}
+        />
+      )}
+      {safetyReport.isError && (
+        <ErrorState
+          message="Failed to load safety report"
+          onRetry={() => safetyReport.refetch()}
+        />
+      )}
+      {safetyReport.data && (
+        <View
+          style={{
+            backgroundColor: "#fff",
+            borderRadius: 12,
+            padding: 16,
+            marginTop: 4,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Text
               style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
+                fontSize: 18,
+                fontWeight: "700",
+                color: "#0f172a",
+                marginBottom: 4,
               }}
             >
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "700",
-                  color: "#0f172a",
-                  marginBottom: 4,
-                }}
-              >
-                {safetyReport.data.product.name}
-              </Text>
-              {selectedProductId && (
-                <TouchableOpacity
-                  onPress={() => router.push(`/food/${selectedProductId}`)}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: "#3b82f6",
-                      fontWeight: "600",
-                    }}
-                  >
-                    Full Details →
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <NutritionBar
-              calories={Math.round(safetyReport.data.product.calories100g ?? 0)}
-              proteinG={Math.round(safetyReport.data.product.protein100g ?? 0)}
-              carbsG={Math.round(safetyReport.data.product.carbs100g ?? 0)}
-              fatG={Math.round(safetyReport.data.product.fat100g ?? 0)}
-              subtitle="per 100g"
-            />
-
-            {safetyReport.data.additives.length > 0 && (
-              <>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "600",
-                    color: "#334155",
-                    marginBottom: 8,
-                  }}
-                >
-                  Additives ({safetyReport.data.additives.length})
-                </Text>
-                {safetyReport.data.additives.map((add) => (
-                  <View
-                    key={add.id}
-                    style={{
-                      borderLeftWidth: 3,
-                      borderLeftColor: ratingColor(add.cspiRating),
-                      paddingLeft: 12,
-                      paddingVertical: 8,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: "600", color: "#0f172a" }}>
-                          {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: "#64748b",
-                            marginTop: 2,
-                          }}
-                        >
-                          CSPI: {add.cspiRating} · US: {add.usStatus} · EU:{" "}
-                          {add.euStatus}
-                        </Text>
-                      </View>
-                      {!alertIds.has(add.id) ? (
-                        <TouchableOpacity
-                          onPress={() => addAlertMutation.mutate(add.id)}
-                          style={{
-                            backgroundColor: "#fef2f2",
-                            borderRadius: 6,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              fontWeight: "600",
-                              color: "#ef4444",
-                            }}
-                          >
-                            + Alert
-                          </Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <View
-                          style={{
-                            backgroundColor: "#f0fdf4",
-                            borderRadius: 6,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              fontWeight: "600",
-                              color: "#22c55e",
-                            }}
-                          >
-                            ✓ Alert
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    {add.healthConcerns && (
-                      <Text
-                        style={{ fontSize: 12, color: "#ef4444", marginTop: 2 }}
-                      >
-                        ⚠ {add.healthConcerns}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </>
-            )}
-
-            {/* Quick Add to Meal */}
-            {showAddToMeal ? (
-              <View
-                style={{
-                  marginTop: 12,
-                  backgroundColor: "#f8fafc",
-                  borderRadius: 8,
-                  padding: 12,
-                }}
+              {safetyReport.data.product.name}
+            </Text>
+            {selectedProductId && (
+              <TouchableOpacity
+                onPress={() => router.push(`/food/${selectedProductId}`)}
               >
                 <Text
                   style={{
                     fontSize: 13,
+                    color: "#3b82f6",
                     fontWeight: "600",
-                    color: "#334155",
-                    marginBottom: 8,
                   }}
                 >
-                  Add to meal:
-                </Text>
-                <MealTypePicker
-                  selected={addToMealType}
-                  onSelect={setAddToMealType}
-                />
-                <ServingSizeSelector
-                  servingG={addToMealServingG}
-                  onServingChange={setAddToMealServingG}
-                  customText={customServingText}
-                  onCustomTextChange={setCustomServingText}
-                  multiplier={addToMealMultiplier}
-                  onMultiplierChange={setAddToMealMultiplier}
-                  product={addToMealProduct ?? safetyReport.data?.product}
-                  summaryText={
-                    safetyReport.data?.product
-                      ? nutritionSummaryText(
-                          scaleNutrition(
-                            safetyReport.data.product,
-                            effectiveGrams,
-                          ),
-                          effectiveGrams,
-                        )
-                      : undefined
-                  }
-                />
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                    marginTop: 8,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowAddToMeal(false);
-                      setAddToMealProduct(null);
-                    }}
-                    style={{ paddingHorizontal: 12, paddingVertical: 8 }}
-                  >
-                    <Text style={{ color: "#64748b", fontWeight: "600" }}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() =>
-                      addToMealMutation.mutate(safetyReport.data!.product)
-                    }
-                    disabled={addToMealMutation.isPending}
-                    style={{
-                      backgroundColor: "#22c55e",
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 8,
-                    }}
-                  >
-                    {addToMealMutation.isPending ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>
-                        Log It
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  setShowAddToMeal(true);
-                  setAddToMealMultiplier(1);
-                  setCustomServingText("");
-                  setAddToMealServingG(
-                    safetyReport.data?.product.servingQuantity
-                      ? Math.round(safetyReport.data.product.servingQuantity)
-                      : 100,
-                  );
-                }}
-                style={{
-                  marginTop: 12,
-                  backgroundColor: "#22c55e",
-                  borderRadius: 8,
-                  padding: 12,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="add-circle-outline" size={18} color="#fff" />
-                <Text
-                  style={{
-                    color: "#fff",
-                    fontWeight: "600",
-                    marginLeft: 6,
-                    fontSize: 14,
-                  }}
-                >
-                  Add to Meal
+                  Full Details →
                 </Text>
               </TouchableOpacity>
             )}
           </View>
-        )}
-      </View>
 
-      {/* Camera Modal */}
-      <Modal visible={showCamera} animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "#000" }}>
-          <View style={{ flex: 1 }}>
-            <CameraView
-              style={{ flex: 1 }}
-              facing="back"
-              barcodeScannerSettings={{
-                barcodeTypes: [
-                  "ean13",
-                  "ean8",
-                  "upc_a",
-                  "upc_e",
-                  "code128",
-                  "code39",
-                ],
-              }}
-              onBarcodeScanned={handleBarcodeScanned}
-            />
+          <NutritionBar
+            calories={Math.round(safetyReport.data.product.calories100g ?? 0)}
+            proteinG={Math.round(safetyReport.data.product.protein100g ?? 0)}
+            carbsG={Math.round(safetyReport.data.product.carbs100g ?? 0)}
+            fatG={Math.round(safetyReport.data.product.fat100g ?? 0)}
+            subtitle="per 100g"
+          />
+
+          {safetyReport.data.additives.length > 0 && (
+            <>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: "#334155",
+                  marginBottom: 8,
+                }}
+              >
+                Additives ({safetyReport.data.additives.length})
+              </Text>
+              {safetyReport.data.additives.map((add) => (
+                <View
+                  key={add.id}
+                  style={{
+                    borderLeftWidth: 3,
+                    borderLeftColor: ratingColor(add.cspiRating),
+                    paddingLeft: 12,
+                    paddingVertical: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: "600", color: "#0f172a" }}>
+                        {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: "#64748b",
+                          marginTop: 2,
+                        }}
+                      >
+                        CSPI: {add.cspiRating} · US: {add.usStatus} · EU:{" "}
+                        {add.euStatus}
+                      </Text>
+                    </View>
+                    {!alertIds.has(add.id) ? (
+                      <TouchableOpacity
+                        onPress={() => addAlertMutation.mutate(add.id)}
+                        style={{
+                          backgroundColor: "#fef2f2",
+                          borderRadius: 6,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: "600",
+                            color: "#ef4444",
+                          }}
+                        >
+                          + Alert
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View
+                        style={{
+                          backgroundColor: "#f0fdf4",
+                          borderRadius: 6,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: "600",
+                            color: "#22c55e",
+                          }}
+                        >
+                          ✓ Alert
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {add.healthConcerns && (
+                    <Text
+                      style={{ fontSize: 12, color: "#ef4444", marginTop: 2 }}
+                    >
+                      ⚠ {add.healthConcerns}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </>
+          )}
+
+          {/* Quick Add to Meal */}
+          {showAddToMeal ? (
             <View
               style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                justifyContent: "center",
-                alignItems: "center",
+                marginTop: 12,
+                backgroundColor: "#f8fafc",
+                borderRadius: 8,
+                padding: 12,
               }}
             >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: "#334155",
+                  marginBottom: 8,
+                }}
+              >
+                Add to meal:
+              </Text>
+              <MealTypePicker
+                selected={addToMealType}
+                onSelect={setAddToMealType}
+              />
+              <ServingSizeSelector
+                servingG={addToMealServingG}
+                onServingChange={setAddToMealServingG}
+                customText={customServingText}
+                onCustomTextChange={setCustomServingText}
+                multiplier={addToMealMultiplier}
+                onMultiplierChange={setAddToMealMultiplier}
+                product={addToMealProduct ?? safetyReport.data?.product}
+                summaryText={
+                  safetyReport.data?.product
+                    ? nutritionSummaryText(
+                        scaleNutrition(
+                          safetyReport.data.product,
+                          effectiveGrams,
+                        ),
+                        effectiveGrams,
+                      )
+                    : undefined
+                }
+              />
               <View
                 style={{
-                  width: 260,
-                  height: 160,
-                  borderWidth: 2,
-                  borderColor: "#22c55e",
-                  borderRadius: 12,
-                  backgroundColor: "transparent",
+                  flexDirection: "row",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                  marginTop: 8,
                 }}
-              />
+              >
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowAddToMeal(false);
+                    setAddToMealProduct(null);
+                  }}
+                  style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+                >
+                  <Text style={{ color: "#64748b", fontWeight: "600" }}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    addToMealMutation.mutate(safetyReport.data!.product)
+                  }
+                  disabled={addToMealMutation.isPending}
+                  style={{
+                    backgroundColor: "#22c55e",
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                  }}
+                >
+                  {addToMealMutation.isPending ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                      Log It
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                setShowAddToMeal(true);
+                setAddToMealMultiplier(1);
+                setCustomServingText("");
+                setAddToMealServingG(
+                  safetyReport.data?.product.servingQuantity
+                    ? Math.round(safetyReport.data.product.servingQuantity)
+                    : 100,
+                );
+              }}
+              style={{
+                marginTop: 12,
+                backgroundColor: "#22c55e",
+                borderRadius: 8,
+                padding: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
               <Text
                 style={{
                   color: "#fff",
+                  fontWeight: "600",
+                  marginLeft: 6,
                   fontSize: 14,
-                  marginTop: 16,
-                  textAlign: "center",
                 }}
               >
-                Point camera at barcode
+                Add to Meal
               </Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            onPress={() => setShowCamera(false)}
-            style={{
-              backgroundColor: "#ef4444",
-              paddingVertical: 16,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-              Close Camera
-            </Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
-      </Modal>
+      )}
     </ScrollView>
   );
 }

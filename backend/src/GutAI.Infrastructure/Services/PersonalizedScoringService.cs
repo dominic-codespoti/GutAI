@@ -35,8 +35,8 @@ public class PersonalizedScoringService
                 : fodmapScore >= 60
                     ? "Moderate FODMAP content — may cause issues for sensitive individuals."
                     : fodmapScore >= 40
-                        ? "High FODMAP content — likely to trigger bloating, gas, or discomfort."
-                        : "Very high FODMAP content — strong trigger risk for IBS and FODMAP-sensitive individuals.",
+                        ? "High FODMAP content — may contribute to bloating, gas, or discomfort in sensitive individuals."
+                        : "Very high FODMAP content — may be particularly challenging for individuals sensitive to FODMAPs.",
         });
 
         // 2. Additive Risk component (15%)
@@ -51,7 +51,7 @@ public class PersonalizedScoringService
                 ? "Few or no concerning additives detected."
                 : additiveScore >= 50
                     ? "Some gut-irritating additives present (emulsifiers, artificial sweeteners, etc.)."
-                    : "Multiple harmful additives detected that may damage gut lining or disrupt microbiome.",
+                    : "Multiple additives of potential concern detected — some research has explored their effects on gut comfort.",
         });
 
         // 3. NOVA Processing component (15%)
@@ -74,7 +74,7 @@ public class PersonalizedScoringService
                 1 => "Unprocessed or minimally processed food.",
                 2 => "Processed culinary ingredient.",
                 3 => "Processed food — moderate level of industrial processing.",
-                4 => "Ultra-processed food — associated with gut microbiome disruption and inflammation.",
+                4 => "Ultra-processed food — some research has linked ultra-processing to changes in gut microbiome composition.",
                 _ => "Processing level unknown; assuming moderate processing.",
             },
         });
@@ -142,7 +142,7 @@ public class PersonalizedScoringService
             WeightedContribution = (int)(allergenScore * 0.15),
             Explanation = allergenScore == 100
                 ? "No allergens matching your profile detected."
-                : "This product contains allergens you've flagged — avoid or use extreme caution.",
+                : "This product contains allergens from your profile — please be mindful and consult your healthcare provider if needed.",
         });
 
         // 6. Sugar Alcohols component (10%)
@@ -165,8 +165,8 @@ public class PersonalizedScoringService
             {
                 0 => "No sugar alcohols detected in ingredients.",
                 1 => "Contains 1 sugar alcohol — may cause mild digestive discomfort in sensitive individuals.",
-                2 => "Contains 2 sugar alcohols — moderate risk of bloating and laxative effects.",
-                _ => $"Contains {polyolCount} sugar alcohols — high risk of gas, bloating, and diarrhea.",
+                2 => "Contains 2 sugar alcohols — some people experience bloating or digestive changes with multiple sugar alcohols.",
+                _ => $"Contains {polyolCount} sugar alcohols — multiple sugar alcohols may increase the chance of digestive discomfort.",
             },
         });
 
@@ -259,11 +259,11 @@ public class PersonalizedScoringService
         // 10. Summary
         var summary = rating switch
         {
-            "Excellent" => $"{product.Name} scores {composite}/100 — an excellent choice for your gut health with minimal risks across all categories.",
+            "Excellent" => $"{product.Name} scores {composite}/100 — an excellent choice with minimal concerns across all categories.",
             "Good" => $"{product.Name} scores {composite}/100 — a generally good option, though some components could be better.",
-            "Fair" => $"{product.Name} scores {composite}/100 — proceed with caution. There are notable concerns in one or more areas.",
-            "Poor" => $"{product.Name} scores {composite}/100 — significant gut health concerns. Consider alternatives if you're sensitive.",
-            _ => $"{product.Name} scores {composite}/100 — high risk across multiple gut health factors. Strongly consider a safer substitute.",
+            "Fair" => $"{product.Name} scores {composite}/100 — there are some areas of potential concern worth considering.",
+            "Poor" => $"{product.Name} scores {composite}/100 — several factors scored lower. Exploring alternatives may be worthwhile if you're sensitive.",
+            _ => $"{product.Name} scores {composite}/100 — multiple factors scored low. You may want to explore other options.",
         };
 
         if (personalPenalty > 0)

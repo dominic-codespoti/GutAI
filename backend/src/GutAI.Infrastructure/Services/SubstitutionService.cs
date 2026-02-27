@@ -46,7 +46,7 @@ public class SubstitutionService
             {
                 Original = "Ultra-processed product (NOVA 4)",
                 Substitute = "Homemade or minimally processed version",
-                Reason = "NOVA 4 ultra-processed foods contain industrial additives linked to gut inflammation and microbiome disruption.",
+                Reason = "NOVA 4 ultra-processed foods contain industrial additives that some research has associated with gut inflammation and microbiome changes.",
                 Category = "Processing",
                 GutBenefit = "Reduced additive exposure, better microbiome diversity",
                 Confidence = "High",
@@ -62,7 +62,7 @@ public class SubstitutionService
             {
                 Original = "High sodium content",
                 Substitute = "Low-sodium version or season with herbs/spices instead",
-                Reason = $"This product has {product.Sodium100g:F1}g sodium per 100g. High sodium can worsen bloating and water retention.",
+                Reason = $"This product has {product.Sodium100g:F1}g sodium per 100g. High sodium intake has been associated with bloating and water retention in some individuals.",
                 Category = "Sodium",
                 GutBenefit = "Reduced bloating and water retention",
                 Confidence = "High",
@@ -78,7 +78,7 @@ public class SubstitutionService
             {
                 Original = "High sugar content",
                 Substitute = "Low-sugar or naturally sweetened alternative",
-                Reason = $"This product has {product.Sugar100g:F0}g sugar per 100g. Excess sugar feeds harmful gut bacteria and can cause fermentation.",
+                Reason = $"This product has {product.Sugar100g:F0}g sugar per 100g. Excess sugar has been associated with changes in gut bacteria composition and may contribute to fermentation in some people.",
                 Category = "Sugar",
                 GutBenefit = "Less fermentation, reduced gas and bloating",
                 Confidence = "High",
@@ -93,7 +93,7 @@ public class SubstitutionService
             SuggestionCount = suggestions.Count,
             Suggestions = suggestions,
             Summary = suggestions.Count == 0
-                ? "No gut-specific substitutions needed. This product looks good!"
+                ? "No common gut-related ingredient concerns identified in this product."
                 : $"Found {suggestions.Count} gut-friendly substitution(s) to consider.",
         };
     }
@@ -136,16 +136,16 @@ public class SubstitutionService
     [
         // ── Dairy / Lactose ──
         ("milk", [
-            new() { Original = "Milk", Substitute = "Oat milk or lactose-free milk", Reason = "Lactose in regular milk is a FODMAP trigger causing gas, bloating, and diarrhea in ~65% of adults.", Category = "Dairy", GutBenefit = "Eliminates lactose fermentation", Confidence = "High" },
+            new() { Original = "Milk", Substitute = "Oat milk or lactose-free milk", Reason = "Lactose in regular milk is a known FODMAP that may cause gas, bloating, or diarrhea in lactose-sensitive individuals.", Category = "Dairy", GutBenefit = "Eliminates lactose fermentation", Confidence = "High" },
         ]),
         ("cream cheese", [
             new() { Original = "Cream cheese", Substitute = "Cashew cream cheese or lactose-free cream cheese", Reason = "Cream cheese contains lactose. Plant-based or lactose-free versions eliminate this FODMAP trigger.", Category = "Dairy", GutBenefit = "Eliminates lactose trigger", Confidence = "High" },
         ]),
         ("cream", [
-            new() { Original = "Cream", Substitute = "Coconut cream or oat cream", Reason = "Heavy cream contains lactose. Coconut cream is naturally lactose-free and gut-friendly.", Category = "Dairy", GutBenefit = "Eliminates lactose, adds MCTs", Confidence = "High" },
+            new() { Original = "Cream", Substitute = "Coconut cream or oat cream", Reason = "Heavy cream contains lactose. Coconut cream is naturally lactose-free.", Category = "Dairy", GutBenefit = "Eliminates lactose, adds MCTs", Confidence = "High" },
         ]),
         ("butter", [
-            new() { Original = "Butter", Substitute = "Ghee (clarified butter) or olive oil", Reason = "Butter contains trace lactose and casein. Ghee has these removed during clarification. Olive oil provides anti-inflammatory oleic acid.", Category = "Dairy", GutBenefit = "Removes lactose/casein, anti-inflammatory", Confidence = "Medium" },
+            new() { Original = "Butter", Substitute = "Ghee (clarified butter) or olive oil", Reason = "Butter contains trace lactose and casein. Ghee has these largely removed during clarification. Olive oil is rich in oleic acid.", Category = "Dairy", GutBenefit = "Removes lactose/casein", Confidence = "Medium" },
         ]),
         ("cheese", [
             new() { Original = "Cheese", Substitute = "Aged cheese (Parmesan, aged Cheddar) or nutritional yeast", Reason = "Fresh cheeses are higher in lactose. Aged cheeses have most lactose consumed by bacteria during aging.", Category = "Dairy", GutBenefit = "Much lower lactose content", Confidence = "Medium" },
@@ -171,7 +171,7 @@ public class SubstitutionService
             new() { Original = "Wheat", Substitute = "Rice, quinoa, or sourdough wheat", Reason = "Wheat is high in fructans (a FODMAP). Sourdough reduces fructans by ~90%; rice and quinoa are naturally FODMAP-free.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans", Confidence = "High" },
         ]),
         ("gluten", [
-            new() { Original = "Gluten", Substitute = "Gluten-free alternative (rice, corn, buckwheat)", Reason = "Gluten can trigger inflammation in sensitive individuals and increase intestinal permeability.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "Medium" },
+            new() { Original = "Gluten", Substitute = "Gluten-free alternative (rice, corn, buckwheat)", Reason = "Gluten may cause discomfort in some sensitive individuals. Research on its broader effects is ongoing.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "Medium" },
         ]),
         ("barley", [
             new() { Original = "Barley", Substitute = "Brown rice or quinoa", Reason = "Barley contains both gluten and fructans. Rice and quinoa are free of both.", Category = "Gluten/Wheat", GutBenefit = "Eliminates fructans and gluten", Confidence = "High" },
@@ -182,7 +182,7 @@ public class SubstitutionService
 
         // ── FODMAP Triggers ──
         ("garlic", [
-            new() { Original = "Garlic", Substitute = "Garlic-infused oil or asafoetida (hing)", Reason = "Garlic is one of the highest FODMAP foods (fructans). Fructans are water-soluble but NOT oil-soluble, so garlic-infused oil gives flavor without FODMAPs.", Category = "FODMAP", GutBenefit = "Garlic flavor without fructans", Confidence = "High" },
+            new() { Original = "Garlic", Substitute = "Garlic-infused oil or asafoetida (hing)", Reason = "Garlic is high in fructans (a FODMAP category). Since fructans are water-soluble but not oil-soluble, garlic-infused oil may provide flavor with a lower FODMAP load.", Category = "FODMAP", GutBenefit = "Garlic flavor without fructans", Confidence = "High" },
         ]),
         ("onion", [
             new() { Original = "Onion", Substitute = "Green part of spring onions (scallions) or chives", Reason = "Onion bulbs are very high in fructans. The green tops of spring onions are low-FODMAP and provide similar flavor.", Category = "FODMAP", GutBenefit = "Similar flavor, minimal fructans", Confidence = "High" },
@@ -191,7 +191,7 @@ public class SubstitutionService
             new() { Original = "Honey", Substitute = "Maple syrup or rice malt syrup", Reason = "Honey has ~40% fructose vs ~30% glucose — significant excess fructose. Maple syrup has balanced fructose:glucose ratio.", Category = "FODMAP", GutBenefit = "Balanced sugar ratio, less malabsorption", Confidence = "High" },
         ]),
         ("high fructose corn syrup", [
-            new() { Original = "High fructose corn syrup", Substitute = "Glucose syrup or cane sugar", Reason = "HFCS has excess fructose that causes malabsorption, fermentation, and osmotic diarrhea in IBS patients.", Category = "FODMAP", GutBenefit = "Balanced fructose:glucose, less fermentation", Confidence = "High" },
+            new() { Original = "High fructose corn syrup", Substitute = "Glucose syrup or cane sugar", Reason = "HFCS has excess fructose that may contribute to malabsorption and digestive discomfort in some individuals.", Category = "FODMAP", GutBenefit = "Balanced fructose:glucose, less fermentation", Confidence = "High" },
         ]),
         ("hfcs", [
             new() { Original = "HFCS", Substitute = "Glucose syrup or cane sugar", Reason = "HFCS has excess fructose that causes malabsorption and fermentation.", Category = "FODMAP", GutBenefit = "Balanced fructose:glucose ratio", Confidence = "High" },
@@ -228,24 +228,24 @@ public class SubstitutionService
 
         // ── Artificial Sweeteners ──
         ("sucralose", [
-            new() { Original = "Sucralose", Substitute = "Stevia or monk fruit extract", Reason = "Sucralose may alter gut microbiome composition and reduce beneficial bacteria populations.", Category = "Sweetener", GutBenefit = "No microbiome disruption", Confidence = "Medium" },
+            new() { Original = "Sucralose", Substitute = "Stevia or monk fruit extract", Reason = "Some research suggests sucralose may influence gut microbiome composition, though findings are still being studied.", Category = "Sweetener", GutBenefit = "No microbiome disruption", Confidence = "Medium" },
         ]),
         ("aspartame", [
-            new() { Original = "Aspartame", Substitute = "Stevia or monk fruit extract", Reason = "Some studies link aspartame to gut microbiome changes and glucose intolerance via altered gut bacteria.", Category = "Sweetener", GutBenefit = "Natural sweetener, no microbiome concern", Confidence = "Medium" },
+            new() { Original = "Aspartame", Substitute = "Stevia or monk fruit extract", Reason = "Some studies have explored whether aspartame may influence gut bacteria, though results are mixed and ongoing.", Category = "Sweetener", GutBenefit = "Natural sweetener, no microbiome concern", Confidence = "Medium" },
         ]),
         ("acesulfame", [
-            new() { Original = "Acesulfame K", Substitute = "Stevia or monk fruit extract", Reason = "Acesulfame-K may negatively affect gut bacteria and has been linked to metabolic changes in animal studies.", Category = "Sweetener", GutBenefit = "No artificial sweetener exposure", Confidence = "Low" },
+            new() { Original = "Acesulfame K", Substitute = "Stevia or monk fruit extract", Reason = "Some animal studies have explored potential effects of Acesulfame-K on gut bacteria, though human evidence is limited.", Category = "Sweetener", GutBenefit = "No artificial sweetener exposure", Confidence = "Low" },
         ]),
 
         // ── Emulsifiers & Thickeners ──
         ("carrageenan", [
-            new() { Original = "Carrageenan (E407)", Substitute = "Gellan gum or agar agar", Reason = "Carrageenan is linked to intestinal inflammation and may damage the gut lining in some individuals.", Category = "Additive", GutBenefit = "Reduced intestinal inflammation risk", Confidence = "Medium" },
+            new() { Original = "Carrageenan (E407)", Substitute = "Gellan gum or agar agar", Reason = "Some research has explored whether carrageenan may contribute to gut discomfort in sensitive individuals.", Category = "Additive", GutBenefit = "Reduced intestinal inflammation risk", Confidence = "Medium" },
         ]),
         ("polysorbate", [
-            new() { Original = "Polysorbate 80 (E433)", Substitute = "Sunflower lecithin or no emulsifier", Reason = "Polysorbate 80 can erode the mucus layer protecting the gut lining, promoting inflammation.", Category = "Additive", GutBenefit = "Preserved mucus barrier integrity", Confidence = "Medium" },
+            new() { Original = "Polysorbate 80 (E433)", Substitute = "Sunflower lecithin or no emulsifier", Reason = "Some research suggests Polysorbate 80 may affect the gut's mucus layer, though most evidence comes from laboratory studies.", Category = "Additive", GutBenefit = "Preserved mucus barrier integrity", Confidence = "Medium" },
         ]),
         ("carboxymethyl", [
-            new() { Original = "CMC / Carboxymethylcellulose (E466)", Substitute = "Guar gum or xanthan gum (small amounts)", Reason = "CMC has been shown to alter gut microbiome and promote intestinal inflammation in studies.", Category = "Additive", GutBenefit = "Less microbiome disruption", Confidence = "Medium" },
+            new() { Original = "CMC / Carboxymethylcellulose (E466)", Substitute = "Guar gum or xanthan gum (small amounts)", Reason = "Some studies have explored whether CMC may influence gut microbiome composition and intestinal comfort.", Category = "Additive", GutBenefit = "Less microbiome disruption", Confidence = "Medium" },
         ]),
         ("sodium benzoate", [
             new() { Original = "Sodium benzoate (E211)", Substitute = "Natural preservation (vitamin E tocopherols, rosemary extract)", Reason = "Sodium benzoate may affect gut bacteria and can form benzene when combined with vitamin C.", Category = "Preservative", GutBenefit = "No antimicrobial effect on gut flora", Confidence = "Medium" },
@@ -278,10 +278,10 @@ public class SubstitutionService
 
         // ── Common Irritants ──
         ("caffeine", [
-            new() { Original = "Caffeine", Substitute = "Decaf version or herbal tea", Reason = "Caffeine stimulates gastric acid secretion and can speed gut motility, worsening IBS-D symptoms.", Category = "Stimulant", GutBenefit = "Reduced acid reflux and motility issues", Confidence = "Medium" },
+            new() { Original = "Caffeine", Substitute = "Decaf version or herbal tea", Reason = "Caffeine may stimulate gastric acid and gut motility, which some people find contributes to digestive discomfort.", Category = "Stimulant", GutBenefit = "Reduced acid reflux and motility issues", Confidence = "Medium" },
         ]),
         ("alcohol", [
-            new() { Original = "Alcohol", Substitute = "Non-alcoholic version or kombucha", Reason = "Alcohol disrupts gut barrier integrity ('leaky gut'), alters microbiome, and irritates the stomach lining.", Category = "Irritant", GutBenefit = "Preserved gut barrier, healthy microbiome", Confidence = "High" },
+            new() { Original = "Alcohol", Substitute = "Non-alcoholic version or kombucha", Reason = "Alcohol consumption has been associated with changes in gut barrier function, microbiome composition, and stomach comfort.", Category = "Irritant", GutBenefit = "Preserved gut barrier, healthy microbiome", Confidence = "High" },
         ]),
     ];
 
@@ -290,10 +290,10 @@ public class SubstitutionService
     static readonly Dictionary<string, SubstitutionDto[]> AllergenSubstitutions = new(StringComparer.OrdinalIgnoreCase)
     {
         ["gluten"] = [
-            new() { Original = "Gluten-containing ingredients", Substitute = "Gluten-free grains (rice, quinoa, buckwheat, millet)", Reason = "Gluten can trigger inflammation and increase intestinal permeability in sensitive individuals.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "High" },
+            new() { Original = "Gluten-containing ingredients", Substitute = "Gluten-free grains (rice, quinoa, buckwheat, millet)", Reason = "Gluten may cause discomfort in some sensitive individuals. Research on its broader effects is ongoing.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "High" },
         ],
         ["milk"] = [
-            new() { Original = "Dairy ingredients", Substitute = "Plant-based dairy alternatives (oat, coconut, almond)", Reason = "Dairy contains lactose (FODMAP) and casein which can trigger gut symptoms.", Category = "Dairy", GutBenefit = "Eliminates lactose and casein triggers", Confidence = "High" },
+            new() { Original = "Dairy ingredients", Substitute = "Plant-based dairy alternatives (oat, coconut, almond)", Reason = "Dairy contains lactose (a FODMAP) and casein, which some people find may contribute to digestive symptoms.", Category = "Dairy", GutBenefit = "Eliminates lactose and casein triggers", Confidence = "High" },
         ],
         ["soybeans"] = [
             new() { Original = "Soy ingredients", Substitute = "Firm tofu (drained) or alternative legumes", Reason = "Soy contains GOS (galacto-oligosaccharides). Firm tofu has most GOS removed during processing.", Category = "FODMAP", GutBenefit = "Reduced GOS exposure", Confidence = "Medium" },

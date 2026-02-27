@@ -7,21 +7,22 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Share,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../src/stores/auth";
-import { authApi, userApi, mealApi } from "../src/api";
+import { authApi, userApi } from "../src/api";
 import { toast } from "../src/stores/toast";
 import Constants from "expo-constants";
+import { SafeScreen } from "../components/SafeScreen";
+import { useRouter } from "expo-router";
 
 export default function SettingsScreen() {
   const { logout } = useAuthStore();
+  const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const appVersion = Constants.expoConfig?.version ?? "1.0.0";
 
@@ -45,22 +46,6 @@ export default function SettingsScreen() {
       toast.error("Failed to change password. Check your current password.");
     } finally {
       setChangingPassword(false);
-    }
-  };
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const { data } = await mealApi.export();
-      const json = JSON.stringify(data, null, 2);
-      await Share.share({
-        message: json,
-        title: "Gut AI Data Export",
-      });
-    } catch {
-      toast.error("Failed to export data");
-    } finally {
-      setExporting(false);
     }
   };
 
@@ -91,222 +76,240 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
-      <View style={{ padding: 20 }}>
-        {/* Change Password */}
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 12,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setShowPasswordForm(!showPasswordForm)}
+    <SafeScreen edges={["bottom"]}>
+      <ScrollView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+        <View style={{ padding: 20 }}>
+          {/* Change Password */}
+          <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
+              backgroundColor: "#fff",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 12,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="lock-closed-outline" size={20} color="#334155" />
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#334155",
-                  marginLeft: 12,
-                }}
-              >
-                Change Password
+            <TouchableOpacity
+              onPress={() => setShowPasswordForm(!showPasswordForm)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color="#334155"
+                />
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: "600",
+                    color: "#334155",
+                    marginLeft: 12,
+                  }}
+                >
+                  Change Password
+                </Text>
+              </View>
+              <Ionicons
+                name={showPasswordForm ? "chevron-up" : "chevron-down"}
+                size={20}
+                color="#94a3b8"
+              />
+            </TouchableOpacity>
+
+            {showPasswordForm && (
+              <View style={{ marginTop: 16 }}>
+                <TextInput
+                  placeholder="Current password"
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#e2e8f0",
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 15,
+                    color: "#0f172a",
+                    marginBottom: 10,
+                    backgroundColor: "#f8fafc",
+                  }}
+                />
+                <TextInput
+                  placeholder="New password (min 8 characters)"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#e2e8f0",
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 15,
+                    color: "#0f172a",
+                    marginBottom: 12,
+                    backgroundColor: "#f8fafc",
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={handleChangePassword}
+                  disabled={changingPassword}
+                  style={{
+                    backgroundColor: "#22c55e",
+                    borderRadius: 8,
+                    padding: 12,
+                    alignItems: "center",
+                  }}
+                >
+                  {changingPassword ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                      Update Password
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* App Info */}
+          <View
+            style={{
+              backgroundColor: "#fff",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 12,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: "#334155",
+                marginBottom: 12,
+              }}
+            >
+              About
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: "#64748b" }}>Version</Text>
+              <Text style={{ fontWeight: "600", color: "#0f172a" }}>
+                {appVersion}
               </Text>
             </View>
-            <Ionicons
-              name={showPasswordForm ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="#94a3b8"
-            />
-          </TouchableOpacity>
-
-          {showPasswordForm && (
-            <View style={{ marginTop: 16 }}>
-              <TextInput
-                placeholder="Current password"
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                secureTextEntry
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#e2e8f0",
-                  borderRadius: 8,
-                  padding: 12,
-                  fontSize: 15,
-                  color: "#0f172a",
-                  marginBottom: 10,
-                  backgroundColor: "#f8fafc",
-                }}
-              />
-              <TextInput
-                placeholder="New password (min 8 characters)"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#e2e8f0",
-                  borderRadius: 8,
-                  padding: 12,
-                  fontSize: 15,
-                  color: "#0f172a",
-                  marginBottom: 12,
-                  backgroundColor: "#f8fafc",
-                }}
-              />
-              <TouchableOpacity
-                onPress={handleChangePassword}
-                disabled={changingPassword}
-                style={{
-                  backgroundColor: "#22c55e",
-                  borderRadius: 8,
-                  padding: 12,
-                  alignItems: "center",
-                }}
-              >
-                {changingPassword ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>
-                    Update Password
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Export Data */}
-        <TouchableOpacity
-          onPress={handleExport}
-          disabled={exporting}
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 12,
-            flexDirection: "row",
-            alignItems: "center",
-          }}
-        >
-          <Ionicons name="download-outline" size={20} color="#334155" />
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: "600",
-              color: "#334155",
-              marginLeft: 12,
-              flex: 1,
-            }}
-          >
-            Export Data
-          </Text>
-          {exporting && <ActivityIndicator size="small" color="#22c55e" />}
-        </TouchableOpacity>
-
-        {/* App Info */}
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: "600",
-              color: "#334155",
-              marginBottom: 12,
-            }}
-          >
-            About
-          </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 6,
-            }}
-          >
-            <Text style={{ color: "#64748b" }}>Version</Text>
-            <Text style={{ fontWeight: "600", color: "#0f172a" }}>
-              {appVersion}
-            </Text>
-          </View>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 6,
-            }}
-          >
-            <Text style={{ color: "#64748b" }}>Data Storage</Text>
-            <Text style={{ fontWeight: "600", color: "#0f172a" }}>
-              On-device only
-            </Text>
-          </View>
-        </View>
-
-        {/* Danger Zone */}
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 16,
-            marginTop: 12,
-            borderWidth: 1,
-            borderColor: "#fecaca",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: "600",
-              color: "#dc2626",
-              marginBottom: 12,
-            }}
-          >
-            Danger Zone
-          </Text>
-          <TouchableOpacity
-            onPress={handleDeleteAccount}
-            disabled={deleting}
-            style={{
-              backgroundColor: "#fef2f2",
-              borderRadius: 8,
-              padding: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {deleting ? (
-              <ActivityIndicator size="small" color="#dc2626" />
-            ) : (
-              <>
-                <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                <Text
-                  style={{ color: "#dc2626", fontWeight: "600", marginLeft: 8 }}
-                >
-                  Delete Account
+            <TouchableOpacity
+              onPress={() => router.push("/sources")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 8,
+                marginTop: 4,
+                borderTopWidth: 1,
+                borderTopColor: "#f1f5f9",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="document-text-outline"
+                  size={16}
+                  color="#64748b"
+                />
+                <Text style={{ color: "#64748b", marginLeft: 8 }}>
+                  Sources & Medical Disclaimer
                 </Text>
-              </>
-            )}
-          </TouchableOpacity>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/privacy")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 8,
+                marginTop: 4,
+                borderTopWidth: 1,
+                borderTopColor: "#f1f5f9",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={16}
+                  color="#64748b"
+                />
+                <Text style={{ color: "#64748b", marginLeft: 8 }}>
+                  Privacy Policy
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Danger Zone */}
+          <View
+            style={{
+              backgroundColor: "#fff",
+              borderRadius: 12,
+              padding: 16,
+              marginTop: 12,
+              borderWidth: 1,
+              borderColor: "#fecaca",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: "#dc2626",
+                marginBottom: 12,
+              }}
+            >
+              Danger Zone
+            </Text>
+            <TouchableOpacity
+              onPress={handleDeleteAccount}
+              disabled={deleting}
+              style={{
+                backgroundColor: "#fef2f2",
+                borderRadius: 8,
+                padding: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {deleting ? (
+                <ActivityIndicator size="small" color="#dc2626" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                  <Text
+                    style={{
+                      color: "#dc2626",
+                      fontWeight: "600",
+                      marginLeft: 8,
+                    }}
+                  >
+                    Delete Account
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeScreen>
   );
 }

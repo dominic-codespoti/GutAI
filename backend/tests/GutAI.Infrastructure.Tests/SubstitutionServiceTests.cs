@@ -284,7 +284,7 @@ public class SubstitutionServiceTests
     {
         var result = _sut.GetSubstitutions(MakeProduct("White Rice", "rice"));
         result.SuggestionCount.Should().Be(0);
-        result.Summary.Should().Contain("looks good");
+        result.Summary.Should().Contain("No common gut-related ingredient concerns identified");
     }
 
     [Fact]

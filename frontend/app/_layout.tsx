@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View, TouchableOpacity, Platform } from "react-native";
+import { View, TouchableOpacity } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -23,7 +23,9 @@ function AuthGate() {
     if (isLoading) return;
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
-    if (!isAuthenticated && !inAuthGroup) {
+    const inPrivacy = segments[0] === "privacy";
+    const inSources = segments[0] === "sources";
+    if (!isAuthenticated && !inAuthGroup && !inPrivacy && !inSources) {
       router.replace("/(auth)/login");
     } else if (isAuthenticated && inAuthGroup) {
       if (user && !user.onboardingCompleted) {
@@ -77,6 +79,46 @@ function AuthGate() {
         options={{
           headerShown: true,
           title: "Settings",
+          headerBackTitle: "Back",
+          headerStyle: { backgroundColor: "#f8fafc" },
+          headerShadowVisible: false,
+          headerTintColor: "#0f172a",
+          headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{ marginRight: 8, padding: 4 }}
+            >
+              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="sources"
+        options={{
+          headerShown: true,
+          title: "Sources & Disclaimer",
+          headerBackTitle: "Back",
+          headerStyle: { backgroundColor: "#f8fafc" },
+          headerShadowVisible: false,
+          headerTintColor: "#0f172a",
+          headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{ marginRight: 8, padding: 4 }}
+            >
+              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="privacy"
+        options={{
+          headerShown: true,
+          title: "Privacy Policy",
           headerBackTitle: "Back",
           headerStyle: { backgroundColor: "#f8fafc" },
           headerShadowVisible: false,

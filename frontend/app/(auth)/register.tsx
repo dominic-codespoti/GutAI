@@ -20,6 +20,7 @@ import {
   spacing,
   fonts,
 } from "../../src/utils/theme";
+import { SafeScreen } from "../../components/SafeScreen";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -80,224 +81,227 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1, backgroundColor: colors.bg }}
-    >
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          paddingHorizontal: spacing.xxl,
-        }}
+    <SafeScreen>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        {/* Header */}
-        <View style={{ alignItems: "center", marginBottom: spacing.xxxl }}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            paddingHorizontal: spacing.xxl,
+          }}
+        >
+          {/* Header */}
+          <View style={{ alignItems: "center", marginBottom: spacing.xxxl }}>
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: radius.lg,
+                backgroundColor: colors.primaryBg,
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: spacing.md,
+                borderWidth: 2,
+                borderColor: colors.primaryBorder,
+                ...shadowMd,
+              }}
+            >
+              <Text style={{ fontSize: 30 }}>🌱</Text>
+            </View>
+            <Text
+              style={{
+                fontSize: 28,
+                fontWeight: "800",
+                color: colors.text,
+                letterSpacing: -0.5,
+              }}
+            >
+              Create Account
+            </Text>
+            <Text style={{ ...fonts.body, marginTop: 4 }}>
+              Start tracking your meals & gut health
+            </Text>
+          </View>
+
+          {/* Form */}
           <View
             style={{
-              width: 64,
-              height: 64,
+              backgroundColor: colors.card,
               borderRadius: radius.lg,
-              backgroundColor: colors.primaryBg,
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: spacing.md,
-              borderWidth: 2,
-              borderColor: colors.primaryBorder,
+              padding: spacing.xl,
               ...shadowMd,
             }}
           >
-            <Text style={{ fontSize: 30 }}>🌱</Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 28,
-              fontWeight: "800",
-              color: colors.text,
-              letterSpacing: -0.5,
-            }}
-          >
-            Create Account
-          </Text>
-          <Text style={{ ...fonts.body, marginTop: 4 }}>
-            Start tracking your meals & gut health
-          </Text>
-        </View>
-
-        {/* Form */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            ...shadowMd,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.bg,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: radius.md,
-              paddingHorizontal: 14,
-              marginBottom: spacing.md,
-            }}
-          >
-            <Ionicons
-              name="person-outline"
-              size={18}
-              color={colors.textMuted}
-            />
-            <TextInput
-              placeholder="Display Name"
-              placeholderTextColor={colors.textLight}
-              value={displayName}
-              onChangeText={setDisplayName}
-              style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
-            />
-          </View>
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.bg,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: radius.md,
-              paddingHorizontal: 14,
-              marginBottom: spacing.md,
-            }}
-          >
-            <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
-            <TextInput
-              placeholder="Email"
-              placeholderTextColor={colors.textLight}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
-            />
-          </View>
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.bg,
-              borderWidth: 1,
-              borderColor:
-                confirmPassword && password !== confirmPassword
-                  ? colors.danger
-                  : colors.border,
-              borderRadius: radius.md,
-              paddingHorizontal: 14,
-              marginBottom: spacing.xl,
-            }}
-          >
-            <Ionicons
-              name="lock-closed-outline"
-              size={18}
-              color={colors.textMuted}
-            />
-            <TextInput
-              placeholder="Password (min 8 characters)"
-              placeholderTextColor={colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: radius.md,
+                paddingHorizontal: 14,
+                marginBottom: spacing.md,
+              }}
+            >
               <Ionicons
-                name={showPassword ? "eye-off" : "eye"}
-                size={20}
+                name="person-outline"
+                size={18}
                 color={colors.textMuted}
               />
+              <TextInput
+                placeholder="Display Name"
+                placeholderTextColor={colors.textLight}
+                value={displayName}
+                onChangeText={setDisplayName}
+                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+              />
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: radius.md,
+                paddingHorizontal: 14,
+                marginBottom: spacing.md,
+              }}
+            >
+              <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
+              <TextInput
+                placeholder="Email"
+                placeholderTextColor={colors.textLight}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+              />
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor:
+                  confirmPassword && password !== confirmPassword
+                    ? colors.danger
+                    : colors.border,
+                borderRadius: radius.md,
+                paddingHorizontal: 14,
+                marginBottom: spacing.xl,
+              }}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={18}
+                color={colors.textMuted}
+              />
+              <TextInput
+                placeholder="Password (min 8 characters)"
+                placeholderTextColor={colors.textLight}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}>
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: radius.md,
+                paddingHorizontal: 14,
+                marginBottom: spacing.xl,
+              }}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={colors.textMuted}
+              />
+              <TextInput
+                placeholder="Confirm password"
+                placeholderTextColor={colors.textLight}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showPassword}
+                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+              />
+              {confirmPassword !== "" && (
+                <Ionicons
+                  name={
+                    password === confirmPassword
+                      ? "checkmark-circle"
+                      : "close-circle"
+                  }
+                  size={20}
+                  color={
+                    password === confirmPassword ? colors.primary : colors.danger
+                  }
+                />
+              )}
+            </View>
+
+            <TouchableOpacity
+              onPress={handleRegister}
+              disabled={loading}
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: radius.md,
+                padding: 16,
+                alignItems: "center",
+                ...shadowMd,
+              }}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
+                  Create Account
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
 
           <View
             style={{
               flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.bg,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: radius.md,
-              paddingHorizontal: 14,
-              marginBottom: spacing.xl,
+              justifyContent: "center",
+              marginTop: spacing.xl,
             }}
           >
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={colors.textMuted}
-            />
-            <TextInput
-              placeholder="Confirm password"
-              placeholderTextColor={colors.textLight}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry={!showPassword}
-              style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
-            />
-            {confirmPassword !== "" && (
-              <Ionicons
-                name={
-                  password === confirmPassword
-                    ? "checkmark-circle"
-                    : "close-circle"
-                }
-                size={20}
-                color={
-                  password === confirmPassword ? colors.primary : colors.danger
-                }
-              />
-            )}
-          </View>
-
-          <TouchableOpacity
-            onPress={handleRegister}
-            disabled={loading}
-            style={{
-              backgroundColor: colors.primary,
-              borderRadius: radius.md,
-              padding: 16,
-              alignItems: "center",
-              ...shadowMd,
-            }}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
-                Create Account
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "center",
-            marginTop: spacing.xl,
-          }}
-        >
-          <Text style={{ color: colors.textSecondary }}>
-            Already have an account?{" "}
-          </Text>
-          <Link href="/(auth)/login">
-            <Text style={{ color: colors.primary, fontWeight: "700" }}>
-              Log In
+            <Text style={{ color: colors.textSecondary }}>
+              Already have an account?{" "}
             </Text>
-          </Link>
+            <Link href="/(auth)/login">
+              <Text style={{ color: colors.primary, fontWeight: "700" }}>
+                Log In
+              </Text>
+            </Link>
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeScreen>
   );
 }

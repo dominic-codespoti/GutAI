@@ -455,7 +455,7 @@ public class GutRiskServiceTests
     {
         var result = _sut.Assess(MakeProduct(additivesTags: ["en:e433"]));
 
-        result.Summary.Should().Contain("IBS");
+        result.Summary.Should().Contain("digestive sensitivities may want to explore alternatives");
     }
 
     [Fact]
@@ -463,7 +463,7 @@ public class GutRiskServiceTests
     {
         var result = _sut.Assess(MakeProduct(additivesTags: ["en:e955"]));
 
-        result.Summary.Should().Contain("Monitor");
+        result.Summary.Should().Contain("digestive sensitivities may want to be mindful");
     }
 
     // ─── Flag Ordering ─────────────────────────────────────────────────

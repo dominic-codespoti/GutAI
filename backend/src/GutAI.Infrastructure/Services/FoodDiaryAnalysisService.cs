@@ -332,25 +332,25 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
         if (highPatterns.Count > 0)
         {
             var foods = string.Join(", ", highPatterns.Select(p => p.FoodName).Distinct());
-            recs.Add($"Consider eliminating these high-confidence triggers: {foods}.");
-            recs.Add("Track symptoms for 2–4 weeks after removal to confirm improvement.");
+            recs.Add($"Your logs show a recurring pattern between these foods and your symptoms: {foods}.");
+            recs.Add("If you choose to adjust your diet, tracking symptoms for 2–4 weeks may help you observe changes.");
         }
 
         var medPatterns = patterns.Where(p => p.Confidence == "Medium").ToList();
         if (medPatterns.Count > 0)
         {
             var foods = string.Join(", ", medPatterns.Select(p => p.FoodName).Distinct());
-            recs.Add($"Monitor these moderate-confidence triggers closely: {foods}.");
+            recs.Add($"These foods showed a moderate pattern with your symptoms — worth keeping an eye on: {foods}.");
         }
 
         if (patterns.Count == 0)
             recs.Add("No clear food-symptom patterns detected yet. Keep logging meals and symptoms for more data.");
 
         if (patterns.Any(p => p.AverageOnsetHours <= 2))
-            recs.Add("Some symptoms appear quickly (within 2 hours) — consider food intolerances or allergies.");
+            recs.Add("Some symptoms appeared quickly (within 2 hours) — quick onset can have many causes. A healthcare provider can help investigate further.");
 
         if (patterns.Any(p => p.AverageOnsetHours >= 6))
-            recs.Add("Some symptoms appear 6+ hours after eating — this may indicate fermentation-related issues (e.g., FODMAPs).");
+            recs.Add("Some symptoms appeared 6+ hours after eating — delayed onset is sometimes associated with fermentation of certain carbohydrates.");
 
         return recs;
     }
@@ -399,24 +399,24 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             case "Assessment":
                 if (highConfidence.Count > 0)
                 {
-                    recs.Add($"Your data suggests these foods may be triggers: {string.Join(", ", highConfidence)}.");
-                    recs.Add("Consider removing them from your diet for 2–4 weeks to see if symptoms improve.");
+                    recs.Add($"Your logs show a pattern between these foods and your symptoms: {string.Join(", ", highConfidence)}.");
+                    recs.Add("Some people find it helpful to discuss potential elimination trials with a dietitian or doctor.");
                 }
                 else
                     recs.Add("Continue logging — not enough data yet to identify strong triggers.");
                 break;
             case "Elimination":
-                recs.Add("You've removed your identified triggers. Monitor symptoms for improvement over the next 2–4 weeks.");
+                recs.Add("It looks like you've stopped eating these foods. Continuing to log symptoms may help you spot any changes.");
                 if (safeFoods.Count > 0)
                     recs.Add($"Safe foods to rely on: {string.Join(", ", safeFoods.Take(5))}.");
-                recs.Add("Once symptoms stabilize, consider reintroducing one trigger food at a time.");
+                recs.Add("When you feel ready, reintroducing foods one at a time can help you understand your personal tolerances — a dietitian can guide this process.");
                 break;
             case "Reintroduction":
-                recs.Add("You're reintroducing foods — add only one new food every 3 days.");
+                recs.Add("During reintroduction, many experts suggest spacing new foods about 3 days apart to help distinguish reactions.");
                 var reacted = reintroResults.Where(r => r.Result == "Reacted").Select(r => r.FoodName).ToList();
                 var tolerated = reintroResults.Where(r => r.Result == "Tolerated").Select(r => r.FoodName).ToList();
                 if (reacted.Count > 0)
-                    recs.Add($"Foods that caused reactions: {string.Join(", ", reacted)} — continue avoiding.");
+                    recs.Add($"Foods associated with reactions in your logs: {string.Join(", ", reacted)} — you may want to continue being mindful of these.");
                 if (tolerated.Count > 0)
                     recs.Add($"Foods tolerated so far: {string.Join(", ", tolerated)} — safe to keep.");
                 if (mediumConfidence.Count > 0)
@@ -426,7 +426,7 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
                 recs.Add("You've completed reintroduction testing for your identified triggers.");
                 var avoid = reintroResults.Where(r => r.Result == "Reacted").Select(r => r.FoodName).ToList();
                 if (avoid.Count > 0)
-                    recs.Add($"Continue avoiding: {string.Join(", ", avoid)}.");
+                    recs.Add($"These foods were associated with reactions in your logs: {string.Join(", ", avoid)}.");
                 recs.Add("Keep logging periodically to catch any new patterns.");
                 break;
         }
@@ -445,16 +445,16 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             "Not Started" => "No symptoms have been logged yet. Start tracking meals and symptoms to begin analysis.",
             "Assessment" => highConfidence.Count > 0
                 ? $"Assessment phase: {highConfidence.Count} potential trigger food(s) identified ({string.Join(", ", highConfidence)}). " +
-                  "Consider starting an elimination trial."
+                  "You may find it helpful to discuss these patterns with a healthcare provider or dietitian."
                 : "Assessment phase: still gathering data to identify trigger foods.",
             "Elimination" => $"Elimination phase: avoiding {highConfidence.Count} trigger food(s). " +
-                $"{safeFoods.Count} safe food(s) identified. Monitor symptoms for improvement.",
+                $"{safeFoods.Count} safe food(s) identified. Continuing to log symptoms may help track changes.",
             "Reintroduction" => $"Reintroduction phase: {reintroResults.Count}/{highConfidence.Count} trigger food(s) tested. " +
                 $"{reintroResults.Count(r => r.Result == "Tolerated")} tolerated, " +
                 $"{reintroResults.Count(r => r.Result == "Reacted")} caused reactions.",
             "Maintenance" => $"Maintenance phase: testing complete. " +
                 $"{reintroResults.Count(r => r.Result == "Tolerated")} food(s) can be safely reintroduced, " +
-                $"{reintroResults.Count(r => r.Result == "Reacted")} should continue to be avoided.",
+                $"{reintroResults.Count(r => r.Result == "Reacted")} were associated with reactions in your logs.",
             _ => "Unable to determine elimination diet status."
         };
     }

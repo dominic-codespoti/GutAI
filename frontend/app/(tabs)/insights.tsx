@@ -35,9 +35,12 @@ import {
   spacing,
   fonts,
 } from "../../src/utils/theme";
+import { SafeScreen } from "../../components/SafeScreen";
+import { useRouter } from "expo-router";
 
 export default function InsightsScreen() {
   const [period, setPeriod] = useState(30);
+  const router = useRouter();
   const [showAllCorrelations, setShowAllCorrelations] = useState(false);
   const [showAllTrends, setShowAllTrends] = useState(false);
   const [showAllPatterns, setShowAllPatterns] = useState(false);
@@ -163,1021 +166,1126 @@ export default function InsightsScreen() {
     : trends?.slice(-7).reverse();
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <View style={{ padding: spacing.xl }}>
-        {/* Header */}
-        <Text style={{ ...fonts.h1, marginBottom: 4 }}>Insights</Text>
-        <Text style={{ ...fonts.caption, marginBottom: spacing.lg }}>
-          {`Food ↔ symptom patterns from the last ${period} days`}
-        </Text>
+    <SafeScreen edges={["top"]}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={{ padding: spacing.xl }}>
+          {/* Header */}
+          <Text style={{ ...fonts.h1, marginBottom: 4 }}>Insights</Text>
+          <Text style={{ ...fonts.caption, marginBottom: spacing.lg }}>
+            {`Food ↔ symptom patterns from the last ${period} days`}
+          </Text>
 
-        {/* Period Selector */}
-        <View
-          style={{ flexDirection: "row", marginBottom: spacing.lg, gap: 6 }}
-        >
-          {[7, 14, 30, 90].map((d) => {
-            const active = period === d;
-            return (
-              <TouchableOpacity
-                key={d}
-                onPress={() => setPeriod(d)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: radius.md,
-                  backgroundColor: active ? colors.primary : colors.card,
-                  alignItems: "center",
-                  ...shadow,
-                  borderWidth: active ? 0 : 1,
-                  borderColor: colors.borderLight,
-                }}
-              >
-                <Text
+          {/* Period Selector */}
+          <View
+            style={{ flexDirection: "row", marginBottom: spacing.lg, gap: 6 }}
+          >
+            {[7, 14, 30, 90].map((d) => {
+              const active = period === d;
+              return (
+                <TouchableOpacity
+                  key={d}
+                  onPress={() => setPeriod(d)}
                   style={{
-                    fontSize: 14,
-                    fontWeight: "700",
-                    color: active ? "#fff" : colors.textSecondary,
-                  }}
-                >
-                  {d}d
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Summary Stats */}
-        <View
-          style={{ flexDirection: "row", gap: 10, marginBottom: spacing.xl }}
-        >
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: colors.card,
-              borderRadius: radius.md,
-              padding: 14,
-              alignItems: "center",
-              ...shadow,
-            }}
-          >
-            <Text
-              style={{ fontSize: 24, fontWeight: "800", color: colors.danger }}
-            >
-              {totalTriggers}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textMuted,
-                fontWeight: "500",
-              }}
-            >
-              triggers
-            </Text>
-          </View>
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: colors.card,
-              borderRadius: radius.md,
-              padding: 14,
-              alignItems: "center",
-              ...shadow,
-            }}
-          >
-            <Text
-              style={{ fontSize: 24, fontWeight: "800", color: colors.accent }}
-            >
-              {totalCorrelations}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textMuted,
-                fontWeight: "500",
-              }}
-            >
-              correlations
-            </Text>
-          </View>
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: colors.card,
-              borderRadius: radius.md,
-              padding: 14,
-              alignItems: "center",
-              ...shadow,
-            }}
-          >
-            <Text
-              style={{ fontSize: 24, fontWeight: "800", color: colors.warning }}
-            >
-              {totalSymptoms}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.textMuted,
-                fontWeight: "500",
-              }}
-            >
-              symptoms
-            </Text>
-          </View>
-        </View>
-
-        {/* Trigger Foods */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            marginBottom: spacing.lg,
-            ...shadowMd,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: spacing.lg,
-            }}
-          >
-            <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🎯</Text>
-            <Text style={fonts.h3}>Top Trigger Foods</Text>
-          </View>
-
-          {loadingTrigger ? (
-            <InsightsSkeleton />
-          ) : triggerFoods && triggerFoods.length > 0 ? (
-            triggerFoods.map((tf: TriggerFood, i: number) => (
-              <View
-                key={tf.food}
-                style={{
-                  backgroundColor: colors.bg,
-                  borderRadius: radius.md,
-                  padding: 14,
-                  marginBottom: spacing.sm,
-                  borderLeftWidth: 4,
-                  borderLeftColor: confidenceColor(tf.worstConfidence),
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: radius.md,
+                    backgroundColor: active ? colors.primary : colors.card,
                     alignItems: "center",
+                    ...shadow,
+                    borderWidth: active ? 0 : 1,
+                    borderColor: colors.borderLight,
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 15,
-                      fontWeight: "600",
-                      color: colors.text,
-                      flex: 1,
+                      fontSize: 14,
+                      fontWeight: "700",
+                      color: active ? "#fff" : colors.textSecondary,
                     }}
                   >
-                    {i + 1}. {tf.food}
+                    {d}d
                   </Text>
-                  <View
-                    style={{
-                      backgroundColor:
-                        confidenceColor(tf.worstConfidence) + "18",
-                      borderRadius: 6,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: confidenceColor(tf.worstConfidence),
-                      }}
-                    >
-                      {tf.totalOccurrences}×
-                    </Text>
-                  </View>
-                </View>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: colors.textSecondary,
-                    marginTop: 4,
-                  }}
-                >
-                  Triggers: {tf.symptoms.join(", ")} · Avg severity:{" "}
-                  {Number(tf.avgSeverity).toFixed(1)}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
-              <Ionicons
-                name="flag-outline"
-                size={36}
-                color={colors.textLight}
-              />
-              <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
-                No trigger foods identified yet
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Correlations */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            marginBottom: spacing.lg,
-            ...shadowMd,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: spacing.lg,
-            }}
-          >
-            <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🔍</Text>
-            <Text style={fonts.h3}>Correlations</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {loadingCorr ? (
-            <InsightsSkeleton />
-          ) : corrError ? (
-            <ErrorState
-              message="Failed to load correlations"
-              onRetry={refetchCorr}
-            />
-          ) : correlations && correlations.length > 0 ? (
-            <>
-            {visibleCorrelations!.map((c, i) => (
-              <View
-                key={`${c.foodOrAdditive}-${c.symptomName}-${i}`}
+          {/* Summary Stats */}
+          <View
+            style={{ flexDirection: "row", gap: 10, marginBottom: spacing.xl }}
+          >
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: radius.md,
+                padding: 14,
+                alignItems: "center",
+                ...shadow,
+              }}
+            >
+              <Text
                 style={{
-                  backgroundColor: colors.bg,
-                  borderRadius: radius.md,
-                  padding: spacing.lg,
-                  marginBottom: spacing.sm,
-                  borderLeftWidth: 4,
-                  borderLeftColor: confidenceColor(c.confidence),
+                  fontSize: 24,
+                  fontWeight: "800",
+                  color: colors.danger,
                 }}
               >
+                {totalTriggers}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  fontWeight: "500",
+                }}
+              >
+                triggers
+              </Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: radius.md,
+                padding: 14,
+                alignItems: "center",
+                ...shadow,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 24,
+                  fontWeight: "800",
+                  color: colors.accent,
+                }}
+              >
+                {totalCorrelations}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  fontWeight: "500",
+                }}
+              >
+                correlations
+              </Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: radius.md,
+                padding: 14,
+                alignItems: "center",
+                ...shadow,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 24,
+                  fontWeight: "800",
+                  color: colors.warning,
+                }}
+              >
+                {totalSymptoms}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  fontWeight: "500",
+                }}
+              >
+                symptoms
+              </Text>
+            </View>
+          </View>
+
+          {/* Trigger Foods */}
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: radius.lg,
+              padding: spacing.xl,
+              marginBottom: spacing.lg,
+              ...shadowMd,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: spacing.lg,
+              }}
+            >
+              <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🎯</Text>
+              <Text style={fonts.h3}>Top Trigger Foods</Text>
+            </View>
+
+            {loadingTrigger ? (
+              <InsightsSkeleton />
+            ) : triggerFoods && triggerFoods.length > 0 ? (
+              triggerFoods.map((tf: TriggerFood, i: number) => (
                 <View
+                  key={tf.food}
                   style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    backgroundColor: colors.bg,
+                    borderRadius: radius.md,
+                    padding: 14,
+                    marginBottom: spacing.sm,
+                    borderLeftWidth: 4,
+                    borderLeftColor: confidenceColor(tf.worstConfidence),
                   }}
                 >
-                  <View style={{ flex: 1 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <Text
                       style={{
                         fontSize: 15,
                         fontWeight: "600",
                         color: colors.text,
+                        flex: 1,
                       }}
                     >
-                      {c.foodOrAdditive}
+                      {i + 1}. {tf.food}
                     </Text>
+                    <View
+                      style={{
+                        backgroundColor:
+                          confidenceColor(tf.worstConfidence) + "18",
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "700",
+                          color: confidenceColor(tf.worstConfidence),
+                        }}
+                      >
+                        {tf.totalOccurrences}×
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      marginTop: 4,
+                    }}
+                  >
+                    Triggers: {tf.symptoms.join(", ")} · Avg severity:{" "}
+                    {Number(tf.avgSeverity).toFixed(1)}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{ alignItems: "center", paddingVertical: spacing.xl }}
+              >
+                <Ionicons
+                  name="flag-outline"
+                  size={36}
+                  color={colors.textLight}
+                />
+                <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
+                  No trigger foods identified yet
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Correlations */}
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: radius.lg,
+              padding: spacing.xl,
+              marginBottom: spacing.lg,
+              ...shadowMd,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: spacing.lg,
+              }}
+            >
+              <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🔍</Text>
+              <Text style={fonts.h3}>Correlations</Text>
+            </View>
+
+            {loadingCorr ? (
+              <InsightsSkeleton />
+            ) : corrError ? (
+              <ErrorState
+                message="Failed to load correlations"
+                onRetry={refetchCorr}
+              />
+            ) : correlations && correlations.length > 0 ? (
+              <>
+                {visibleCorrelations!.map((c, i) => (
+                  <View
+                    key={`${c.foodOrAdditive}-${c.symptomName}-${i}`}
+                    style={{
+                      backgroundColor: colors.bg,
+                      borderRadius: radius.md,
+                      padding: spacing.lg,
+                      marginBottom: spacing.sm,
+                      borderLeftWidth: 4,
+                      borderLeftColor: confidenceColor(c.confidence),
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 15,
+                            fontWeight: "600",
+                            color: colors.text,
+                          }}
+                        >
+                          {c.foodOrAdditive}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            color: colors.textSecondary,
+                            marginTop: 2,
+                          }}
+                        >
+                          → {c.symptomName}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: "center" }}>
+                        <Ionicons
+                          name={confidenceIcon(c.confidence)}
+                          size={20}
+                          color={confidenceColor(c.confidence)}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: "700",
+                            color: confidenceColor(c.confidence),
+                            marginTop: 2,
+                          }}
+                        >
+                          {c.confidence}
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        marginTop: spacing.md,
+                        gap: 4,
+                      }}
+                    >
+                      {[
+                        {
+                          val: c.occurrences,
+                          label: "times",
+                          color: colors.text,
+                        },
+                        {
+                          val: c.totalMeals,
+                          label: "meals",
+                          color: colors.text,
+                        },
+                        {
+                          val: `${c.frequencyPercent.toFixed(0)}%`,
+                          label: "freq",
+                          color: colors.secondary,
+                        },
+                        {
+                          val: c.averageSeverity.toFixed(1),
+                          label: "severity",
+                          color: severityColor(c.averageSeverity),
+                        },
+                      ].map(({ val, label, color }) => (
+                        <View
+                          key={label}
+                          style={{ flex: 1, alignItems: "center" }}
+                        >
+                          <Text
+                            style={{ fontSize: 16, fontWeight: "700", color }}
+                          >
+                            {val}
+                          </Text>
+                          <Text style={fonts.small}>{label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+                {correlations.length > 5 && (
+                  <TouchableOpacity
+                    onPress={() => setShowAllCorrelations(!showAllCorrelations)}
+                    style={{
+                      alignItems: "center",
+                      paddingVertical: spacing.sm,
+                    }}
+                  >
                     <Text
                       style={{
                         fontSize: 13,
-                        color: colors.textSecondary,
-                        marginTop: 2,
+                        fontWeight: "600",
+                        color: colors.primary,
                       }}
                     >
-                      → {c.symptomName}
+                      {showAllCorrelations
+                        ? "Show less"
+                        : `Show all ${correlations.length} correlations`}
                     </Text>
-                  </View>
-                  <View style={{ alignItems: "center" }}>
-                    <Ionicons
-                      name={confidenceIcon(c.confidence)}
-                      size={20}
-                      color={confidenceColor(c.confidence)}
-                    />
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: "700",
-                        color: confidenceColor(c.confidence),
-                        marginTop: 2,
-                      }}
-                    >
-                      {c.confidence}
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    marginTop: spacing.md,
-                    gap: 4,
-                  }}
-                >
-                  {[
-                    { val: c.occurrences, label: "times", color: colors.text },
-                    { val: c.totalMeals, label: "meals", color: colors.text },
-                    {
-                      val: `${c.frequencyPercent.toFixed(0)}%`,
-                      label: "freq",
-                      color: colors.secondary,
-                    },
-                    {
-                      val: c.averageSeverity.toFixed(1),
-                      label: "severity",
-                      color: severityColor(c.averageSeverity),
-                    },
-                  ].map(({ val, label, color }) => (
-                    <View key={label} style={{ flex: 1, alignItems: "center" }}>
-                      <Text style={{ fontSize: 16, fontWeight: "700", color }}>
-                        {val}
-                      </Text>
-                      <Text style={fonts.small}>{label}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ))}
-            {correlations.length > 5 && (
-              <TouchableOpacity
-                onPress={() => setShowAllCorrelations(!showAllCorrelations)}
-                style={{ alignItems: "center", paddingVertical: spacing.sm }}
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              <View
+                style={{ alignItems: "center", paddingVertical: spacing.xl }}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.primary }}>
-                  {showAllCorrelations ? "Show less" : `Show all ${correlations.length} correlations`}
+                <Ionicons
+                  name="analytics-outline"
+                  size={36}
+                  color={colors.textLight}
+                />
+                <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
+                  No correlations found yet
                 </Text>
-              </TouchableOpacity>
+                <Text style={{ ...fonts.small, marginTop: 4 }}>
+                  Log meals and symptoms to discover patterns
+                </Text>
+              </View>
             )}
-            </>
-          ) : (
-            <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
-              <Ionicons
-                name="analytics-outline"
-                size={36}
-                color={colors.textLight}
-              />
-              <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
-                No correlations found yet
-              </Text>
-              <Text style={{ ...fonts.small, marginTop: 4 }}>
-                Log meals and symptoms to discover patterns
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Nutrition Trends */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            marginBottom: spacing.lg,
-            ...shadowMd,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: spacing.lg,
-            }}
-          >
-            <Text style={{ fontSize: 20, marginRight: spacing.sm }}>📊</Text>
-            <Text style={fonts.h3}>Nutrition Trends</Text>
           </View>
 
-          {loadingTrends ? (
-            <InsightsSkeleton />
-          ) : trendsError ? (
-            <ErrorState
-              message="Failed to load trends"
-              onRetry={refetchTrends}
-            />
-          ) : trends && trends.length > 0 ? (
-            <View>
-              {visibleTrends!.map((day) => {
-                const source = showAllTrends ? trends : visibleTrends!;
-                const maxCal = Math.max(...source.map((t) => t.calories), 1);
-                const pct = Math.min((day.calories / maxCal) * 100, 100);
-                return (
-                  <View key={day.date} style={{ marginBottom: spacing.sm }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: 4,
-                      }}
-                    >
-                      <Text
+          {/* Nutrition Trends */}
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: radius.lg,
+              padding: spacing.xl,
+              marginBottom: spacing.lg,
+              ...shadowMd,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: spacing.lg,
+              }}
+            >
+              <Text style={{ fontSize: 20, marginRight: spacing.sm }}>📊</Text>
+              <Text style={fonts.h3}>Nutrition Trends</Text>
+            </View>
+
+            {loadingTrends ? (
+              <InsightsSkeleton />
+            ) : trendsError ? (
+              <ErrorState
+                message="Failed to load trends"
+                onRetry={refetchTrends}
+              />
+            ) : trends && trends.length > 0 ? (
+              <View>
+                {visibleTrends!.map((day) => {
+                  const source = showAllTrends ? trends : visibleTrends!;
+                  const maxCal = Math.max(...source.map((t) => t.calories), 1);
+                  const pct = Math.min((day.calories / maxCal) * 100, 100);
+                  return (
+                    <View key={day.date} style={{ marginBottom: spacing.sm }}>
+                      <View
                         style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: colors.textSecondary,
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 4,
                         }}
                       >
-                        {new Date(day.date + "T12:00:00").toLocaleDateString(
-                          undefined,
-                          { weekday: "short", month: "short", day: "numeric" },
-                        )}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          fontWeight: "700",
-                          color: colors.text,
-                        }}
-                      >
-                        {Math.round(day.calories)} cal
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        height: 6,
-                        backgroundColor: colors.borderLight,
-                        borderRadius: 3,
-                      }}
-                    >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: colors.textSecondary,
+                          }}
+                        >
+                          {new Date(day.date + "T12:00:00").toLocaleDateString(
+                            undefined,
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: colors.text,
+                          }}
+                        >
+                          {Math.round(day.calories)} cal
+                        </Text>
+                      </View>
                       <View
                         style={{
                           height: 6,
-                          backgroundColor: colors.primaryLight,
+                          backgroundColor: colors.borderLight,
                           borderRadius: 3,
-                          width: `${pct}%`,
                         }}
-                      />
+                      >
+                        <View
+                          style={{
+                            height: 6,
+                            backgroundColor: colors.primaryLight,
+                            borderRadius: 3,
+                            width: `${pct}%`,
+                          }}
+                        />
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          marginTop: 4,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, color: colors.protein }}>
+                          P: {Math.round(day.protein)}g
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.carbs }}>
+                          C: {Math.round(day.carbs)}g
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.fat }}>
+                          F: {Math.round(day.fat)}g
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.fiber }}>
+                          Fb: {Math.round(day.fiber)}g
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.textMuted }}>
+                          {day.mealCount} meals
+                        </Text>
+                      </View>
                     </View>
-                    <View
+                  );
+                })}
+                {trends.length > 7 && (
+                  <TouchableOpacity
+                    onPress={() => setShowAllTrends(!showAllTrends)}
+                    style={{
+                      alignItems: "center",
+                      paddingVertical: spacing.sm,
+                    }}
+                  >
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        marginTop: 4,
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: colors.primary,
                       }}
                     >
-                      <Text style={{ fontSize: 10, color: colors.protein }}>
-                        P: {Math.round(day.protein)}g
-                      </Text>
-                      <Text style={{ fontSize: 10, color: colors.carbs }}>
-                        C: {Math.round(day.carbs)}g
-                      </Text>
-                      <Text style={{ fontSize: 10, color: colors.fat }}>
-                        F: {Math.round(day.fat)}g
-                      </Text>
-                      <Text style={{ fontSize: 10, color: colors.fiber }}>
-                        Fb: {Math.round(day.fiber)}g
-                      </Text>
-                      <Text style={{ fontSize: 10, color: colors.textMuted }}>
-                        {day.mealCount} meals
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-              {trends.length > 7 && (
-                <TouchableOpacity
-                  onPress={() => setShowAllTrends(!showAllTrends)}
-                  style={{ alignItems: "center", paddingVertical: spacing.sm }}
+                      {showAllTrends
+                        ? "Show last 7 days"
+                        : `Show all ${trends.length} days`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <View
+                style={{ alignItems: "center", paddingVertical: spacing.xl }}
+              >
+                <Ionicons
+                  name="bar-chart-outline"
+                  size={36}
+                  color={colors.textLight}
+                />
+                <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
+                  No nutrition data yet
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Additive Exposure - only show when data exists */}
+          {!loadingExposure && exposure && exposure.length > 0 && (
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: radius.lg,
+                padding: spacing.xl,
+                marginBottom: spacing.lg,
+                ...shadowMd,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: spacing.lg,
+                }}
+              >
+                <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
+                  🧪
+                </Text>
+                <Text style={fonts.h3}>Additive Exposure</Text>
+              </View>
+
+              {exposure.map((item: AdditiveExposure) => (
+                <View
+                  key={item.additive}
+                  style={{
+                    backgroundColor: colors.bg,
+                    borderRadius: radius.sm,
+                    padding: spacing.md,
+                    marginBottom: 4,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.primary }}>
-                    {showAllTrends ? "Show last 7 days" : `Show all ${trends.length} days`}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
-              <Ionicons
-                name="bar-chart-outline"
-                size={36}
-                color={colors.textLight}
-              />
-              <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
-                No nutrition data yet
-              </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontWeight: "600",
+                        color: colors.text,
+                        fontSize: 14,
+                      }}
+                    >
+                      {item.additive}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: cspiColor(item.cspiRating),
+                        fontWeight: "600",
+                      }}
+                    >
+                      {item.cspiRating}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: cspiColor(item.cspiRating) + "18",
+                      borderRadius: 6,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontWeight: "700",
+                        color: cspiColor(item.cspiRating),
+                        fontSize: 14,
+                      }}
+                    >
+                      {item.count}×
+                    </Text>
+                  </View>
+                </View>
+              ))}
             </View>
           )}
-        </View>
 
-        {/* Additive Exposure - only show when data exists */}
-        {!loadingExposure && exposure && exposure.length > 0 && (
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            marginBottom: spacing.lg,
-            ...shadowMd,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: spacing.lg,
-            }}
-          >
-            <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🧪</Text>
-            <Text style={fonts.h3}>Additive Exposure</Text>
-          </View>
-
-            {exposure.map((item: AdditiveExposure) => (
+          {/* Food Diary Analysis - only timing insights & recommendations (patterns shown above) */}
+          {!loadingDiary &&
+            diaryAnalysis &&
+            (diaryAnalysis.timingInsights.length > 0 ||
+              diaryAnalysis.recommendations.length > 0) && (
               <View
-                key={item.additive}
                 style={{
-                  backgroundColor: colors.bg,
-                  borderRadius: radius.sm,
-                  padding: spacing.md,
-                  marginBottom: 4,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  backgroundColor: colors.card,
+                  borderRadius: radius.lg,
+                  padding: spacing.xl,
+                  marginBottom: spacing.lg,
+                  ...shadowMd,
                 }}
               >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontWeight: "600",
-                      color: colors.text,
-                      fontSize: 14,
-                    }}
-                  >
-                    {item.additive}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: cspiColor(item.cspiRating),
-                      fontWeight: "600",
-                    }}
-                  >
-                    {item.cspiRating}
-                  </Text>
-                </View>
                 <View
                   style={{
-                    backgroundColor: cspiColor(item.cspiRating) + "18",
-                    borderRadius: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: spacing.lg,
                   }}
                 >
-                  <Text
-                    style={{
-                      fontWeight: "700",
-                      color: cspiColor(item.cspiRating),
-                      fontSize: 14,
-                    }}
-                  >
-                    {item.count}×
+                  <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
+                    💡
                   </Text>
+                  <Text style={fonts.h3}>Insights & Tips</Text>
                 </View>
-              </View>
-            ))}
-        </View>
-        )}
 
-        {/* Food Diary Analysis - only timing insights & recommendations (patterns shown above) */}
-        {!loadingDiary && diaryAnalysis && (diaryAnalysis.timingInsights.length > 0 || diaryAnalysis.recommendations.length > 0) && (
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            marginBottom: spacing.lg,
-            ...shadowMd,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: spacing.lg,
-            }}
-          >
-            <Text style={{ fontSize: 20, marginRight: spacing.sm }}>💡</Text>
-            <Text style={fonts.h3}>Insights & Tips</Text>
-          </View>
-
-              {diaryAnalysis.timingInsights.length > 0 && (
-                <View style={{ marginBottom: 12 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: colors.text,
-                      marginBottom: 8,
-                    }}
-                  >
-                    ⏱️ Timing Insights
-                  </Text>
-                  {diaryAnalysis.timingInsights.map((t, i) => (
-                    <View
-                      key={i}
+                {diaryAnalysis.timingInsights.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
                       style={{
-                        backgroundColor: colors.bg,
-                        borderRadius: radius.sm,
-                        padding: 10,
-                        marginBottom: 4,
+                        fontSize: 14,
+                        fontWeight: "600",
+                        color: colors.text,
+                        marginBottom: 8,
                       }}
                     >
-                      <Text
+                      ⏱️ Timing Insights
+                    </Text>
+                    {diaryAnalysis.timingInsights.map((t, i) => (
+                      <View
+                        key={i}
                         style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: colors.textSecondary,
+                          backgroundColor: colors.bg,
+                          borderRadius: radius.sm,
+                          padding: 10,
+                          marginBottom: 4,
                         }}
                       >
-                        {t.category}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: colors.text,
-                          marginTop: 2,
-                        }}
-                      >
-                        {t.insight}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "600",
+                            color: colors.textSecondary,
+                          }}
+                        >
+                          {t.category}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: colors.text,
+                            marginTop: 2,
+                          }}
+                        >
+                          {t.insight}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
 
-              {diaryAnalysis.recommendations.length > 0 && (
-                <View>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: colors.text,
-                      marginBottom: 8,
-                    }}
-                  >
-                    📋 Recommendations
-                  </Text>
-                  {diaryAnalysis.recommendations.map((rec, i) => (
-                    <View
-                      key={i}
-                      style={{ flexDirection: "row", gap: 8, marginBottom: 6 }}
+                {diaryAnalysis.recommendations.length > 0 && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: "600",
+                        color: colors.text,
+                        marginBottom: 8,
+                      }}
                     >
-                      <Ionicons
-                        name="chevron-forward"
-                        size={14}
-                        color={colors.primary}
-                        style={{ marginTop: 2 }}
-                      />
-                      <Text
+                      📋 Recommendations
+                    </Text>
+                    {diaryAnalysis.recommendations.map((rec, i) => (
+                      <View
+                        key={i}
                         style={{
-                          fontSize: 12,
-                          color: colors.text,
-                          flex: 1,
-                          lineHeight: 17,
+                          flexDirection: "row",
+                          gap: 8,
+                          marginBottom: 6,
                         }}
                       >
-                        {rec}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-        </View>
-        )}
+                        <Ionicons
+                          name="chevron-forward"
+                          size={14}
+                          color={colors.primary}
+                          style={{ marginTop: 2 }}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: colors.text,
+                            flex: 1,
+                            lineHeight: 17,
+                          }}
+                        >
+                          {rec}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
 
-        {/* Elimination Diet Status */}
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-            marginBottom: spacing.xxxl,
-            ...shadowMd,
-          }}
-        >
+          {/* Elimination Diet Status */}
           <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: spacing.lg,
+              backgroundColor: colors.card,
+              borderRadius: radius.lg,
+              padding: spacing.xl,
+              marginBottom: spacing.xxxl,
+              ...shadowMd,
             }}
           >
-            <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🥗</Text>
-            <Text style={fonts.h3}>Elimination Diet</Text>
-          </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: spacing.lg,
+              }}
+            >
+              <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🥗</Text>
+              <Text style={fonts.h3}>Elimination Diet</Text>
+            </View>
 
-          {loadingElimination ? (
-            <ActivityIndicator size="large" color={colors.primary} />
-          ) : elimination ? (
-            <View>
-              {/* Phase Badge */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
+            {loadingElimination ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : elimination ? (
+              <View>
+                {/* Phase Badge */}
                 <View
                   style={{
-                    backgroundColor:
-                      elimination.phase === "Not Started"
-                        ? "#f1f5f9"
-                        : elimination.phase === "Assessment"
-                          ? "#fef3c7"
-                          : elimination.phase === "Elimination"
-                            ? "#fee2e2"
-                            : elimination.phase === "Reintroduction"
-                              ? "#dbeafe"
-                              : "#dcfce7",
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: 12,
                   }}
                 >
-                  <Text
+                  <View
                     style={{
-                      fontSize: 14,
-                      fontWeight: "700",
-                      color:
+                      backgroundColor:
                         elimination.phase === "Not Started"
-                          ? "#64748b"
+                          ? "#f1f5f9"
                           : elimination.phase === "Assessment"
-                            ? "#b45309"
+                            ? "#fef3c7"
                             : elimination.phase === "Elimination"
-                              ? "#dc2626"
+                              ? "#fee2e2"
                               : elimination.phase === "Reintroduction"
-                                ? "#2563eb"
-                                : "#16a34a",
+                                ? "#dbeafe"
+                                : "#dcfce7",
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
                     }}
                   >
-                    Phase: {elimination.phase}
-                  </Text>
-                </View>
-              </View>
-
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: colors.textSecondary,
-                  lineHeight: 18,
-                  marginBottom: 12,
-                }}
-              >
-                {elimination.summary}
-              </Text>
-
-              {/* Foods to Eliminate */}
-              {elimination.foodsToEliminate.length > 0 && (
-                <View style={{ marginBottom: 12 }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: "#dc2626",
-                      marginBottom: 6,
-                    }}
-                  >
-                    🚫 Foods to Eliminate
-                  </Text>
-                  <View
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
-                  >
-                    {elimination.foodsToEliminate.map((f) => (
-                      <View
-                        key={f}
-                        style={{
-                          backgroundColor: "#fee2e2",
-                          borderRadius: 6,
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "600",
-                            color: "#dc2626",
-                          }}
-                        >
-                          {f}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Foods to Reintroduce */}
-              {elimination.foodsToReintroduce.length > 0 && (
-                <View style={{ marginBottom: 12 }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: "#2563eb",
-                      marginBottom: 6,
-                    }}
-                  >
-                    🔄 Consider Reintroducing
-                  </Text>
-                  <View
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
-                  >
-                    {elimination.foodsToReintroduce.map((f) => (
-                      <View
-                        key={f}
-                        style={{
-                          backgroundColor: "#dbeafe",
-                          borderRadius: 6,
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "600",
-                            color: "#2563eb",
-                          }}
-                        >
-                          {f}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Safe Foods */}
-              {elimination.safeFoods.length > 0 && (
-                <View style={{ marginBottom: 12 }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: "#16a34a",
-                      marginBottom: 6,
-                    }}
-                  >
-                    ✅ Safe Foods
-                  </Text>
-                  <View
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
-                  >
-                    {elimination.safeFoods.slice(0, 10).map((f) => (
-                      <View
-                        key={f}
-                        style={{
-                          backgroundColor: "#dcfce7",
-                          borderRadius: 6,
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "600",
-                            color: "#16a34a",
-                          }}
-                        >
-                          {f}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Reintroduction Results */}
-              {elimination.reintroductionResults.length > 0 && (
-                <View style={{ marginBottom: 12 }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: colors.text,
-                      marginBottom: 6,
-                    }}
-                  >
-                    🧪 Reintroduction Results
-                  </Text>
-                  {elimination.reintroductionResults.map((r) => (
-                    <View
-                      key={r.foodName}
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        backgroundColor: colors.bg,
-                        borderRadius: radius.sm,
-                        padding: 10,
-                        marginBottom: 4,
+                        fontSize: 14,
+                        fontWeight: "700",
+                        color:
+                          elimination.phase === "Not Started"
+                            ? "#64748b"
+                            : elimination.phase === "Assessment"
+                              ? "#b45309"
+                              : elimination.phase === "Elimination"
+                                ? "#dc2626"
+                                : elimination.phase === "Reintroduction"
+                                  ? "#2563eb"
+                                  : "#16a34a",
                       }}
                     >
-                      <Text
-                        style={{
-                          flex: 1,
-                          fontSize: 13,
-                          fontWeight: "600",
-                          color: colors.text,
-                        }}
-                      >
-                        {r.foodName}
-                      </Text>
+                      Phase: {elimination.phase}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: colors.textSecondary,
+                    lineHeight: 18,
+                    marginBottom: 12,
+                  }}
+                >
+                  {elimination.summary}
+                </Text>
+
+                {/* Foods to Eliminate */}
+                {elimination.foodsToEliminate.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: "#dc2626",
+                        marginBottom: 6,
+                      }}
+                    >
+                      🚫 Foods to Eliminate
+                    </Text>
+                    <View
+                      style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                    >
+                      {elimination.foodsToEliminate.map((f) => (
+                        <View
+                          key={f}
+                          style={{
+                            backgroundColor: "#fee2e2",
+                            borderRadius: 6,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "600",
+                              color: "#dc2626",
+                            }}
+                          >
+                            {f}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Foods to Reintroduce */}
+                {elimination.foodsToReintroduce.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: "#2563eb",
+                        marginBottom: 6,
+                      }}
+                    >
+                      🔄 Consider Reintroducing
+                    </Text>
+                    <View
+                      style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                    >
+                      {elimination.foodsToReintroduce.map((f) => (
+                        <View
+                          key={f}
+                          style={{
+                            backgroundColor: "#dbeafe",
+                            borderRadius: 6,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "600",
+                              color: "#2563eb",
+                            }}
+                          >
+                            {f}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Safe Foods */}
+                {elimination.safeFoods.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: "#16a34a",
+                        marginBottom: 6,
+                      }}
+                    >
+                      ✅ Safe Foods
+                    </Text>
+                    <View
+                      style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                    >
+                      {elimination.safeFoods.slice(0, 10).map((f) => (
+                        <View
+                          key={f}
+                          style={{
+                            backgroundColor: "#dcfce7",
+                            borderRadius: 6,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "600",
+                              color: "#16a34a",
+                            }}
+                          >
+                            {f}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Reintroduction Results */}
+                {elimination.reintroductionResults.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: colors.text,
+                        marginBottom: 6,
+                      }}
+                    >
+                      🧪 Reintroduction Results
+                    </Text>
+                    {elimination.reintroductionResults.map((r) => (
                       <View
+                        key={r.foodName}
                         style={{
-                          backgroundColor:
-                            r.result === "Tolerated" ? "#dcfce7" : "#fee2e2",
-                          borderRadius: 4,
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          backgroundColor: colors.bg,
+                          borderRadius: radius.sm,
+                          padding: 10,
+                          marginBottom: 4,
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 11,
-                            fontWeight: "700",
-                            color:
-                              r.result === "Tolerated" ? "#16a34a" : "#dc2626",
+                            flex: 1,
+                            fontSize: 13,
+                            fontWeight: "600",
+                            color: colors.text,
                           }}
                         >
-                          {r.result === "Tolerated" ? "✓" : "✗"} {r.result}
+                          {r.foodName}
                         </Text>
+                        <View
+                          style={{
+                            backgroundColor:
+                              r.result === "Tolerated" ? "#dcfce7" : "#fee2e2",
+                            borderRadius: 4,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "700",
+                              color:
+                                r.result === "Tolerated"
+                                  ? "#16a34a"
+                                  : "#dc2626",
+                            }}
+                          >
+                            {r.result === "Tolerated" ? "✓" : "✗"} {r.result}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </View>
-              )}
+                    ))}
+                  </View>
+                )}
 
-              {/* Elimination Recommendations */}
-              {elimination.recommendations.length > 0 && (
-                <View>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: colors.text,
-                      marginBottom: 6,
-                    }}
-                  >
-                    💡 Next Steps
-                  </Text>
-                  {elimination.recommendations.map((rec, i) => (
-                    <View
-                      key={i}
-                      style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}
+                {/* Elimination Recommendations */}
+                {elimination.recommendations.length > 0 && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color: colors.text,
+                        marginBottom: 6,
+                      }}
                     >
-                      <Ionicons
-                        name="chevron-forward"
-                        size={12}
-                        color={colors.primary}
-                        style={{ marginTop: 2 }}
-                      />
-                      <Text
+                      💡 Next Steps
+                    </Text>
+                    {elimination.recommendations.map((rec, i) => (
+                      <View
+                        key={i}
                         style={{
-                          fontSize: 12,
-                          color: colors.text,
-                          flex: 1,
-                          lineHeight: 17,
+                          flexDirection: "row",
+                          gap: 8,
+                          marginBottom: 4,
                         }}
                       >
-                        {rec}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          ) : (
-            <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
-              <Ionicons
-                name="nutrition-outline"
-                size={36}
-                color={colors.textLight}
-              />
-              <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
-                No elimination data yet
-              </Text>
-            </View>
-          )}
+                        <Ionicons
+                          name="chevron-forward"
+                          size={12}
+                          color={colors.primary}
+                          style={{ marginTop: 2 }}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: colors.text,
+                            flex: 1,
+                            lineHeight: 17,
+                          }}
+                        >
+                          {rec}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View
+                style={{ alignItems: "center", paddingVertical: spacing.xl }}
+              >
+                <Ionicons
+                  name="nutrition-outline"
+                  size={36}
+                  color={colors.textLight}
+                />
+                <Text style={{ ...fonts.caption, marginTop: spacing.sm }}>
+                  No elimination data yet
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
-    </ScrollView>
+
+        <TouchableOpacity
+          onPress={() => router.push("/sources")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            paddingVertical: spacing.lg,
+            marginBottom: spacing.xl,
+          }}
+        >
+          <Ionicons
+            name="information-circle-outline"
+            size={14}
+            color={colors.textMuted}
+          />
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.textMuted,
+              textDecorationLine: "underline",
+            }}
+          >
+            Sources & Medical Disclaimer
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeScreen>
   );
 }

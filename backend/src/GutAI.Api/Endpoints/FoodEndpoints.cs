@@ -205,6 +205,35 @@ public static class FoodEndpoints
         if (product is null) return Results.NotFound();
         var additives = await store.GetAllFoodAdditivesAsync();
         var dto = MapToDto(product, additives);
+
+        var gutRisk = gutRiskService.Assess(dto);
+        var fodmap = fodmapService.Assess(dto);
+
+        // Reconcile scores bidirectionally to prevent contradictory ratings
+        // Direction 1: bad FODMAP → cap gut score
+        if (fodmap.FodmapScore < 60 && gutRisk.GutScore > 70)
+        {
+            gutRisk = gutRisk with { GutScore = Math.Min(gutRisk.GutScore, 70) };
+            gutRisk = gutRisk with { GutRating = gutRisk.GutScore >= 80 ? "Good" : gutRisk.GutScore >= 60 ? "Fair" : gutRisk.GutScore >= 40 ? "Poor" : "Bad" };
+        }
+        else if (fodmap.FodmapScore < 80 && gutRisk.GutScore > 85)
+        {
+            gutRisk = gutRisk with { GutScore = Math.Min(gutRisk.GutScore, 85) };
+            gutRisk = gutRisk with { GutRating = gutRisk.GutScore >= 80 ? "Good" : gutRisk.GutScore >= 60 ? "Fair" : gutRisk.GutScore >= 40 ? "Poor" : "Bad" };
+        }
+
+        // Direction 2: bad gut risk → cap FODMAP score
+        if (gutRisk.GutScore < 60 && fodmap.FodmapScore > 70)
+        {
+            fodmap = fodmap with { FodmapScore = Math.Min(fodmap.FodmapScore, 70) };
+            fodmap = fodmap with { FodmapRating = fodmap.FodmapScore >= 80 ? "Low FODMAP" : fodmap.FodmapScore >= 60 ? "Moderate FODMAP" : "High FODMAP" };
+        }
+        else if (gutRisk.GutScore < 80 && fodmap.FodmapScore > 85)
+        {
+            fodmap = fodmap with { FodmapScore = Math.Min(fodmap.FodmapScore, 85) };
+            fodmap = fodmap with { FodmapRating = fodmap.FodmapScore >= 80 ? "Low FODMAP" : fodmap.FodmapScore >= 60 ? "Moderate FODMAP" : "High FODMAP" };
+        }
+
         return Results.Ok(new
         {
             product = dto,
@@ -213,8 +242,8 @@ public static class FoodEndpoints
             safetyRating = dto.SafetyRating,
             novaGroup = dto.NovaGroup,
             nutriScore = dto.NutriScore,
-            gutRisk = gutRiskService.Assess(dto),
-            fodmap = fodmapService.Assess(dto),
+            gutRisk,
+            fodmap,
             substitutions = substitutionService.GetSubstitutions(dto),
             glycemic = glycemicService.Assess(dto)
         });
