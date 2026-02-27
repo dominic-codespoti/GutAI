@@ -113,11 +113,21 @@ app.MapGroup("/api/symptoms").MapSymptomEndpoints().RequireAuthorization().Requi
 app.MapGroup("/api/insights").MapInsightEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 app.MapGroup("/api/user").MapUserEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 
-// Seed reference data (symptom types, food additives) in all environments
+// Seed reference data (symptom types, food additives) asynchronously
+_ = Task.Run(async () =>
 {
-    var store = app.Services.GetRequiredService<ITableStore>();
-    await DbSeeder.SeedAsync(store);
-}
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<ITableStore>();
+        await DbSeeder.SeedAsync(store);
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Reference data seeding failed");
+    }
+});
 
 app.Run();
 

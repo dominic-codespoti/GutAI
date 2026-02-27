@@ -142,6 +142,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           }
           env: [
             { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
+            { name: 'ASPNETCORE_URLS', value: 'http://+:8080' }
+            { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
             { name: 'DOTNET_RUNNING_IN_CONTAINER', value: 'true' }
             { name: 'DOTNET_GCServer', value: '0' }
             { name: 'ConnectionStrings__AzureStorage', secretRef: 'storage-connection' }
@@ -161,10 +163,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 1
-              periodSeconds: 2
-              failureThreshold: 20
-              timeoutSeconds: 3
+              initialDelaySeconds: 5
+              periodSeconds: 5
+              failureThreshold: 30
+              timeoutSeconds: 5
             }
             {
               type: 'Liveness'
