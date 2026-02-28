@@ -127,6 +127,10 @@ export default function SymptomsScreen() {
   const queryClient = useQueryClient();
   const isToday = selectedDate === new Date().toISOString().split("T")[0];
 
+  useEffect(() => {
+    setLinkedMealId(null);
+  }, [selectedDate]);
+
   const {
     data: types,
     isLoading: typesLoading,
@@ -160,15 +164,20 @@ export default function SymptomsScreen() {
   }, [refetchHistory]);
 
   const logMutation = useMutation({
-    mutationFn: () =>
-      symptomApi.create({
+    mutationFn: () => {
+      const [year, month, day] = selectedDate.split("-").map(Number);
+      const date = new Date();
+      date.setFullYear(year, month - 1, day);
+
+      return symptomApi.create({
         symptomTypeId: selectedType!.id,
         severity,
-        occurredAt: new Date().toISOString(),
+        occurredAt: date.toISOString(),
         notes: notes.trim() || undefined,
         relatedMealLogId: linkedMealId ?? undefined,
         duration: parseDurationToTimeSpan(duration),
-      }),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
@@ -387,7 +396,9 @@ export default function SymptomsScreen() {
                 >
                   {category}
                 </Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                >
                   {types
                     ?.filter((t) => t.category === category)
                     .map((type) => {
@@ -404,7 +415,9 @@ export default function SymptomsScreen() {
                             paddingHorizontal: 14,
                             paddingVertical: 10,
                             borderWidth: 1,
-                            borderColor: active ? colors.primary : colors.border,
+                            borderColor: active
+                              ? colors.primary
+                              : colors.border,
                             flexDirection: "row",
                             alignItems: "center",
                             gap: 6,
@@ -451,7 +464,9 @@ export default function SymptomsScreen() {
                 <Text style={{ fontSize: 24, marginRight: spacing.sm }}>
                   {selectedType.icon}
                 </Text>
-                <Text style={{ ...fonts.h3, flex: 1 }}>{selectedType.name}</Text>
+                <Text style={{ ...fonts.h3, flex: 1 }}>
+                  {selectedType.name}
+                </Text>
                 <View
                   style={{
                     backgroundColor: severityColor(severity) + "20",
@@ -563,7 +578,9 @@ export default function SymptomsScreen() {
                       return (
                         <TouchableOpacity
                           key={meal.id}
-                          onPress={() => setLinkedMealId(active ? null : meal.id)}
+                          onPress={() =>
+                            setLinkedMealId(active ? null : meal.id)
+                          }
                           style={{
                             backgroundColor: active
                               ? colors.secondary
@@ -847,7 +864,9 @@ export default function SymptomsScreen() {
             }}
           >
             <Text style={{ fontSize: 11, color: colors.textMuted }}>Mild</Text>
-            <Text style={{ fontSize: 11, color: colors.textMuted }}>Severe</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>
+              Severe
+            </Text>
           </View>
 
           <Text style={{ ...fonts.h4, marginBottom: 6 }}>Notes</Text>
