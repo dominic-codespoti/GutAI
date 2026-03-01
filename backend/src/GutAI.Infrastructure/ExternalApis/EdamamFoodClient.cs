@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
+using GutAI.Domain.Constants;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -10,6 +11,8 @@ namespace GutAI.Infrastructure.ExternalApis;
 
 public class EdamamFoodClient : INutritionApiService, IFoodApiService
 {
+    public string SourceName => DataSources.Edamam;
+
     private readonly HttpClient _http;
     private readonly ILogger<EdamamFoodClient> _logger;
     private readonly string _appId;
@@ -193,24 +196,22 @@ public class EdamamFoodClient : INutritionApiService, IFoodApiService
         };
     }
 
-    static FoodProductDto? MapToProduct(EdamamFood food, string? barcode)
+    private FoodProductDto MapToProduct(EdamamFood food, string? barcode)
     {
-        if (food.Nutrients is null) return null;
-
-        var n = food.Nutrients;
         return new FoodProductDto
         {
             Name = food.Label ?? "Unknown",
             Barcode = barcode,
             Brand = food.Brand,
             ImageUrl = food.Image,
-            Calories100g = (decimal?)n.ENERC_KCAL,
-            Protein100g = (decimal?)n.PROCNT,
-            Carbs100g = (decimal?)n.CHOCDF,
-            Fat100g = (decimal?)n.FAT,
-            Fiber100g = (decimal?)n.FIBTG,
-            DataSource = "Edamam",
-            ExternalId = food.FoodId,
+            Calories100g = (decimal?)food.Nutrients?.ENERC_KCAL,
+            Protein100g = (decimal?)food.Nutrients?.PROCNT,
+            Carbs100g = (decimal?)food.Nutrients?.CHOCDF,
+            Fat100g = (decimal?)food.Nutrients?.FAT,
+            Fiber100g = (decimal?)food.Nutrients?.FIBTG,
+            DataSource = DataSources.Edamam,
+            SourceUrl = food.FoodId is not null ? $"https://www.edamam.com/results/food-database/v2?food={food.FoodId}" : null,
+            ExternalId = food.FoodId
         };
     }
 }

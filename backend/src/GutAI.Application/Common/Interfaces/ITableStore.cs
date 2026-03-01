@@ -60,4 +60,5 @@ public interface ITableStore
     Task<InsightReport?> GetInsightReportAsync(Guid userId, Guid reportId, CancellationToken ct = default);
     Task<List<InsightReport>> GetInsightReportsAsync(Guid userId, CancellationToken ct = default);
     Task UpsertInsightReportAsync(InsightReport report, CancellationToken ct = default);
+
 }

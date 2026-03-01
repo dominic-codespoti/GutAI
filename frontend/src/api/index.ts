@@ -27,6 +27,7 @@ import type {
   DataExport,
   FoodDiaryAnalysis,
   EliminationDietStatus,
+  ChatMessage,
 } from "../types";
 
 interface UpdateProfileRequest {
@@ -174,4 +175,10 @@ export const userApi = {
   removeAlert: (additiveId: number) =>
     api.delete(`/api/user/alerts/${additiveId}`),
   deleteAccount: () => api.delete("/api/user/account"),
+};
+
+export const chatApi = {
+  getHistory: (limit?: number) =>
+    api.get<ChatMessage[]>("/api/chat/history", { params: { limit } }),
+  clearHistory: () => api.delete("/api/chat/history"),
 };

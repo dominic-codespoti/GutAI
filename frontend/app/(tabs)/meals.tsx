@@ -42,6 +42,7 @@ import {
 import { useRouter } from "expo-router";
 import { maybeRequestReview } from "../../src/utils/review";
 import { SafeScreen } from "../../components/SafeScreen";
+import { SourceChip } from "../../components/SourceChip";
 
 const editFieldStyle = {
   borderWidth: 1 as const,
@@ -511,7 +512,7 @@ export default function MealsScreen() {
   };
 
   return (
-    <SafeScreen edges={["top"]}>
+    <SafeScreen edges={[]}>
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
         refreshControl={
@@ -660,7 +661,9 @@ export default function MealsScreen() {
                     onPress={() => setShowNaturalInput(false)}
                     style={{ paddingHorizontal: 14, paddingVertical: 8 }}
                   >
-                    <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+                    <Text
+                      style={{ color: colors.textMuted, fontWeight: "600" }}
+                    >
                       Cancel
                     </Text>
                   </TouchableOpacity>
@@ -680,7 +683,11 @@ export default function MealsScreen() {
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <Text
-                        style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
+                        style={{
+                          color: "#fff",
+                          fontWeight: "600",
+                          fontSize: 14,
+                        }}
                       >
                         Parse & Log
                       </Text>
@@ -795,7 +802,9 @@ export default function MealsScreen() {
                     onPress={() => setShowManualInput(false)}
                     style={{ paddingHorizontal: 14, paddingVertical: 8 }}
                   >
-                    <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
+                    <Text
+                      style={{ color: colors.textMuted, fontWeight: "600" }}
+                    >
                       Cancel
                     </Text>
                   </TouchableOpacity>
@@ -803,7 +812,9 @@ export default function MealsScreen() {
                     onPress={() =>
                       manualFoodName.trim() && manualMutation.mutate()
                     }
-                    disabled={manualMutation.isPending || !manualFoodName.trim()}
+                    disabled={
+                      manualMutation.isPending || !manualFoodName.trim()
+                    }
                     style={{
                       backgroundColor: colors.primary,
                       paddingHorizontal: 16,
@@ -816,7 +827,11 @@ export default function MealsScreen() {
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <Text
-                        style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
+                        style={{
+                          color: "#fff",
+                          fontWeight: "600",
+                          fontSize: 14,
+                        }}
                       >
                         Log Meal
                       </Text>
@@ -901,7 +916,11 @@ export default function MealsScreen() {
                       style={{ flexDirection: "row", gap: 6, marginBottom: 4 }}
                     >
                       {[
-                        { label: "Cal", field: "calories", value: item.calories },
+                        {
+                          label: "Cal",
+                          field: "calories",
+                          value: item.calories,
+                        },
                         {
                           label: "Prot",
                           field: "proteinG",
@@ -922,7 +941,9 @@ export default function MealsScreen() {
                           </Text>
                           <TextInput
                             value={String(Math.round(value))}
-                            onChangeText={(v) => updateParsedItem(idx, field, v)}
+                            onChangeText={(v) =>
+                              updateParsedItem(idx, field, v)
+                            }
                             keyboardType="numeric"
                             style={editFieldStyle}
                           />
@@ -933,7 +954,11 @@ export default function MealsScreen() {
                       {[
                         { label: "Fiber", field: "fiberG", value: item.fiberG },
                         { label: "Sugar", field: "sugarG", value: item.sugarG },
-                        { label: "Na", field: "sodiumMg", value: item.sodiumMg },
+                        {
+                          label: "Na",
+                          field: "sodiumMg",
+                          value: item.sodiumMg,
+                        },
                         {
                           label: "Qty",
                           field: "servingQuantity",
@@ -952,7 +977,9 @@ export default function MealsScreen() {
                           </Text>
                           <TextInput
                             value={String(Math.round(value))}
-                            onChangeText={(v) => updateParsedItem(idx, field, v)}
+                            onChangeText={(v) =>
+                              updateParsedItem(idx, field, v)
+                            }
                             keyboardType="numeric"
                             style={editFieldStyle}
                           />
@@ -971,7 +998,9 @@ export default function MealsScreen() {
                 >
                   <Text style={{ fontSize: 12, color: colors.textMuted }}>
                     Total:{" "}
-                    {Math.round(parsedItems.reduce((s, i) => s + i.calories, 0))}{" "}
+                    {Math.round(
+                      parsedItems.reduce((s, i) => s + i.calories, 0),
+                    )}{" "}
                     cal
                   </Text>
                   <View style={{ flexDirection: "row", gap: 8 }}>
@@ -1108,377 +1137,382 @@ export default function MealsScreen() {
                 </TouchableOpacity>
               </>
             )}
-        </View>
-
-        {/* Daily Summary */}
-        {dailySummary && (
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: radius.md,
-              padding: spacing.lg,
-              marginBottom: spacing.lg,
-              ...shadow,
-            }}
-          >
-            <Text style={{ ...fonts.h4, marginBottom: spacing.md }}>
-              Daily Summary
-            </Text>
-            <View
-              style={{ flexDirection: "row", justifyContent: "space-around" }}
-            >
-              <View style={{ alignItems: "center" }}>
-                <Text
-                  style={{
-                    fontSize: 20,
-                    fontWeight: "700",
-                    color: colors.primary,
-                  }}
-                >
-                  {Math.round(dailySummary.totalCalories)}
-                </Text>
-                <Text style={fonts.small}>
-                  / {dailySummary.calorieGoal} cal
-                </Text>
-              </View>
-              <View style={{ alignItems: "center" }}>
-                <Text
-                  style={{
-                    fontSize: 17,
-                    fontWeight: "600",
-                    color: colors.protein,
-                  }}
-                >
-                  {Math.round(dailySummary.totalProteinG)}g
-                </Text>
-                <Text style={fonts.small}>protein</Text>
-              </View>
-              <View style={{ alignItems: "center" }}>
-                <Text
-                  style={{
-                    fontSize: 17,
-                    fontWeight: "600",
-                    color: colors.carbs,
-                  }}
-                >
-                  {Math.round(dailySummary.totalCarbsG)}g
-                </Text>
-                <Text style={fonts.small}>carbs</Text>
-              </View>
-              <View style={{ alignItems: "center" }}>
-                <Text
-                  style={{ fontSize: 17, fontWeight: "600", color: colors.fat }}
-                >
-                  {Math.round(dailySummary.totalFatG)}g
-                </Text>
-                <Text style={fonts.small}>fat</Text>
-              </View>
-            </View>
           </View>
-        )}
 
-        {/* Filter Chips */}
-        <View
-          style={{ flexDirection: "row", marginBottom: spacing.md, gap: 6 }}
-        >
-          <TouchableOpacity
-            onPress={() => setFilterMealType(null)}
-            style={{
-              paddingVertical: 6,
-              paddingHorizontal: 14,
-              borderRadius: radius.full,
-              backgroundColor:
-                filterMealType === null ? colors.text : colors.borderLight,
-            }}
-          >
-            <Text
+          {/* Daily Summary */}
+          {dailySummary && (
+            <View
               style={{
-                fontSize: 12,
-                fontWeight: "600",
-                color: filterMealType === null ? "#fff" : colors.textMuted,
+                backgroundColor: colors.card,
+                borderRadius: radius.md,
+                padding: spacing.lg,
+                marginBottom: spacing.lg,
+                ...shadow,
               }}
             >
-              All
-            </Text>
-          </TouchableOpacity>
-          {MEAL_TYPES.map((type) => (
+              <Text style={{ ...fonts.h4, marginBottom: spacing.md }}>
+                Daily Summary
+              </Text>
+              <View
+                style={{ flexDirection: "row", justifyContent: "space-around" }}
+              >
+                <View style={{ alignItems: "center" }}>
+                  <Text
+                    style={{
+                      fontSize: 20,
+                      fontWeight: "700",
+                      color: colors.primary,
+                    }}
+                  >
+                    {Math.round(dailySummary.totalCalories)}
+                  </Text>
+                  <Text style={fonts.small}>
+                    / {dailySummary.calorieGoal} cal
+                  </Text>
+                </View>
+                <View style={{ alignItems: "center" }}>
+                  <Text
+                    style={{
+                      fontSize: 17,
+                      fontWeight: "600",
+                      color: colors.protein,
+                    }}
+                  >
+                    {Math.round(dailySummary.totalProteinG)}g
+                  </Text>
+                  <Text style={fonts.small}>protein</Text>
+                </View>
+                <View style={{ alignItems: "center" }}>
+                  <Text
+                    style={{
+                      fontSize: 17,
+                      fontWeight: "600",
+                      color: colors.carbs,
+                    }}
+                  >
+                    {Math.round(dailySummary.totalCarbsG)}g
+                  </Text>
+                  <Text style={fonts.small}>carbs</Text>
+                </View>
+                <View style={{ alignItems: "center" }}>
+                  <Text
+                    style={{
+                      fontSize: 17,
+                      fontWeight: "600",
+                      color: colors.fat,
+                    }}
+                  >
+                    {Math.round(dailySummary.totalFatG)}g
+                  </Text>
+                  <Text style={fonts.small}>fat</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Filter Chips */}
+          <View
+            style={{ flexDirection: "row", marginBottom: spacing.md, gap: 6 }}
+          >
             <TouchableOpacity
-              key={type}
-              onPress={() =>
-                setFilterMealType(filterMealType === type ? null : type)
-              }
+              onPress={() => setFilterMealType(null)}
               style={{
                 paddingVertical: 6,
                 paddingHorizontal: 14,
                 borderRadius: radius.full,
                 backgroundColor:
-                  filterMealType === type ? colors.text : colors.borderLight,
+                  filterMealType === null ? colors.text : colors.borderLight,
               }}
             >
               <Text
                 style={{
                   fontSize: 12,
                   fontWeight: "600",
-                  color: filterMealType === type ? "#fff" : colors.textMuted,
+                  color: filterMealType === null ? "#fff" : colors.textMuted,
                 }}
               >
-                {mealTypeEmoji[type]} {type}
+                All
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Meal List */}
-        {isLoading ? (
-          <>
-            <MealCardSkeleton />
-            <MealCardSkeleton />
-            <MealCardSkeleton />
-          </>
-        ) : isError ? (
-          <View style={{ alignItems: "center", marginTop: 40 }}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={48}
-              color={colors.danger}
-            />
-            <Text
-              style={{
-                color: colors.danger,
-                marginTop: spacing.md,
-                fontSize: 16,
-              }}
-            >
-              Failed to load meals
-            </Text>
-            <TouchableOpacity
-              onPress={() => refetch()}
-              style={{
-                marginTop: spacing.md,
-                backgroundColor: colors.primary,
-                paddingHorizontal: 20,
-                paddingVertical: 8,
-                borderRadius: radius.sm,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : filteredMeals && filteredMeals.length > 0 ? (
-          (() => {
-            const mealTypeOrder = ["Breakfast", "Lunch", "Dinner", "Snack"];
-            const grouped: Record<string, MealLog[]> = {};
-            for (const meal of filteredMeals) {
-              const key = meal.mealType || "Other";
-              if (!grouped[key]) grouped[key] = [];
-              grouped[key].push(meal);
-            }
-            const sortedTypes = Object.keys(grouped).sort(
-              (a, b) =>
-                (mealTypeOrder.indexOf(a) === -1
-                  ? 99
-                  : mealTypeOrder.indexOf(a)) -
-                (mealTypeOrder.indexOf(b) === -1
-                  ? 99
-                  : mealTypeOrder.indexOf(b)),
-            );
-            return sortedTypes.map((type) => {
-              const mealsInGroup = grouped[type];
-              const totalCals = mealsInGroup.reduce(
-                (s, m) => s + m.totalCalories,
-                0,
-              );
-              return (
-                <View
-                  key={type}
+            {MEAL_TYPES.map((type) => (
+              <TouchableOpacity
+                key={type}
+                onPress={() =>
+                  setFilterMealType(filterMealType === type ? null : type)
+                }
+                style={{
+                  paddingVertical: 6,
+                  paddingHorizontal: 14,
+                  borderRadius: radius.full,
+                  backgroundColor:
+                    filterMealType === type ? colors.text : colors.borderLight,
+                }}
+              >
+                <Text
                   style={{
-                    backgroundColor: colors.card,
-                    borderRadius: radius.md,
-                    padding: spacing.lg,
-                    marginBottom: spacing.sm,
-                    ...shadow,
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color: filterMealType === type ? "#fff" : colors.textMuted,
                   }}
                 >
+                  {mealTypeEmoji[type]} {type}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Meal List */}
+          {isLoading ? (
+            <>
+              <MealCardSkeleton />
+              <MealCardSkeleton />
+              <MealCardSkeleton />
+            </>
+          ) : isError ? (
+            <View style={{ alignItems: "center", marginTop: 40 }}>
+              <Ionicons
+                name="cloud-offline-outline"
+                size={48}
+                color={colors.danger}
+              />
+              <Text
+                style={{
+                  color: colors.danger,
+                  marginTop: spacing.md,
+                  fontSize: 16,
+                }}
+              >
+                Failed to load meals
+              </Text>
+              <TouchableOpacity
+                onPress={() => refetch()}
+                style={{
+                  marginTop: spacing.md,
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 20,
+                  paddingVertical: 8,
+                  borderRadius: radius.sm,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : filteredMeals && filteredMeals.length > 0 ? (
+            (() => {
+              const mealTypeOrder = ["Breakfast", "Lunch", "Dinner", "Snack"];
+              const grouped: Record<string, MealLog[]> = {};
+              for (const meal of filteredMeals) {
+                const key = meal.mealType || "Other";
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(meal);
+              }
+              const sortedTypes = Object.keys(grouped).sort(
+                (a, b) =>
+                  (mealTypeOrder.indexOf(a) === -1
+                    ? 99
+                    : mealTypeOrder.indexOf(a)) -
+                  (mealTypeOrder.indexOf(b) === -1
+                    ? 99
+                    : mealTypeOrder.indexOf(b)),
+              );
+              return sortedTypes.map((type) => {
+                const mealsInGroup = grouped[type];
+                const totalCals = mealsInGroup.reduce(
+                  (s, m) => s + m.totalCalories,
+                  0,
+                );
+                return (
                   <View
+                    key={type}
                     style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 8,
+                      backgroundColor: colors.card,
+                      borderRadius: radius.md,
+                      padding: spacing.lg,
+                      marginBottom: spacing.sm,
+                      ...shadow,
                     }}
                   >
                     <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <View
-                        style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: radius.sm,
-                          backgroundColor: colors.primaryBg,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: spacing.md,
-                        }}
-                      >
-                        <Text style={{ fontSize: 18 }}>
-                          {mealTypeEmoji[type] ?? "🍽️"}
-                        </Text>
-                      </View>
-                      <View>
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            fontWeight: "600",
-                            color: colors.text,
-                          }}
-                        >
-                          {type}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: colors.textMuted,
-                            marginTop: 1,
-                          }}
-                        >
-                          {mealsInGroup.length}{" "}
-                          {mealsInGroup.length === 1 ? "entry" : "entries"}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text
                       style={{
-                        fontSize: 16,
-                        fontWeight: "700",
-                        color: colors.text,
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 8,
                       }}
                     >
-                      {totalCals}{" "}
-                      <Text style={{ fontSize: 12, color: colors.textMuted }}>
-                        cal
-                      </Text>
-                    </Text>
-                  </View>
-                  {mealsInGroup.map((meal) => (
-                    <View key={meal.id}>
                       <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          paddingTop: 6,
-                          paddingBottom: 2,
-                        }}
+                        style={{ flexDirection: "row", alignItems: "center" }}
                       >
-                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                          {new Date(meal.loggedAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                          {" · "}
-                          {meal.totalCalories} cal
-                        </Text>
-                        <View style={{ flexDirection: "row", gap: 10 }}>
-                          <TouchableOpacity onPress={() => openEdit(meal)}>
-                            <Ionicons
-                              name="pencil-outline"
-                              size={16}
-                              color={colors.secondary}
-                            />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleDelete(meal.id)}
-                          >
-                            <Ionicons
-                              name="trash-outline"
-                              size={16}
-                              color={colors.danger}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      {meal.items.map((item) => (
-                        <Pressable
-                          key={item.id}
-                          onPress={() => handleItemTap(item)}
-                          onLongPress={() => openItemSheet(item)}
-                          style={({ pressed }) => ({
-                            flexDirection: "row" as const,
-                            justifyContent: "space-between" as const,
-                            alignItems: "center" as const,
-                            marginTop: 4,
-                            paddingTop: 6,
-                            paddingBottom: 4,
-                            paddingHorizontal: 4,
-                            borderTopWidth: 1,
-                            borderTopColor: colors.divider,
+                        <View
+                          style={{
+                            width: 38,
+                            height: 38,
                             borderRadius: radius.sm,
-                            backgroundColor: pressed
-                              ? colors.borderLight
-                              : "transparent",
-                          })}
+                            backgroundColor: colors.primaryBg,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: spacing.md,
+                          }}
                         >
-                          <Text
-                            style={{ color: colors.textSecondary, flex: 1 }}
-                          >
-                            {item.foodName}
-                            <Text style={{ color: colors.textMuted }}>
-                              {" "}
-                              · {item.servings} {item.servingUnit}
-                            </Text>
+                          <Text style={{ fontSize: 18 }}>
+                            {mealTypeEmoji[type] ?? "🍽️"}
                           </Text>
-                          <View
+                        </View>
+                        <View>
+                          <Text
                             style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 6,
+                              fontSize: 15,
+                              fontWeight: "600",
+                              color: colors.text,
                             }}
                           >
+                            {type}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.textMuted,
+                              marginTop: 1,
+                            }}
+                          >
+                            {mealsInGroup.length}{" "}
+                            {mealsInGroup.length === 1 ? "entry" : "entries"}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          fontWeight: "700",
+                          color: colors.text,
+                        }}
+                      >
+                        {totalCals}{" "}
+                        <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                          cal
+                        </Text>
+                      </Text>
+                    </View>
+                    {mealsInGroup.map((meal) => (
+                      <View key={meal.id}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            paddingTop: 6,
+                            paddingBottom: 2,
+                          }}
+                        >
+                          <Text
+                            style={{ fontSize: 11, color: colors.textMuted }}
+                          >
+                            {new Date(meal.loggedAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            {" · "}
+                            {meal.totalCalories} cal
+                          </Text>
+                          <View style={{ flexDirection: "row", gap: 10 }}>
+                            <TouchableOpacity onPress={() => openEdit(meal)}>
+                              <Ionicons
+                                name="pencil-outline"
+                                size={16}
+                                color={colors.secondary}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleDelete(meal.id)}
+                            >
+                              <Ionicons
+                                name="trash-outline"
+                                size={16}
+                                color={colors.danger}
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        {meal.items.map((item) => (
+                          <Pressable
+                            key={item.id}
+                            onPress={() => handleItemTap(item)}
+                            onLongPress={() => openItemSheet(item)}
+                            style={({ pressed }) => ({
+                              flexDirection: "row" as const,
+                              justifyContent: "space-between" as const,
+                              alignItems: "center" as const,
+                              marginTop: 4,
+                              paddingTop: 6,
+                              paddingBottom: 4,
+                              paddingHorizontal: 4,
+                              borderTopWidth: 1,
+                              borderTopColor: colors.divider,
+                              borderRadius: radius.sm,
+                              backgroundColor: pressed
+                                ? colors.borderLight
+                                : "transparent",
+                            })}
+                          >
                             <Text
+                              style={{ color: colors.textSecondary, flex: 1 }}
+                            >
+                              {item.foodName}
+                              <Text style={{ color: colors.textMuted }}>
+                                {" "}
+                                · {item.servings} {item.servingUnit}
+                              </Text>
+                            </Text>
+                            <View
                               style={{
-                                color: colors.textSecondary,
-                                fontWeight: "500",
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 6,
                               }}
                             >
-                              {item.calories} cal
-                            </Text>
-                            <Ionicons
-                              name="chevron-forward"
-                              size={14}
-                              color={colors.textLight}
-                            />
-                          </View>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              );
-            });
-          })()
-        ) : (
-          <View style={{ alignItems: "center", paddingVertical: 48 }}>
-            <Ionicons
-              name="restaurant-outline"
-              size={48}
-              color={colors.textLight}
-            />
-            <Text
-              style={{
-                color: colors.textMuted,
-                marginTop: spacing.md,
-                fontSize: 15,
-              }}
-            >
-              {filterMealType
-                ? "No meals found"
-                : "No meals logged for this date"}
-            </Text>
-          </View>
-        )}
-      </View>
-
+                              <Text
+                                style={{
+                                  color: colors.textSecondary,
+                                  fontWeight: "500",
+                                }}
+                              >
+                                {item.calories} cal
+                              </Text>
+                              <Ionicons
+                                name="chevron-forward"
+                                size={14}
+                                color={colors.textLight}
+                              />
+                            </View>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                );
+              });
+            })()
+          ) : (
+            <View style={{ alignItems: "center", paddingVertical: 48 }}>
+              <Ionicons
+                name="restaurant-outline"
+                size={48}
+                color={colors.textLight}
+              />
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  marginTop: spacing.md,
+                  fontSize: 15,
+                }}
+              >
+                {filterMealType
+                  ? "No meals found"
+                  : "No meals logged for this date"}
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       {/* Food Info Bottom Sheet */}
@@ -2184,19 +2218,32 @@ export default function MealsScreen() {
               >
                 {food.name}
               </Text>
-              <Text
+              <View
                 style={{
-                  fontSize: 11,
-                  color: colors.textMuted,
+                  flexDirection: "row",
+                  alignItems: "center",
                   marginTop: 2,
                 }}
               >
-                {food.calories100g != null
-                  ? `${Math.round(food.calories100g)} cal/100g`
-                  : ""}
-                {food.brand ? ` · ${food.brand}` : ""}
-                {food.dataSource ? ` · ${food.dataSource}` : ""}
-              </Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.textMuted,
+                  }}
+                >
+                  {food.calories100g != null
+                    ? `${Math.round(food.calories100g)} cal/100g`
+                    : ""}
+                  {food.brand ? ` · ${food.brand}` : ""}
+                </Text>
+                {food.dataSource && (
+                  <SourceChip
+                    source={food.dataSource}
+                    url={food.sourceUrl}
+                    style={{ marginLeft: 6, paddingVertical: 0 }}
+                  />
+                )}
+              </View>
             </TouchableOpacity>
           ))}
           {debouncedSwapSearch.length >= 2 &&

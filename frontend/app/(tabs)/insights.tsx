@@ -166,7 +166,7 @@ export default function InsightsScreen() {
     : trends?.slice(-7).reverse();
 
   return (
-    <SafeScreen edges={["top"]}>
+    <SafeScreen edges={[]}>
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
         showsVerticalScrollIndicator={false}

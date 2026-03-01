@@ -32,6 +32,7 @@ import { maybeRequestReview } from "../../src/utils/review";
 import { colors } from "../../src/utils/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { Linking } from "react-native";
+import { SourceChip } from "../../components/SourceChip";
 
 const gutScoreColor = (score: number) => {
   if (score >= 80) return "#22c55e";
@@ -342,14 +343,14 @@ export default function FoodDetailScreen() {
                 {product.brand}
               </Text>
             )}
+            <SourceChip
+              source={product.dataSource}
+              url={product.sourceUrl}
+              style={{ marginTop: 6 }}
+            />
             {product.barcode && (
               <Text style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>
                 Barcode: {product.barcode}
-              </Text>
-            )}
-            {product.dataSource && (
-              <Text style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                Source: {product.dataSource}
               </Text>
             )}
           </View>

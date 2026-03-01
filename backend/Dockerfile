@@ -18,10 +18,11 @@ COPY . .
 RUN dotnet publish src/GutAI.Api/GutAI.Api.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/publish .
-
-USER 1654
 
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "GutAI.Api.dll"]

@@ -95,10 +95,19 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 // ── Container App (API) ──
 var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
 
+@description('Azure OpenAI (AI Foundry) endpoint URL')
+param azureOpenAIEndpoint string = ''
+
+@description('Azure OpenAI deployment name')
+param azureOpenAIDeploymentName string = 'gpt-5-nano'
+
 resource api 'Microsoft.App/containerApps@2024-03-01' = {
   name: '${prefix}-api'
   location: location
   tags: tags
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     managedEnvironmentId: containerEnv.id
     configuration: {
@@ -155,6 +164,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ExternalApis__CalorieNinjasApiKey', secretRef: 'calorieninjas-api-key' }
             { name: 'ExternalApis__EdamamAppId', secretRef: 'edamam-app-id' }
             { name: 'ExternalApis__EdamamAppKey', secretRef: 'edamam-app-key' }
+            { name: 'AzureOpenAI__Endpoint', value: azureOpenAIEndpoint }
+            { name: 'AzureOpenAI__DeploymentName', value: azureOpenAIDeploymentName }
           ]
           probes: [
             {

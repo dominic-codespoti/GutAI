@@ -539,4 +539,81 @@ public sealed class FoodSearchIndexIntegrationTests : IDisposable
     {
         FirstName("carrot").ToLower().Should().Contain("carrot");
     }
+
+    // ════════════════════════════════════════════════════════════════
+    //  COLLOQUIAL FOOD NAMES: synonyms should resolve correctly
+    // ════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void Toast_ReturnsBreadToasted()
+    {
+        var top = TopNames("toast", 5);
+        top.Should().Contain(n =>
+            n.Contains("Bread", StringComparison.OrdinalIgnoreCase) &&
+            n.Contains("toasted", StringComparison.OrdinalIgnoreCase));
+        top.First().ToLower().Should().Contain("bread",
+            "toast should return bread-based results, not crackers or branded products");
+    }
+
+    [Fact]
+    public void Toast_DoesNotReturnMelbaToastFirst()
+    {
+        FirstName("toast").ToLower().Should().NotContain("melba");
+    }
+
+    [Fact]
+    public void Steak_ReturnsBeef()
+    {
+        var top = TopNames("steak", 5);
+        top.Should().Contain(n => n.Contains("beef", StringComparison.OrdinalIgnoreCase) ||
+                                  n.Contains("steak", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void OrangeJuice_ReturnsJuice()
+    {
+        var name = FirstName("orange juice");
+        name.ToLower().Should().Contain("orange");
+        name.ToLower().Should().Contain("juice");
+    }
+
+    [Fact]
+    public void Oatmeal_ReturnsOats()
+    {
+        TopNames("oatmeal", 5).Should()
+            .Contain(n => n.ToLower().Contains("oat"));
+    }
+
+    [Fact]
+    public void Fries_ReturnsFrenchFries()
+    {
+        TopNames("fries", 5).Should()
+            .Contain(n => n.ToLower().Contains("fries") || n.ToLower().Contains("fried"));
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  STEMMING: -ed suffix should match base forms
+    // ════════════════════════════════════════════════════════════════
+
+    [Theory]
+    [InlineData("grilled chicken", "grilled")]
+    [InlineData("roasted vegetables", "roast")]
+    [InlineData("baked potato", "baked")]
+    public void EdStemming_MatchesCookingMethods(string query, string expected)
+    {
+        TopNames(query, 5).Should()
+            .Contain(n => n.Contains(expected, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void NormalizeFoodName_StemsEdSuffix()
+    {
+        FoodSearchIndex.NormalizeFoodName("Bread, white, toasted").Should().Contain("toast");
+    }
+
+    [Fact]
+    public void NormalizeFoodName_DoesNotStemBread()
+    {
+        FoodSearchIndex.NormalizeFoodName("Bread, white").Should().Contain("bread");
+    }
 }

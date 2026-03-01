@@ -22,6 +22,7 @@ public record FoodProductDto
     public decimal? Sugar100g { get; init; }
     public decimal? Sodium100g { get; init; }
     public string DataSource { get; init; } = "Manual";
+    public string? SourceUrl { get; init; }
     public string? ExternalId { get; init; }
     public string? ServingSize { get; init; }
     public decimal? ServingQuantity { get; init; }

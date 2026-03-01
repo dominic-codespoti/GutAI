@@ -137,7 +137,8 @@ public class TableStorageStore : ITableStore
             { "DietaryPreferences", StringArrayToJson(user.DietaryPreferences) },
             { "GutConditions", StringArrayToJson(user.GutConditions) },
             { "OnboardingCompleted", user.OnboardingCompleted },
-            { "TimezoneId", user.TimezoneId }
+            { "TimezoneId", user.TimezoneId },
+            { "AgentThreadId", user.AgentThreadId }
         };
         await UpsertAsync(e, ct);
     }
@@ -163,7 +164,8 @@ public class TableStorageStore : ITableStore
         DietaryPreferences = JsonToStringArray(e.GetString("DietaryPreferences")),
         GutConditions = JsonToStringArray(e.GetString("GutConditions")),
         OnboardingCompleted = e.GetBoolean("OnboardingCompleted") ?? false,
-        TimezoneId = e.GetString("TimezoneId")
+        TimezoneId = e.GetString("TimezoneId"),
+        AgentThreadId = e.GetString("AgentThreadId")
     };
 
     // ═══════════════════════════════════════════════════════════
@@ -572,6 +574,7 @@ public class TableStorageStore : ITableStore
             { "ServingSize", product.ServingSize },
             { "ServingQuantity", Str(product.ServingQuantity) },
             { "DataSource", product.DataSource },
+            { "SourceUrl", product.SourceUrl },
             { "ExternalId", product.ExternalId },
             { "CachedAt", product.CachedAt },
             { "CacheTtlHours", product.CacheTtlHours },
@@ -619,6 +622,7 @@ public class TableStorageStore : ITableStore
             ServingSize = e.GetString("ServingSize"),
             ServingQuantity = DecN(e, "ServingQuantity"),
             DataSource = e.GetString("DataSource") ?? "Manual",
+            SourceUrl = e.GetString("SourceUrl"),
             ExternalId = e.GetString("ExternalId"),
             CachedAt = e.GetDateTimeOffset("CachedAt")?.UtcDateTime ?? DateTime.UtcNow,
             CacheTtlHours = e.GetInt32("CacheTtlHours") ?? 24,
@@ -957,4 +961,5 @@ public class TableStorageStore : ITableStore
             TopTriggersJson = e.GetString("TopTriggersJson") ?? "[]"
         };
     }
+
 }

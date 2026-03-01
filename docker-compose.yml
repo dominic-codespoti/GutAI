@@ -4,6 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports: ["5000:8080"]
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
@@ -14,6 +15,11 @@ services:
       - Jwt__ExpiryMinutes=60
       - ExternalApis__UsdaApiKey=${USDA_API_KEY:-DEMO_KEY}
       - ExternalApis__CalorieNinjasApiKey=${CALORIENINJAS_API_KEY:-}
+      - AzureOpenAI__Endpoint=https://openai-us-misc.openai.azure.com/
+      - AzureOpenAI__DeploymentName=gpt-5-nano
+      - AZURE_CONFIG_DIR=/azure-config
+    volumes:
+      - ${HOME}/.azure:/azure-config
     depends_on:
       azurite:
         condition: service_healthy

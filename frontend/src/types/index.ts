@@ -135,6 +135,7 @@ export interface FoodProduct {
   safetyScore: number | null;
   safetyRating: string | null;
   dataSource: string | null;
+  sourceUrl: string | null;
   externalId: string | null;
   additives: FoodAdditive[];
 }
@@ -205,6 +206,19 @@ export interface Correlation {
   frequencyPercent: number;
   averageSeverity: number;
   confidence: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatStreamEvent {
+  content?: string;
+  tool_call?: string;
+  status?: string;
 }
 
 export interface NutritionTrend {
@@ -414,4 +428,23 @@ export interface ReintroductionResult {
   result: string;
   averageSeverity: number;
   testCount: number;
+}
+
+export interface MealFood {
+  id: string;
+  name: string;
+  brand: string | null;
+  imageUrl: string | null;
+  calories100g: number | null;
+  protein100g: number | null;
+  carbs100g: number | null;
+  fat100g: number | null;
+  fiber100g: number | null;
+  sugar100g: number | null;
+  sodium100g: number | null;
+  servingSize: string | null;
+  servingQuantity: number | null;
+  dataSource: string | null;
+  sourceUrl: string | null;
+  externalId: string | null;
 }

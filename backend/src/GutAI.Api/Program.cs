@@ -11,6 +11,7 @@ using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using System.Text.Json;
 using Microsoft.AspNetCore.ResponseCompression;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -70,6 +71,11 @@ builder.Services.AddResponseCompression(options =>
 builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
     options.Level = System.IO.Compression.CompressionLevel.Fastest);
 
+// MCP server (exposes gut health tools to external AI apps)
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithToolsFromAssembly();
+
 // Health checks
 builder.Services.AddHealthChecks();
 
@@ -112,6 +118,10 @@ app.MapGroup("/api/food").MapFoodEndpoints().RequireAuthorization().RequireRateL
 app.MapGroup("/api/symptoms").MapSymptomEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 app.MapGroup("/api/insights").MapInsightEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 app.MapGroup("/api/user").MapUserEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
+app.MapGroup("/api/chat").MapChatEndpoints().RequireAuthorization().RequireRateLimiting("chat");
+
+// MCP endpoint for external AI apps
+app.MapMcp();
 
 // Seed reference data (symptom types, food additives) asynchronously
 _ = Task.Run(async () =>

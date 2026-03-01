@@ -25,6 +25,7 @@ public class FoodProduct
     public string? ServingSize { get; set; }
     public decimal? ServingQuantity { get; set; }
     public string DataSource { get; set; } = "Manual";
+    public string? SourceUrl { get; set; }
     public string? ExternalId { get; set; }
     public DateTime CachedAt { get; set; } = DateTime.UtcNow;
     public int CacheTtlHours { get; set; } = 24;

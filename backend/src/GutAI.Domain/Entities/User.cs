@@ -17,6 +17,7 @@ public class User
     public string[] GutConditions { get; set; } = [];
     public bool OnboardingCompleted { get; set; }
     public string? TimezoneId { get; set; }
+    public string? AgentThreadId { get; set; }
 
     public ICollection<MealLog> MealLogs { get; set; } = [];
     public ICollection<SymptomLog> SymptomLogs { get; set; } = [];

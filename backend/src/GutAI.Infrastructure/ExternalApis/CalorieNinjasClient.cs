@@ -1,13 +1,17 @@
 using System.Net;
 using System.Net.Http.Json;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Interfaces;
+using GutAI.Domain.Constants;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.ExternalApis;
 
-public class CalorieNinjasClient
+public class CalorieNinjasClient : IFoodApiService, INutritionApiService
 {
+    public string SourceName => DataSources.CalorieNinjas;
+
     private readonly HttpClient _http;
     private readonly ILogger<CalorieNinjasClient> _logger;
     private readonly string _apiKey;
@@ -53,6 +57,26 @@ public class CalorieNinjasClient
             PotassiumMg = i.PotassiumMg,
             ServingWeightG = i.ServingSizeG
         }).ToList() ?? [];
+    }
+
+    public Task<FoodProductDto?> LookupBarcodeAsync(string barcode, CancellationToken ct = default) => Task.FromResult<FoodProductDto?>(null);
+
+    public async Task<List<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
+    {
+        var items = await ParseNaturalLanguageAsync(query, ct);
+        return items.Select(i => new FoodProductDto
+        {
+            Name = i.Name,
+            Calories100g = i.ServingWeightG > 0 ? (i.Calories / i.ServingWeightG) * 100m : i.Calories,
+            Protein100g = i.ServingWeightG > 0 ? (i.ProteinG / i.ServingWeightG) * 100m : i.ProteinG,
+            Carbs100g = i.ServingWeightG > 0 ? (i.CarbsG / i.ServingWeightG) * 100m : i.CarbsG,
+            Fat100g = i.ServingWeightG > 0 ? (i.FatG / i.ServingWeightG) * 100m : i.FatG,
+            Fiber100g = i.ServingWeightG > 0 ? (i.FiberG / i.ServingWeightG) * 100m : i.FiberG,
+            Sugar100g = i.ServingWeightG > 0 ? (i.SugarG / i.ServingWeightG) * 100m : i.SugarG,
+            Sodium100g = i.ServingWeightG > 0 ? (i.SodiumMg / i.ServingWeightG) * 100m / 1000m : i.SodiumMg / 1000m,
+            DataSource = DataSources.CalorieNinjas,
+            SourceUrl = "https://calorieninjas.com"
+        }).ToList();
     }
 }
 

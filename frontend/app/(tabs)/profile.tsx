@@ -223,7 +223,7 @@ export default function ProfileScreen() {
   }, [showAdditiveBrowser, editingGoals, editingProfile]);
 
   return (
-    <SafeScreen edges={["top"]}>
+    <SafeScreen edges={[]}>
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
         showsVerticalScrollIndicator={false}
@@ -261,7 +261,11 @@ export default function ProfileScreen() {
               }}
             >
               <Text
-                style={{ fontSize: 32, fontWeight: "700", color: colors.primary }}
+                style={{
+                  fontSize: 32,
+                  fontWeight: "700",
+                  color: colors.primary,
+                }}
               >
                 {user?.displayName?.[0]?.toUpperCase() ?? "?"}
               </Text>
@@ -543,7 +547,11 @@ export default function ProfileScreen() {
             >
               Browse & Add Additive Alerts
             </Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textMuted}
+            />
           </TouchableOpacity>
 
           {/* Correlations */}
@@ -644,7 +652,11 @@ export default function ProfileScreen() {
             >
               Settings
             </Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textMuted}
+            />
           </TouchableOpacity>
 
           {/* Logout */}
@@ -684,7 +696,9 @@ export default function ProfileScreen() {
           <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
             Edit Profile
           </Text>
-          <Text style={{ ...fonts.caption, marginBottom: 4 }}>Display Name</Text>
+          <Text style={{ ...fonts.caption, marginBottom: 4 }}>
+            Display Name
+          </Text>
           <TextInput
             value={displayName}
             onChangeText={setDisplayName}
@@ -702,7 +716,10 @@ export default function ProfileScreen() {
             Allergies
           </Text>
           <View style={{ marginBottom: spacing.sm }}>
-            <AllergyChips selected={selectedAllergies} onToggle={toggleAllergy} />
+            <AllergyChips
+              selected={selectedAllergies}
+              onToggle={toggleAllergy}
+            />
           </View>
 
           <Text

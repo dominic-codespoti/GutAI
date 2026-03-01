@@ -87,7 +87,8 @@ function CustomTabBar({
       >
         {state.routes.map((route: any, index: number) => {
           const { options } = descriptors[route.key];
-          if (route.name === "scan") return null;
+          const hidden = ["scan", "profile"];
+          if (hidden.includes(route.name)) return null;
 
           const isFocused = state.index === index;
           const isMeals = route.name === "meals";
@@ -138,8 +139,8 @@ function CustomTabBar({
           const iconMap: Record<string, [string, string]> = {
             index: ["home", "home-outline"],
             symptoms: ["pulse", "pulse-outline"],
+            chat: ["chatbubble-ellipses", "chatbubble-ellipses-outline"],
             insights: ["analytics", "analytics-outline"],
-            profile: ["person", "person-outline"],
           };
           const [activeIcon, inactiveIcon] = iconMap[route.name] ?? [
             "ellipse",
@@ -192,13 +193,28 @@ export default function TabLayout() {
     }
   };
 
+  const headerRight = () => (
+    <TouchableOpacity
+      onPress={() => router.push("/(tabs)/profile")}
+      style={{ marginRight: 14, padding: 4 }}
+      hitSlop={8}
+    >
+      <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        headerShown: false,
+        headerShown: true,
+        headerStyle: { backgroundColor: colors.bg },
+        headerShadowVisible: false,
+        headerTintColor: colors.text,
+        headerTitleStyle: { fontWeight: "700" as const, fontSize: 17 },
+        headerRight,
         sceneStyle: {
           paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
         },
@@ -251,12 +267,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="chat"
         options={{
-          title: "Profile",
+          title: "Coach",
+          headerShown: false,
+          sceneStyle: { paddingBottom: 0 },
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "person" : "person-outline"}
+              name={
+                focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline"
+              }
               size={22}
               color={color}
             />
@@ -264,20 +284,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="profile"
+        options={{
+          href: null,
+          title: "Profile",
+          headerRight: () => null,
+        }}
+      />
+      <Tabs.Screen
         name="scan"
         options={{
           href: null,
           title: "Food Lookup",
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: colors.bg,
-          },
-          headerTintColor: colors.text,
-          headerShadowVisible: false,
-          headerTitleStyle: {
-            fontWeight: "700",
-            fontSize: 17,
-          },
           headerLeft: () => (
             <TouchableOpacity
               onPress={handleBack}

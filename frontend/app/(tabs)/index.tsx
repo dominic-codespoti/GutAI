@@ -281,7 +281,7 @@ export default function DashboardScreen() {
   ];
 
   return (
-    <SafeScreen edges={["top"]}>
+    <SafeScreen edges={[]}>
       <ScrollView
         style={{ flex: 1 }}
         refreshControl={

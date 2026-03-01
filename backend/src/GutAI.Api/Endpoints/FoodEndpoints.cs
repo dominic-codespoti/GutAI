@@ -30,7 +30,7 @@ public static class FoodEndpoints
 
     static async Task<IResult> SearchFoodProducts(string? q, ITableStore store, IFoodApiService foodApi, ICacheService cache, ILogger<Program> logger)
     {
-        var query = q?.Trim() ?? string.Empty;
+        var query = QuerySanitizer.Sanitize(q ?? string.Empty);
         if (query.Length < 2)
             return Results.Ok(Array.Empty<FoodProductDto>());
 
@@ -92,6 +92,7 @@ public static class FoodEndpoints
                 Sugar100g = dto.Sugar100g,
                 Sodium100g = dto.Sodium100g,
                 DataSource = dto.DataSource,
+                SourceUrl = dto.SourceUrl,
                 ExternalId = dto.ExternalId,
                 ImageUrl = dto.ImageUrl,
                 NutriScore = dto.NutriScore,
@@ -426,6 +427,7 @@ public static class FoodEndpoints
             Sugar100g = f.Sugar100g,
             Sodium100g = f.Sodium100g,
             DataSource = f.DataSource,
+            SourceUrl = f.SourceUrl,
             ExternalId = f.ExternalId,
             ImageUrl = f.ImageUrl,
             NutriScore = f.NutriScore,

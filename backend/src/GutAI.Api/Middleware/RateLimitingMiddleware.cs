@@ -50,6 +50,18 @@ public static class RateLimitingExtensions
                 });
             });
 
+            options.AddPolicy("chat", httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
+                return RateLimitPartition.GetFixedWindowLimiter($"chat_{userId}", _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromHours(1),
+                    QueueLimit = 2,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                });
+            });
+
             options.OnRejected = async (context, ct) =>
             {
                 context.HttpContext.Response.ContentType = "application/problem+json";

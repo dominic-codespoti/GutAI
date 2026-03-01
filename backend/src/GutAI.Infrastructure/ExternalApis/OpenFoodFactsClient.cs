@@ -3,12 +3,15 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
+using GutAI.Domain.Constants;
 using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.ExternalApis;
 
 public class OpenFoodFactsClient : IFoodApiService
 {
+    public string SourceName => DataSources.OpenFoodFacts;
+
     private readonly HttpClient _http;
     private readonly ILogger<OpenFoodFactsClient> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -116,7 +119,8 @@ public class OpenFoodFactsClient : IFoodApiService
             Sodium100g = p.Nutriments?.Sodium100g,
             ServingSize = p.ServingSize,
             ServingQuantity = p.ServingQuantity,
-            DataSource = "OpenFoodFacts",
+            DataSource = DataSources.OpenFoodFacts,
+            SourceUrl = barcode is not null ? $"https://world.openfoodfacts.org/product/{barcode}" : null,
             ExternalId = barcode ?? p.Code,
             AdditivesTags = p.AdditivesTags?.ToList() ?? []
         };

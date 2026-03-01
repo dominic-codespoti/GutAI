@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.12.46" />
   </ItemGroup>
 

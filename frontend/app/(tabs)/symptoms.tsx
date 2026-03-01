@@ -292,7 +292,7 @@ export default function SymptomsScreen() {
   }, [editingSymptom, selectedType]);
 
   return (
-    <SafeScreen edges={["top"]}>
+    <SafeScreen edges={[]}>
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
         showsVerticalScrollIndicator={false}
