@@ -7,7 +7,7 @@ namespace GutAI.Infrastructure.ExternalApis;
 
 public class WholeFoodApiService : IFoodApiService
 {
-    public string SourceName => DataSources.UsdaWhole;
+    public string SourceName => DataSources.Usda;
 
     public Task<FoodProductDto?> LookupBarcodeAsync(string barcode, CancellationToken ct = default)
     {
@@ -21,7 +21,7 @@ public class WholeFoodApiService : IFoodApiService
         foreach (var product in results)
         {
             // Update the data source to use the constant
-            var updatedProduct = product with { DataSource = DataSources.UsdaWhole };
+            var updatedProduct = product with { DataSource = DataSources.Usda };
 
             // If the generator tool included the FDC ID, it might be in ExternalId or name.
             // Currently, WholeFoodsDatabase.cs (F) function doesn't set ExternalId.

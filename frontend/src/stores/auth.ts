@@ -4,6 +4,7 @@ import type { UserProfile } from "../types";
 import { authApi } from "../api";
 import { getCalendars } from "expo-localization";
 import { queryClient } from "../queryClient";
+import Purchases from "react-native-purchases";
 
 async function syncTimezone() {
   try {
@@ -58,6 +59,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await authApi.logout();
     } catch {}
+    try {
+      await Purchases.logOut();
+    } catch {}
+    const { useSubscriptionStore } = await import("./subscription");
+    useSubscriptionStore.getState().reset();
     await deleteItem("accessToken");
     await deleteItem("refreshToken");
     queryClient.clear();
@@ -75,10 +81,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { data } = await userApi.getProfile();
       set({ user: data, isAuthenticated: true, isLoading: false });
       syncTimezone();
-    } catch {
-      await deleteItem("accessToken");
-      await deleteItem("refreshToken");
-      set({ user: null, isAuthenticated: false, isLoading: false });
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        await deleteItem("accessToken");
+        await deleteItem("refreshToken");
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      } else {
+        // Network error / timeout — keep tokens, let user retry
+        set({ isLoading: false });
+      }
     }
   },
 

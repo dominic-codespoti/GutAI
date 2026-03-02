@@ -15,6 +15,7 @@ import { toast } from "../src/stores/toast";
 import Constants from "expo-constants";
 import { SafeScreen } from "../components/SafeScreen";
 import { useRouter } from "expo-router";
+import { useSubscriptionStore } from "../src/stores/subscription";
 
 export default function SettingsScreen() {
   const { logout } = useAuthStore();
@@ -24,7 +25,9 @@ export default function SettingsScreen() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const appVersion = Constants.expoConfig?.version ?? "1.0.0";
+  const { restore } = useSubscriptionStore();
 
   const handleChangePassword = async () => {
     if (!currentPassword || !newPassword) {
@@ -79,6 +82,63 @@ export default function SettingsScreen() {
     <SafeScreen edges={["bottom"]}>
       <ScrollView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
         <View style={{ padding: 20 }}>
+          {/* Restore Purchases */}
+          <View
+            style={{
+              backgroundColor: "#fff",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 12,
+            }}
+          >
+            <TouchableOpacity
+              onPress={async () => {
+                setRestoring(true);
+                try {
+                  const restored = await restore();
+                  if (restored) {
+                    toast.success("Purchases restored successfully");
+                  } else {
+                    toast.info("No purchases found to restore");
+                  }
+                } catch {
+                  toast.error("Failed to restore purchases");
+                } finally {
+                  setRestoring(false);
+                }
+              }}
+              disabled={restoring}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name="refresh-circle-outline"
+                  size={20}
+                  color="#334155"
+                />
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: "600",
+                    color: "#334155",
+                    marginLeft: 12,
+                  }}
+                >
+                  Restore Purchases
+                </Text>
+              </View>
+              {restoring ? (
+                <ActivityIndicator size="small" color="#94a3b8" />
+              ) : (
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              )}
+            </TouchableOpacity>
+          </View>
+
           {/* Change Password */}
           <View
             style={{

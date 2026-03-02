@@ -65,7 +65,7 @@ public class CompositeFoodApiService : IFoodApiService
                 {
                     merged.Add(item);
                     // Index new external results for future queries if they aren't already from WholeFoodApiService
-                    if (item.DataSource != DataSources.UsdaWhole)
+                    if (item.DataSource != DataSources.Usda)
                         _externalIndex.Add(item);
                 }
             }

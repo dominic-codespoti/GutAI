@@ -103,9 +103,6 @@ jobs:
               containerImage=$IMAGE \
               jwtSecret='${{ secrets.JWT_SECRET }}' \
               usdaApiKey='${{ secrets.USDA_API_KEY }}' \
-              calorieNinjasApiKey='${{ secrets.CALORIENINJAS_API_KEY }}' \
-              edamamAppId='${{ secrets.EDAMAM_APP_ID }}' \
-              edamamAppKey='${{ secrets.EDAMAM_APP_KEY }}' \
               ghcrUsername='${{ github.repository_owner }}' \
               ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}'
 

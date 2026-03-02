@@ -239,9 +239,6 @@ else
 fi
 
 prompt_secret "USDA_API_KEY" "USDA FoodData Central API key (get one at https://fdc.nal.usda.gov/api-key-signup)" false
-prompt_secret "CALORIENINJAS_API_KEY" "CalorieNinjas API key" true
-prompt_secret "EDAMAM_APP_ID" "Edamam App ID" true
-prompt_secret "EDAMAM_APP_KEY" "Edamam App Key" true
 
 # ── 9. Create GitHub Environment ─────────────────────────────────────────────
 log "Ensuring GitHub environment..."

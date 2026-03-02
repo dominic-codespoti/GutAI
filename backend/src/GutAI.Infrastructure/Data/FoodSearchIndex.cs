@@ -122,7 +122,7 @@ public sealed class FoodSearchIndex : IDisposable
         float q = 0f;
 
         // Source trust
-        if (dto.DataSource is "USDA" or "USDA-Whole" or "AUSNUT") q += 0.4f;
+        if (dto.DataSource is "USDA" or "AUSNUT") q += 0.4f;
 
         // Nutrition completeness
         if (dto.Calories100g.HasValue) q += 0.06f;
@@ -133,9 +133,14 @@ public sealed class FoodSearchIndex : IDisposable
         if (dto.Sugar100g.HasValue) q += 0.02f;
 
         // Whole-food boost
-        bool isWhole = string.IsNullOrEmpty(dto.Brand) &&
-            (string.IsNullOrEmpty(dto.Ingredients) || !dto.Ingredients.Contains(','));
-        if (isWhole) q += 0.5f;
+        if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood) q += 0.5f;
+        else if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.Unknown)
+        {
+            // Heuristic fallback for unclassified foods
+            bool looksWhole = string.IsNullOrEmpty(dto.Brand) &&
+                (string.IsNullOrEmpty(dto.Ingredients) || !dto.Ingredients.Contains(','));
+            if (looksWhole) q += 0.5f;
+        }
 
         // Name length — shorter = better
         if (dto.Name.Length <= 40)

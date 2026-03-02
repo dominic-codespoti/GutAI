@@ -120,6 +120,7 @@ public class OpenFoodFactsClient : IFoodApiService
             ServingSize = p.ServingSize,
             ServingQuantity = p.ServingQuantity,
             DataSource = DataSources.OpenFoodFacts,
+            FoodKind = GutAI.Domain.Enums.FoodKind.Branded,
             SourceUrl = barcode is not null ? $"https://world.openfoodfacts.org/product/{barcode}" : null,
             ExternalId = barcode ?? p.Code,
             AdditivesTags = p.AdditivesTags?.ToList() ?? []

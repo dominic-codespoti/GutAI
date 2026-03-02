@@ -7345,5 +7345,6 @@ public static class WholeFoodsDatabase
             Sugar100g = sugar,
             Sodium100g = sodium,
             DataSource = "USDA",
+            FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
         };
 }

@@ -1559,7 +1559,7 @@ export default function FoodDetailScreen() {
           </View>
 
           {/* Ingredients */}
-          {product.ingredients && (
+          {product.foodKind === "WholeFood" ? null : product.ingredients ? (
             <View
               style={{
                 backgroundColor: "#fff",
@@ -1582,7 +1582,41 @@ export default function FoodDetailScreen() {
                 {product.ingredients}
               </Text>
             </View>
-          )}
+          ) : product.foodKind === "Branded" ? (
+            <View
+              style={{
+                backgroundColor: "#fffbeb",
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontSize: 20 }}>⚠️</Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "600",
+                    color: "#92400e",
+                  }}
+                >
+                  Ingredients unavailable
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: "#a16207",
+                    marginTop: 2,
+                  }}
+                >
+                  Scan the barcode or add ingredients to improve analysis
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* Allergens */}
           {product.allergensTags && product.allergensTags.length > 0 && (

@@ -18,6 +18,11 @@ import { colors } from "../../src/utils/theme";
 import { chatApi } from "../../src/api";
 import { getItem } from "../../src/utils/storage";
 import Constants from "expo-constants";
+import Markdown from "react-native-markdown-display";
+import {
+  useSubscriptionStore,
+  presentPaywall,
+} from "../../src/stores/subscription";
 
 import type { ChatMessage, ChatStreamEvent } from "../../src/types";
 
@@ -46,6 +51,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const streamRef = useRef<EventSource | null>(null);
+  const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
 
   // Load history on mount
   const { isLoading } = useQuery({
@@ -222,16 +228,88 @@ export default function ChatScreen() {
             <Text style={styles.toolText}>{item.toolStatus}</Text>
           </View>
         )}
-        <Text
-          style={[styles.msgText, isUser ? styles.userText : styles.aiText]}
-        >
-          {item.content}
-          {item.isStreaming && !item.content && !item.toolStatus && "…"}
-        </Text>
-        {item.isStreaming && item.content && <View style={styles.cursorDot} />}
+        {isUser ? (
+          <Text style={[styles.msgText, styles.userText]}>
+            {item.content}
+            {item.isStreaming && !item.content && !item.toolStatus && "…"}
+          </Text>
+        ) : (
+          <>
+            <Markdown style={markdownStyles}>
+              {item.content ||
+                (item.isStreaming && !item.toolStatus ? "…" : "")}
+            </Markdown>
+            {item.isStreaming && item.content && (
+              <View style={styles.cursorDot} />
+            )}
+          </>
+        )}
       </View>
     );
   }, []);
+
+  // Paywall gate — show upgrade screen if not subscribed
+  if (!subLoaded) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <View style={styles.headerLeft}>
+            <View style={styles.headerIcon}>
+              <Ionicons name="sparkles" size={20} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.headerTitle}>AI Health Coach</Text>
+              <Text style={styles.headerSubtitle}>Powered by GutAI</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!isPro) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <View style={styles.headerLeft}>
+            <View style={styles.headerIcon}>
+              <Ionicons name="sparkles" size={20} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.headerTitle}>AI Health Coach</Text>
+              <Text style={styles.headerSubtitle}>Powered by GutAI</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.paywallGate}>
+          <View style={styles.paywallIconWrap}>
+            <Ionicons name="sparkles" size={40} color={colors.primary} />
+          </View>
+          <Text style={styles.paywallTitle}>Unlock AI Health Coach</Text>
+          <Text style={styles.paywallBody}>
+            Get unlimited access to your personal AI health coach. Ask
+            questions, log meals by voice, track triggers, and receive
+            personalized nutrition advice — all through natural conversation.
+          </Text>
+          <TouchableOpacity
+            style={styles.paywallBtn}
+            onPress={() => presentPaywall()}
+          >
+            <Ionicons
+              name="diamond-outline"
+              size={18}
+              color="#fff"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.paywallBtnText}>Subscribe to Gut Lens Pro</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -352,6 +430,50 @@ function formatToolName(name?: string): string {
   if (!name) return "";
   return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+const markdownStyles = {
+  body: { fontSize: 15, lineHeight: 22, color: colors.text },
+  paragraph: { marginTop: 0, marginBottom: 6 },
+  strong: { fontWeight: "700" as const },
+  link: { color: colors.primary },
+  code_inline: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    fontSize: 13,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#334155",
+  },
+  fence: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 13,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#334155",
+  },
+  bullet_list: { marginTop: 2, marginBottom: 6 },
+  ordered_list: { marginTop: 2, marginBottom: 6 },
+  list_item: { marginBottom: 2 },
+  heading1: {
+    fontSize: 20,
+    fontWeight: "700" as const,
+    color: colors.text,
+    marginBottom: 6,
+  },
+  heading2: {
+    fontSize: 18,
+    fontWeight: "700" as const,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  heading3: {
+    fontSize: 16,
+    fontWeight: "600" as const,
+    color: colors.text,
+    marginBottom: 4,
+  },
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -503,4 +625,48 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   sendBtnDisabled: { opacity: 0.5 },
+  paywallGate: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  paywallIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primaryBg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  paywallTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.text,
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  paywallBody: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+  paywallBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    width: "100%",
+  },
+  paywallBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
 });

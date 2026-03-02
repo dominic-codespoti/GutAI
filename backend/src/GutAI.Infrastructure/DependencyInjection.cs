@@ -52,40 +52,12 @@ public static class DependencyInjection
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
         });
 
-        services.AddHttpClient<CalorieNinjasClient>(client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(10);
-        })
-        .AddStandardResilienceHandler(options =>
-        {
-            options.Retry.MaxRetryAttempts = 2;
-            options.Retry.Delay = TimeSpan.FromMilliseconds(500);
-            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
-            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
-            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
-        });
-
-        services.AddHttpClient<EdamamFoodClient>(client =>
-        {
-            client.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0");
-            client.Timeout = TimeSpan.FromSeconds(10);
-        })
-        .AddStandardResilienceHandler(options =>
-        {
-            options.Retry.MaxRetryAttempts = 2;
-            options.Retry.Delay = TimeSpan.FromMilliseconds(500);
-            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
-            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
-            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
-        });
-
         // Register leaf data providers as concrete types for explicit composition
         services.AddScoped<OpenFoodFactsClient>();
-        services.AddScoped<EdamamFoodClient>();
         services.AddScoped<UsdaFoodDataClient>();
-        services.AddScoped<CalorieNinjasClient>();
         services.AddScoped<WholeFoodApiService>();
         services.AddScoped<AustralianFoodApiService>();
+        services.AddScoped<BrandedFoodApiService>();
 
         // Register the composite orchestrator as the primary IFoodApiService
         services.AddScoped<IFoodApiService>(sp =>
@@ -93,11 +65,10 @@ public static class DependencyInjection
             var providers = new List<IFoodApiService>
             {
                 sp.GetRequiredService<OpenFoodFactsClient>(),
-                sp.GetRequiredService<EdamamFoodClient>(),
                 sp.GetRequiredService<UsdaFoodDataClient>(),
-                sp.GetRequiredService<CalorieNinjasClient>(),
                 sp.GetRequiredService<WholeFoodApiService>(),
-                sp.GetRequiredService<AustralianFoodApiService>()
+                sp.GetRequiredService<AustralianFoodApiService>(),
+                sp.GetRequiredService<BrandedFoodApiService>()
             };
             var logger = sp.GetRequiredService<ILogger<CompositeFoodApiService>>();
             return new CompositeFoodApiService(providers, logger);

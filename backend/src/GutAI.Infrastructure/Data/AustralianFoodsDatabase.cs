@@ -14,71 +14,71 @@ public static class AustralianFoodsDatabase
     private static readonly List<FoodProductDto> Foods =
     [
         // ═══════ Bakery / Pastry ═══════
-        F("Meat pie, beef", 237, 9.0m, 22.0m, 12.5m, 1.0m, 1.8m, 0.55m),
-        F("Party pie, beef", 260, 8.5m, 24.0m, 14.0m, 0.8m, 2.0m, 0.60m),
-        F("Sausage roll, pork", 310, 10.5m, 24.5m, 19.0m, 1.2m, 1.5m, 0.65m),
-        F("Sausage roll, beef", 295, 10.0m, 23.0m, 18.0m, 1.0m, 1.6m, 0.62m),
-        F("Lamington", 347, 4.2m, 48.0m, 15.0m, 1.5m, 30.0m, 0.18m),
-        F("Lamington, cream filled", 380, 4.5m, 45.0m, 20.0m, 1.2m, 32.0m, 0.16m),
-        F("Pavlova, plain", 270, 4.0m, 46.0m, 8.0m, 0m, 44.0m, 0.08m),
-        F("Pavlova, with cream and fruit", 240, 3.5m, 35.0m, 10.0m, 0.5m, 30.0m, 0.06m),
-        F("Damper, plain", 280, 7.5m, 50.0m, 5.5m, 2.0m, 2.5m, 0.50m),
-        F("Anzac biscuit", 435, 5.0m, 60.0m, 19.0m, 3.0m, 30.0m, 0.35m),
-        F("Fairy bread", 395, 6.0m, 55.0m, 16.0m, 1.5m, 25.0m, 0.40m),
+        B("Meat pie, beef", "", 237, 9.0m, 22.0m, 12.5m, 1.0m, 1.8m, 0.55m),
+        B("Party pie, beef", "", 260, 8.5m, 24.0m, 14.0m, 0.8m, 2.0m, 0.60m),
+        B("Sausage roll, pork", "", 310, 10.5m, 24.5m, 19.0m, 1.2m, 1.5m, 0.65m),
+        B("Sausage roll, beef", "", 295, 10.0m, 23.0m, 18.0m, 1.0m, 1.6m, 0.62m),
+        B("Lamington", "", 347, 4.2m, 48.0m, 15.0m, 1.5m, 30.0m, 0.18m),
+        B("Lamington, cream filled", "", 380, 4.5m, 45.0m, 20.0m, 1.2m, 32.0m, 0.16m),
+        B("Pavlova, plain", "", 270, 4.0m, 46.0m, 8.0m, 0m, 44.0m, 0.08m),
+        B("Pavlova, with cream and fruit", "", 240, 3.5m, 35.0m, 10.0m, 0.5m, 30.0m, 0.06m),
+        B("Damper, plain", "", 280, 7.5m, 50.0m, 5.5m, 2.0m, 2.5m, 0.50m),
+        B("Anzac biscuit", "", 435, 5.0m, 60.0m, 19.0m, 3.0m, 30.0m, 0.35m),
+        B("Fairy bread", "", 395, 6.0m, 55.0m, 16.0m, 1.5m, 25.0m, 0.40m),
 
         // ═══════ Spreads / Condiments ═══════
-        F("Vegemite", 174, 25.0m, 14.2m, 0.5m, 3.0m, 0.8m, 3.45m),
-        F("Vegemite, reduced salt", 174, 25.0m, 14.2m, 0.5m, 3.0m, 0.8m, 1.72m),
+        B("Vegemite", "Bega", 174, 25.0m, 14.2m, 0.5m, 3.0m, 0.8m, 3.45m),
+        B("Vegemite, reduced salt", "Bega", 174, 25.0m, 14.2m, 0.5m, 3.0m, 0.8m, 1.72m),
 
         // ═══════ Snacks ═══════
-        F("Tim Tam, original", 480, 5.8m, 59.0m, 24.0m, 2.5m, 44.0m, 0.18m),
-        F("Tim Tam, double coat", 495, 5.5m, 57.0m, 27.0m, 2.0m, 46.0m, 0.16m),
-        F("Shapes, BBQ", 485, 7.0m, 63.0m, 22.0m, 2.5m, 6.0m, 0.98m),
-        F("Shapes, pizza", 490, 7.5m, 62.0m, 23.0m, 2.5m, 5.5m, 1.05m),
-        F("Chicken Twisties", 500, 5.0m, 58.0m, 27.0m, 1.5m, 5.0m, 1.20m),
-        F("Cheese Twisties", 510, 6.0m, 57.0m, 28.0m, 1.8m, 4.5m, 1.15m),
-        F("Burger Rings", 495, 4.5m, 60.0m, 26.0m, 1.5m, 4.0m, 1.30m),
-        F("Chiko Roll", 210, 6.0m, 22.0m, 10.0m, 2.0m, 3.0m, 0.55m),
-        F("Dim sim, fried", 210, 8.0m, 15.0m, 12.0m, 1.5m, 2.5m, 0.50m),
-        F("Dim sim, steamed", 160, 8.5m, 14.0m, 7.0m, 1.2m, 2.0m, 0.45m),
+        B("Tim Tam, original", "Arnott's", 480, 5.8m, 59.0m, 24.0m, 2.5m, 44.0m, 0.18m),
+        B("Tim Tam, double coat", "Arnott's", 495, 5.5m, 57.0m, 27.0m, 2.0m, 46.0m, 0.16m),
+        B("Shapes, BBQ", "Arnott's", 485, 7.0m, 63.0m, 22.0m, 2.5m, 6.0m, 0.98m),
+        B("Shapes, pizza", "Arnott's", 490, 7.5m, 62.0m, 23.0m, 2.5m, 5.5m, 1.05m),
+        B("Chicken Twisties", "Smith's", 500, 5.0m, 58.0m, 27.0m, 1.5m, 5.0m, 1.20m),
+        B("Cheese Twisties", "Smith's", 510, 6.0m, 57.0m, 28.0m, 1.8m, 4.5m, 1.15m),
+        B("Burger Rings", "Smith's", 495, 4.5m, 60.0m, 26.0m, 1.5m, 4.0m, 1.30m),
+        B("Chiko Roll", "Simplot", 210, 6.0m, 22.0m, 10.0m, 2.0m, 3.0m, 0.55m),
+        B("Dim sim, fried", "", 210, 8.0m, 15.0m, 12.0m, 1.5m, 2.5m, 0.50m),
+        B("Dim sim, steamed", "", 160, 8.5m, 14.0m, 7.0m, 1.2m, 2.0m, 0.45m),
 
         // ═══════ Breakfast ═══════
-        F("Weet-Bix, plain", 358, 11.9m, 67.0m, 1.4m, 10.5m, 3.3m, 0.27m),
-        F("Weet-Bix, gluten free", 370, 5.5m, 72.0m, 5.0m, 2.5m, 8.0m, 0.30m),
-        F("Milo powder", 396, 9.7m, 59.8m, 10.4m, 5.0m, 43.0m, 0.27m),
+        B("Weet-Bix, plain", "Sanitarium", 358, 11.9m, 67.0m, 1.4m, 10.5m, 3.3m, 0.27m),
+        B("Weet-Bix, gluten free", "Sanitarium", 370, 5.5m, 72.0m, 5.0m, 2.5m, 8.0m, 0.30m),
+        B("Milo powder", "Nestlé", 396, 9.7m, 59.8m, 10.4m, 5.0m, 43.0m, 0.27m),
 
         // ═══════ Drinks ═══════
         F("Flat white, regular (full cream milk)", 42, 2.4m, 3.3m, 2.0m, 0m, 3.3m, 0.03m),
         F("Long black coffee", 1, 0.1m, 0.1m, 0m, 0m, 0m, 0.001m),
-        F("Iced coffee, commercial", 75, 2.5m, 10.0m, 2.5m, 0m, 9.0m, 0.05m),
-        F("Bundaberg Ginger Beer", 38, 0m, 9.4m, 0m, 0m, 9.4m, 0.005m),
+        B("Iced coffee, commercial", "", 75, 2.5m, 10.0m, 2.5m, 0m, 9.0m, 0.05m),
+        B("Bundaberg Ginger Beer", "Bundaberg", 38, 0m, 9.4m, 0m, 0m, 9.4m, 0.005m),
 
         // ═══════ Meat / Protein ═══════
         F("Kangaroo steak, grilled", 120, 24.0m, 0m, 2.0m, 0m, 0m, 0.05m),
         F("Kangaroo mince, cooked", 130, 25.0m, 0m, 3.0m, 0m, 0m, 0.06m),
-        F("Kangaroo sausage, cooked", 165, 22.0m, 2.5m, 7.5m, 0.5m, 0.5m, 0.65m),
+        B("Kangaroo sausage, cooked", "", 165, 22.0m, 2.5m, 7.5m, 0.5m, 0.5m, 0.65m),
         F("Crocodile meat, cooked", 104, 21.0m, 0m, 2.0m, 0m, 0m, 0.065m),
         F("Emu steak, grilled", 115, 23.0m, 0m, 2.5m, 0m, 0m, 0.05m),
         F("Barramundi, grilled", 110, 23.0m, 0m, 1.5m, 0m, 0m, 0.08m),
-        F("Barramundi, battered and fried", 235, 16.0m, 13.0m, 13.0m, 0.5m, 1.0m, 0.35m),
+        B("Barramundi, battered and fried", "", 235, 16.0m, 13.0m, 13.0m, 0.5m, 1.0m, 0.35m),
         F("Snapper, grilled", 105, 22.5m, 0m, 1.5m, 0m, 0m, 0.07m),
         F("Lamb chop, grilled", 250, 25.0m, 0m, 16.0m, 0m, 0m, 0.07m),
         F("Lamb cutlet, grilled", 220, 26.0m, 0m, 12.0m, 0m, 0m, 0.065m),
         F("Lamb shank, slow cooked", 175, 22.0m, 0m, 9.0m, 0m, 0m, 0.06m),
 
         // ═══════ Takeaway / Fast Food ═══════
-        F("Fish and chips, battered", 190, 10.0m, 17.0m, 9.0m, 1.5m, 1.0m, 0.35m),
-        F("Chicken schnitzel", 195, 22.0m, 12.0m, 7.0m, 0.5m, 0.5m, 0.50m),
-        F("Chicken parma", 180, 16.0m, 10.0m, 8.5m, 1.0m, 2.5m, 0.55m),
-        F("HSP (halal snack pack)", 200, 12.0m, 15.0m, 10.0m, 1.5m, 2.0m, 0.70m),
-        F("Souvlaki, lamb", 185, 14.0m, 15.0m, 8.0m, 1.5m, 3.0m, 0.55m),
-        F("Souvlaki, chicken", 170, 16.0m, 14.0m, 5.5m, 1.5m, 3.0m, 0.50m),
-        F("Kebab, mixed meat", 190, 15.0m, 14.0m, 8.5m, 1.5m, 2.5m, 0.60m),
+        B("Fish and chips, battered", "", 190, 10.0m, 17.0m, 9.0m, 1.5m, 1.0m, 0.35m),
+        B("Chicken schnitzel", "", 195, 22.0m, 12.0m, 7.0m, 0.5m, 0.5m, 0.50m),
+        B("Chicken parma", "", 180, 16.0m, 10.0m, 8.5m, 1.0m, 2.5m, 0.55m),
+        B("HSP (halal snack pack)", "", 200, 12.0m, 15.0m, 10.0m, 1.5m, 2.0m, 0.70m),
+        B("Souvlaki, lamb", "", 185, 14.0m, 15.0m, 8.0m, 1.5m, 3.0m, 0.55m),
+        B("Souvlaki, chicken", "", 170, 16.0m, 14.0m, 5.5m, 1.5m, 3.0m, 0.50m),
+        B("Kebab, mixed meat", "", 190, 15.0m, 14.0m, 8.5m, 1.5m, 2.5m, 0.60m),
 
         // ═══════ Dairy ═══════
-        F("Bega cheese, tasty", 395, 25.0m, 0.5m, 32.0m, 0m, 0.5m, 0.70m),
-        F("Coon cheese, tasty", 395, 25.0m, 0.5m, 32.0m, 0m, 0.5m, 0.70m),
-        F("Farmers Union Iced Coffee", 75, 2.5m, 10.0m, 2.5m, 0m, 9.5m, 0.05m),
+        B("Bega cheese, tasty", "Bega", 395, 25.0m, 0.5m, 32.0m, 0m, 0.5m, 0.70m),
+        B("Coon cheese, tasty", "Saputo", 395, 25.0m, 0.5m, 32.0m, 0m, 0.5m, 0.70m),
+        B("Farmers Union Iced Coffee", "Farmers Union", 75, 2.5m, 10.0m, 2.5m, 0m, 9.5m, 0.05m),
 
         // ═══════ Fruit / Veg (Australian varieties) ═══════
         F("Macadamia nuts, raw", 718, 7.9m, 13.8m, 75.8m, 8.6m, 4.6m, 0.005m),
@@ -92,25 +92,25 @@ public static class AustralianFoodsDatabase
         F("Pumpkin, butternut, baked", 45, 1.0m, 11.7m, 0.1m, 2.0m, 2.2m, 0.004m),
 
         // ═══════ Bread / Carbs ═══════
-        F("Bread, white, sliced", 255, 8.0m, 48.0m, 3.0m, 2.5m, 4.5m, 0.45m),
-        F("Bread, wholemeal, sliced", 230, 9.0m, 40.0m, 2.5m, 6.0m, 3.0m, 0.42m),
-        F("Bread, sourdough, white", 240, 7.5m, 46.0m, 2.0m, 2.0m, 2.5m, 0.50m),
-        F("Bread, Turkish", 270, 8.5m, 50.0m, 3.5m, 2.0m, 3.0m, 0.55m),
-        F("Crumpet", 180, 6.0m, 35.0m, 1.0m, 1.5m, 2.0m, 0.50m),
-        F("Pikelet", 245, 5.5m, 40.0m, 6.5m, 1.0m, 12.0m, 0.40m),
-        F("Pikelets, commercial", 260, 5.0m, 42.0m, 7.5m, 1.0m, 14.0m, 0.45m),
-        F("Toast, white bread", 290, 9.0m, 52.0m, 4.0m, 2.5m, 5.0m, 0.48m),
-        F("Toast, wholemeal", 265, 10.0m, 44.0m, 3.5m, 6.5m, 3.5m, 0.45m),
-        F("Bread roll, white", 270, 8.5m, 50.0m, 3.5m, 2.5m, 4.0m, 0.50m),
+        B("Bread, white, sliced", "", 255, 8.0m, 48.0m, 3.0m, 2.5m, 4.5m, 0.45m),
+        B("Bread, wholemeal, sliced", "", 230, 9.0m, 40.0m, 2.5m, 6.0m, 3.0m, 0.42m),
+        B("Bread, sourdough, white", "", 240, 7.5m, 46.0m, 2.0m, 2.0m, 2.5m, 0.50m),
+        B("Bread, Turkish", "", 270, 8.5m, 50.0m, 3.5m, 2.0m, 3.0m, 0.55m),
+        B("Crumpet", "", 180, 6.0m, 35.0m, 1.0m, 1.5m, 2.0m, 0.50m),
+        B("Pikelet", "", 245, 5.5m, 40.0m, 6.5m, 1.0m, 12.0m, 0.40m),
+        B("Pikelets, commercial", "", 260, 5.0m, 42.0m, 7.5m, 1.0m, 14.0m, 0.45m),
+        B("Toast, white bread", "", 290, 9.0m, 52.0m, 4.0m, 2.5m, 5.0m, 0.48m),
+        B("Toast, wholemeal", "", 265, 10.0m, 44.0m, 3.5m, 6.5m, 3.5m, 0.45m),
+        B("Bread roll, white", "", 270, 8.5m, 50.0m, 3.5m, 2.5m, 4.0m, 0.50m),
 
         // ═══════ Meals / Misc ═══════
-        F("Bangers and mash", 130, 7.0m, 12.0m, 6.0m, 1.0m, 1.0m, 0.45m),
-        F("Chicken salt seasoning", 180, 1.0m, 38.0m, 2.0m, 0m, 15.0m, 18.0m),
-        F("Gravy, instant, prepared", 30, 0.5m, 5.0m, 0.8m, 0.1m, 0.5m, 0.50m),
-        F("Sauce, tomato (ketchup)", 100, 1.0m, 24.0m, 0.1m, 0.5m, 20.0m, 1.10m),
-        F("Sauce, barbecue", 120, 0.5m, 28.0m, 0.3m, 0.3m, 24.0m, 1.20m),
-        F("Sauce, sweet chilli", 145, 0.5m, 35.0m, 0.1m, 0.2m, 33.0m, 1.50m),
-        F("Mushy peas", 75, 5.5m, 11.0m, 0.5m, 4.0m, 2.0m, 0.30m),
+        B("Bangers and mash", "", 130, 7.0m, 12.0m, 6.0m, 1.0m, 1.0m, 0.45m),
+        B("Chicken salt seasoning", "", 180, 1.0m, 38.0m, 2.0m, 0m, 15.0m, 18.0m),
+        B("Gravy, instant, prepared", "", 30, 0.5m, 5.0m, 0.8m, 0.1m, 0.5m, 0.50m),
+        B("Sauce, tomato (ketchup)", "", 100, 1.0m, 24.0m, 0.1m, 0.5m, 20.0m, 1.10m),
+        B("Sauce, barbecue", "", 120, 0.5m, 28.0m, 0.3m, 0.3m, 24.0m, 1.20m),
+        B("Sauce, sweet chilli", "", 145, 0.5m, 35.0m, 0.1m, 0.2m, 33.0m, 1.50m),
+        B("Mushy peas", "", 75, 5.5m, 11.0m, 0.5m, 4.0m, 2.0m, 0.30m),
     ];
 
     private static readonly Lazy<FoodSearchIndex> _index = new(
@@ -134,5 +134,22 @@ public static class AustralianFoodsDatabase
             Sugar100g = sugar,
             Sodium100g = sodium,
             DataSource = "AUSNUT",
+            FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
+        };
+
+    private static FoodProductDto B(string name, string brand, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium) =>
+        new()
+        {
+            Name = name,
+            Brand = brand,
+            Calories100g = cal,
+            Protein100g = protein,
+            Carbs100g = carbs,
+            Fat100g = fat,
+            Fiber100g = fiber,
+            Sugar100g = sugar,
+            Sodium100g = sodium,
+            DataSource = "AUSNUT",
+            FoodKind = GutAI.Domain.Enums.FoodKind.Branded,
         };
 }

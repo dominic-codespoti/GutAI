@@ -14,7 +14,6 @@ services:
       - Jwt__Audience=GutAI
       - Jwt__ExpiryMinutes=60
       - ExternalApis__UsdaApiKey=${USDA_API_KEY:-DEMO_KEY}
-      - ExternalApis__CalorieNinjasApiKey=${CALORIENINJAS_API_KEY:-}
       - AzureOpenAI__Endpoint=https://openai-us-misc.openai.azure.com/
       - AzureOpenAI__DeploymentName=gpt-5-nano
       - AZURE_CONFIG_DIR=/azure-config

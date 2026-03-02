@@ -1,3 +1,4 @@
+using GutAI.Domain.Enums;
 using GutAI.Domain.ValueObjects;
 
 namespace GutAI.Application.Common.DTOs;
@@ -21,6 +22,7 @@ public record FoodProductDto
     public decimal? Fiber100g { get; init; }
     public decimal? Sugar100g { get; init; }
     public decimal? Sodium100g { get; init; }
+    public FoodKind FoodKind { get; init; } = FoodKind.Unknown;
     public string DataSource { get; init; } = "Manual";
     public string? SourceUrl { get; init; }
     public string? ExternalId { get; init; }
@@ -255,6 +257,7 @@ public record CreateFoodProductRequest
 {
     public string Name { get; init; } = string.Empty;
     public string? Barcode { get; init; }
+    public string? FoodKind { get; init; }
     public string? NovaGroup { get; init; }
     public string? Brand { get; init; }
     public string? Ingredients { get; init; }
@@ -267,6 +270,7 @@ public record UpdateFoodProductRequest
 {
     public string Name { get; init; } = string.Empty;
     public string? Barcode { get; init; }
+    public string? FoodKind { get; init; }
     public string? NovaGroup { get; init; }
     public string? Brand { get; init; }
     public string? Ingredients { get; init; }

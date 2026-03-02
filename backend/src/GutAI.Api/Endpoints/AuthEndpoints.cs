@@ -91,7 +91,7 @@ public static class AuthEndpoints
             Id = Guid.NewGuid(),
             UserId = appUser.Id,
             Token = refreshToken,
-            ExpiresAt = DateTime.UtcNow.AddDays(7)
+            ExpiresAt = DateTime.UtcNow.AddDays(90)
         });
 
         var settings = jwtOptions.Value;
@@ -142,7 +142,7 @@ public static class AuthEndpoints
             Id = Guid.NewGuid(),
             UserId = appUser.Id,
             Token = refreshToken,
-            ExpiresAt = DateTime.UtcNow.AddDays(7)
+            ExpiresAt = DateTime.UtcNow.AddDays(90)
         });
 
         var settings = jwtOptions.Value;
@@ -178,7 +178,7 @@ public static class AuthEndpoints
             Id = Guid.NewGuid(),
             UserId = token.UserId,
             Token = newRefreshToken,
-            ExpiresAt = DateTime.UtcNow.AddDays(7)
+            ExpiresAt = DateTime.UtcNow.AddDays(90)
         });
 
         var user = await store.GetUserAsync(token.UserId);

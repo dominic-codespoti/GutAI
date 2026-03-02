@@ -28,9 +28,7 @@
       },
       "package": "com.djapplications.gutai",
       "versionCode": 5,
-      "permissions": [
-        "android.permission.CAMERA"
-      ]
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "favicon": "./assets/favicon.png"

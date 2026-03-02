@@ -24,6 +24,7 @@ public class FoodProduct
     public decimal? Sodium100g { get; set; }
     public string? ServingSize { get; set; }
     public decimal? ServingQuantity { get; set; }
+    public FoodKind FoodKind { get; set; } = FoodKind.Unknown;
     public string DataSource { get; set; } = "Manual";
     public string? SourceUrl { get; set; }
     public string? ExternalId { get; set; }

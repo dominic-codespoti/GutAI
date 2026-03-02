@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { View, TouchableOpacity } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,15 +9,33 @@ import ToastContainer from "../components/Toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Ionicons } from "@expo/vector-icons";
 import { queryClient } from "../src/queryClient";
+import {
+  useSubscriptionStore,
+  configurePurchases,
+} from "../src/stores/subscription";
 
 function AuthGate() {
   const { isAuthenticated, isLoading, hydrate, user } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
+  const rcConfigured = useRef(false);
 
   useEffect(() => {
     hydrate();
   }, []);
+
+  // Initialize RevenueCat when user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user?.id && !rcConfigured.current) {
+      rcConfigured.current = true;
+      configurePurchases(user.id).then(() => {
+        useSubscriptionStore.getState().checkEntitlement();
+      });
+    }
+    if (!isAuthenticated) {
+      rcConfigured.current = false;
+    }
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     if (isLoading) return;

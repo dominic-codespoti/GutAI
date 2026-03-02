@@ -113,6 +113,8 @@ export interface NaturalLanguageResponse {
   parsedItems: ParsedFoodItem[];
 }
 
+export type FoodKind = "WholeFood" | "Branded" | "Unknown";
+
 export interface FoodProduct {
   id: string;
   barcode: string | null;
@@ -134,6 +136,7 @@ export interface FoodProduct {
   servingQuantity: number | null;
   safetyScore: number | null;
   safetyRating: string | null;
+  foodKind: FoodKind;
   dataSource: string | null;
   sourceUrl: string | null;
   externalId: string | null;

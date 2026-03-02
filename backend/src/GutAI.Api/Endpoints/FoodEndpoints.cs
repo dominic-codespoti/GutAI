@@ -329,6 +329,7 @@ public static class FoodEndpoints
             ServingSize = request.ServingSize,
             NutritionInfo = request.NutritionInfo,
             FoodProductAdditiveIds = request.AdditiveIds,
+            FoodKind = Enum.TryParse<FoodKind>(request.FoodKind, true, out var fk) ? fk : FoodKind.Unknown,
             IsDeleted = false
         };
         await store.UpsertFoodProductAsync(product);
@@ -363,6 +364,8 @@ public static class FoodEndpoints
         product.ServingSize = request.ServingSize;
         product.NutritionInfo = request.NutritionInfo;
         product.FoodProductAdditiveIds = request.AdditiveIds;
+        if (Enum.TryParse<FoodKind>(request.FoodKind, true, out var fk))
+            product.FoodKind = fk;
         await store.UpsertFoodProductAsync(product);
         return Results.Ok(MapToDto(product, await store.GetAllFoodAdditivesAsync()));
     }
@@ -427,6 +430,7 @@ public static class FoodEndpoints
             Sugar100g = f.Sugar100g,
             Sodium100g = f.Sodium100g,
             DataSource = f.DataSource,
+            FoodKind = f.FoodKind,
             SourceUrl = f.SourceUrl,
             ExternalId = f.ExternalId,
             ImageUrl = f.ImageUrl,

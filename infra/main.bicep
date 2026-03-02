@@ -15,18 +15,6 @@ param jwtSecret string
 param usdaApiKey string = ''
 
 @secure()
-@description('CalorieNinjas API key')
-param calorieNinjasApiKey string = ''
-
-@secure()
-@description('Edamam App ID')
-param edamamAppId string = ''
-
-@secure()
-@description('Edamam App Key')
-param edamamAppKey string = ''
-
-@secure()
 @description('GHCR username (GitHub username)')
 param ghcrUsername string = ''
 
@@ -41,9 +29,6 @@ var tags = {
 
 // Azure Container Apps requires non-empty secret values.
 // Use 'unused' as placeholder for optional API keys not yet configured.
-var effectiveCalorieNinjasApiKey = empty(calorieNinjasApiKey) ? 'unused' : calorieNinjasApiKey
-var effectiveEdamamAppId = empty(edamamAppId) ? 'unused' : edamamAppId
-var effectiveEdamamAppKey = empty(edamamAppKey) ? 'unused' : edamamAppKey
 var effectiveUsdaApiKey = empty(usdaApiKey) ? 'unused' : usdaApiKey
 
 // ── Storage Account (Table Storage) ──
@@ -134,9 +119,6 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'storage-connection', value: storageConnectionString }
         { name: 'jwt-secret', value: jwtSecret }
         { name: 'usda-api-key', value: effectiveUsdaApiKey }
-        { name: 'calorieninjas-api-key', value: effectiveCalorieNinjasApiKey }
-        { name: 'edamam-app-id', value: effectiveEdamamAppId }
-        { name: 'edamam-app-key', value: effectiveEdamamAppKey }
         { name: 'ghcr-password', value: ghcrPassword }
       ]
     }
@@ -161,9 +143,6 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'Jwt__Audience', value: 'GutAI' }
             { name: 'Jwt__ExpiryMinutes', value: '60' }
             { name: 'ExternalApis__UsdaApiKey', secretRef: 'usda-api-key' }
-            { name: 'ExternalApis__CalorieNinjasApiKey', secretRef: 'calorieninjas-api-key' }
-            { name: 'ExternalApis__EdamamAppId', secretRef: 'edamam-app-id' }
-            { name: 'ExternalApis__EdamamAppKey', secretRef: 'edamam-app-key' }
             { name: 'AzureOpenAI__Endpoint', value: azureOpenAIEndpoint }
             { name: 'AzureOpenAI__DeploymentName', value: azureOpenAIDeploymentName }
           ]

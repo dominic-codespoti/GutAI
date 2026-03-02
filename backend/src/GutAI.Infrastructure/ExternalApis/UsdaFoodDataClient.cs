@@ -9,7 +9,7 @@ namespace GutAI.Infrastructure.ExternalApis;
 
 public class UsdaFoodDataClient : IFoodApiService
 {
-    public string SourceName => DataSources.UsdaBranded;
+    public string SourceName => DataSources.Usda;
 
     private readonly HttpClient _http;
     private readonly ILogger<UsdaFoodDataClient> _logger;
@@ -89,7 +89,7 @@ public class UsdaFoodDataClient : IFoodApiService
                     Fiber100g = Nutrient(f, 1079),
                     Sugar100g = Nutrient(f, 2000),
                     Sodium100g = Nutrient(f, 1093) is decimal mg ? mg / 1000m : null,
-                    DataSource = isWhole ? DataSources.UsdaWhole : DataSources.UsdaBranded,
+                    DataSource = DataSources.Usda,
                     SourceUrl = $"https://fdc.nal.usda.gov/fdc-app.html#/food-details/{f.FdcId}/nutrients",
                     ExternalId = f.FdcId.ToString()
                 };
