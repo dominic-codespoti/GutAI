@@ -3427,6 +3427,13 @@ public static class WholeFoodsDatabase
         F("Salmon nuggets, cooked as purchased, unheated", 189, 11.97m, 11.85m, 10.43m, 0m, 0m, 0.167m), // FDC:173722
         F("Salmon, sockeye, canned, drained solids, without skin and bones", 158, 26.33m, 0m, 5.87m, 0m, 0m, 0.386m), // FDC:173723
         F("Salmon, sockeye, canned, total can contents", 153, 20.63m, 0m, 7.17m, 0m, 0m, 0.433m), // FDC:175174
+        F("Salmon, Atlantic, wild, raw", 142, 19.84m, 0m, 6.34m, 0m, 0m, 0.044m), // FDC:173686
+        F("Salmon, Atlantic, farmed, raw", 208, 20.42m, 0m, 13.42m, 0m, 0m, 0.059m), // FDC:175167
+        F("Salmon, sockeye, raw", 168, 21.33m, 0m, 8.56m, 0m, 0m, 0.047m), // FDC:173688
+        F("Salmon, pink, raw", 127, 20.5m, 0m, 4.4m, 0m, 0m, 0.067m), // FDC:175165
+        F("Salmon, chinook, raw", 179, 19.93m, 0m, 10.44m, 0m, 0m, 0.047m), // FDC:173690
+        F("Salmon, coho, wild, raw", 146, 21.62m, 0m, 5.93m, 0m, 0m, 0.046m), // FDC:173692
+        F("Salmon, chum, raw", 120, 20.14m, 0m, 3.77m, 0m, 0m, 0.05m), // FDC:173694
         F("Turtle, green, raw", 89, 19.8m, 0m, 0.5m, 0m, 0m, 0.068m), // FDC:167745
 
         // Fruits and Fruit Juices (362)
@@ -7333,10 +7340,13 @@ public static class WholeFoodsDatabase
         return _index.Value.Search(query, maxResults);
     }
 
-    private static FoodProductDto F(string name, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium) =>
-        new()
+    private static FoodProductDto F(string name, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium)
+    {
+        // Strip USDA program boilerplate from names
+        var cleanName = System.Text.RegularExpressions.Regex.Replace(name, @"\s*\(Includes foods for USDA's Food Distribution Program\)", "");
+        return new()
         {
-            Name = name,
+            Name = cleanName,
             Calories100g = cal,
             Protein100g = protein,
             Carbs100g = carbs,
@@ -7347,4 +7357,5 @@ public static class WholeFoodsDatabase
             DataSource = "USDA",
             FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
         };
+    }
 }

@@ -107,7 +107,8 @@ public sealed class FoodSearchIndex : IDisposable
         "alaska native", "industrial", "fast food",
         "ns as to", "usda commodity", "as purchased", "not further specified",
         "nfs", "ready-to-eat", "ready-to-heat", "glucose reduced", "stabilized",
-        "nuggets", "nugget", "breaded", "patties", "patty", "stick", "sticks"
+        "nuggets", "nugget", "breaded", "patties", "patty", "stick", "sticks",
+        "cereals ready-to-eat", "includes foods for usda", "food distribution program"
     ];
 
     private static readonly string[] SoftPenaltyTerms =
@@ -428,28 +429,80 @@ public sealed class FoodSearchIndex : IDisposable
         if (nameCoverage >= 1f) score += 10f;
 
         // Primary noun first-token match bonus (exact preferred over prefix)
+        // Scale down for multi-word queries when the other terms don't match
         if (queryTokens.Length > 0 && primaryTokens.Length > 0)
         {
             var pt0 = primaryTokens[0];
             var qt0 = queryTokens[0];
+            float firstTokenBonus = 0f;
             if (pt0 == qt0)
-                score += 20f; // exact match
+                firstTokenBonus = 20f;
             else if (pt0.StartsWith(qt0) && pt0.Length <= qt0.Length + 3)
-                score += 12f; // close prefix (e.g., "salmon" matching "salmons")
+                firstTokenBonus = 12f;
             else if (qt0.StartsWith(pt0))
-                score += 10f; // query longer than primary token
-            // Don't reward when primary is much longer (e.g., "salmonberries" for "salmon")
+                firstTokenBonus = 10f;
+
+            // For multi-word queries, scale first-token bonus by how many query terms the name covers
+            if (queryTokens.Length >= 2)
+                firstTokenBonus *= nameCoverage;
+
+            score += firstTokenBonus;
         }
 
-        // Exact name match bonuses
+        // Bonus when ALL query tokens appear somewhere in the name (critical for multi-word queries)
+        if (queryTokens.Length >= 2 && nameCoverage >= 1f)
+            score += 15f;
+
+        // Exact name match bonuses (with basic stemming: strip trailing 's'/'es')
+        var nameStem = nameLower.TrimEnd('s');
+        var queryStem = queryLower.TrimEnd('s');
         if (nameLower == queryLower) score += 50f;
+        else if (nameStem == queryStem) score += 45f; // e.g. "apples" == "apple"
         if (nameLower.StartsWith(queryLower)) score += 20f;
+        else if (nameStem.StartsWith(queryStem) && Math.Abs(nameStem.Length - queryStem.Length) <= nameStem.Length) score += 18f;
+
+        // For USDA comma-first names ("Cheese, cheddar"), check if primary noun
+        // matches a query token that ISN'T the first one, or if a non-primary
+        // descriptor exactly matches the query
+        if (queryTokens.Length == 1 && primaryTokens.Length > 0)
+        {
+            // Query is single word like "cheddar" — check if it appears as a descriptor
+            var descriptorPart = nameLower.Contains(',') ? nameLower[(nameLower.IndexOf(',') + 1)..].Trim() : "";
+            var descTokens = descriptorPart.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (descTokens.Any(dt => dt == queryLower || dt.TrimEnd('s') == queryStem))
+                score += 20f; // query matches a descriptor exactly — strong boost
+        }
 
         // Prefer plain/raw variants for simple queries
         if (queryTokens.Length <= 2)
         {
-            foreach (var term in (ReadOnlySpan<string>)["raw", "fresh", "whole", "plain", "white", "regular"])
+            foreach (var term in (ReadOnlySpan<string>)["raw", "fresh"])
+                if (nameLower.Contains(term)) score += 12f;
+            foreach (var term in (ReadOnlySpan<string>)["whole", "plain", "white", "regular"])
                 if (nameLower.Contains(term)) score += 5f;
+        }
+
+        // For simple queries (1-2 words), penalize processed/derived forms the user didn't ask for
+        if (queryTokens.Length <= 2)
+        {
+            foreach (var term in (ReadOnlySpan<string>)["juice", "concentrate", "dried", "pickled", "sauce", "paste", "spread", "flavored"])
+            {
+                if (nameLower.Contains(term) && !queryLower.Contains(term))
+                {
+                    score -= 8f;
+                    break; // only penalize once
+                }
+            }
+        }
+
+        // Penalty for poor query-token coverage on primary noun
+        // e.g. "Fried Rice" should rank low for "fried egg" (only 1/2 tokens match)
+        if (queryTokens.Length >= 2)
+        {
+            if (primaryCoverage < 0.5f)
+                score -= 20f;
+            else if (primaryCoverage <= 0.5f)
+                score -= 10f; // exactly half match — mild penalty
         }
 
         // Nutrition plausibility
@@ -460,6 +513,15 @@ public sealed class FoodSearchIndex : IDisposable
         {
             bool queryLooksLikeBrand = queryTokens.Any(t => t.Length > 0 && char.IsUpper(t[0]));
             if (!queryLooksLikeBrand) score -= 15f;
+        }
+
+        // For simple generic queries, whole foods should dominate over branded/processed
+        if (queryTokens.Length <= 2)
+        {
+            if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood)
+                score += 10f;
+            else if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.Branded)
+                score -= 10f;
         }
 
         return score;
