@@ -31,21 +31,15 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.image_vars.outputs.full_image }}
+      image: ${{ steps.meta.outputs.tags }}
+      # We take the first tag (the sha one) as the one to deploy
+      tag: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set outputs
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Lowercase image name
         id: lower
         run: echo "image_name=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
-      - name: Set full image output
-        id: image_vars
-        run: echo "full_image=${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}:sha-${{ steps.vars.outputs.sha_short }}" >> $GITHUB_OUTPUT
 
       - uses: docker/login-action@v3
         with:
@@ -58,7 +52,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}
           tags: |
-            type=sha
+            type=sha,prefix=sha-,format=short
             type=raw,value=latest
 
       - uses: docker/build-push-action@v6
@@ -77,6 +71,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Lowercase owner
+        id: owner
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -93,17 +91,22 @@ jobs:
       - name: Deploy Bicep
         id: deploy
         run: |
-          # Use the exact image pushed in the previous job
-          IMAGE="${{ needs.build-and-push.outputs.image }}"
+          # Use the exact image pushed in the previous job. 
+          # metadata-action outputs multiple tags; build-and-push outputs.image is the full list.
+          # We'll use the 'latest' tag or a specific one. For reliability, we use the specific SHA tag.
+          IMAGE_BASE="ghcr.io/${{ steps.owner.outputs.owner }}/gutai-api"
+          IMAGE="$IMAGE_BASE:${{ needs.build-and-push.outputs.tag }}"
+
+          echo "Deploying image: $IMAGE"
 
           az deployment group create \
             --resource-group ${{ env.AZURE_RG }} \
             --template-file infra/main.bicep \
             --parameters \
-              containerImage=$IMAGE \
+              containerImage="$IMAGE" \
               jwtSecret='${{ secrets.JWT_SECRET }}' \
               usdaApiKey='${{ secrets.USDA_API_KEY }}' \
-              ghcrUsername='${{ github.repository_owner }}' \
+              ghcrUsername='${{ steps.owner.outputs.owner }}' \
               ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}'
 
           API_URL=$(az deployment group show \

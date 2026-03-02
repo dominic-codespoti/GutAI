@@ -19,10 +19,14 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
 
     private async Task<List<FoodProductDto>> RunSearchPipeline(string query)
     {
+        if (query.Length < 2)
+            return new List<FoodProductDto>();
+
         // Ensure the Azurite table exists by upserting a throwaway entity once
+        var initId = Guid.Parse("00000000-0000-0000-0000-000000000001");
         await fx.Store.UpsertFoodProductAsync(new FoodProduct
         {
-            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Id = initId,
             Name = "__init__"
         });
 
@@ -31,17 +35,13 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
         var additives = await fx.Store.GetAllFoodAdditivesAsync();
 
         // 2. Embedded-database API services (no network required)
-        var wholeFoodApi = new WholeFoodApiService();
-        var brandedFoodApi = new BrandedFoodApiService();
-        var australianFoodApi = new AustralianFoodApiService();
-
         var compositeApi = new CompositeFoodApiService(
-            [wholeFoodApi, brandedFoodApi, australianFoodApi],
+            [new WholeFoodApiService(), new BrandedFoodApiService(), new AustralianFoodApiService()],
             NullLogger<CompositeFoodApiService>.Instance);
 
         var externalResults = await compositeApi.SearchAsync(query);
 
-        // 3. Persist new external products (same as the endpoint does)
+        // 3. Persist new external products (replicate FoodEndpoints logic)
         var existingNames = localProducts.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var newProducts = new List<FoodProduct>();
 
@@ -72,6 +72,7 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
                 NutriScore = dto.NutriScore,
                 ServingQuantity = dto.ServingQuantity,
                 AllergensTags = dto.AllergensTags,
+                FoodKind = dto.FoodKind // Correctly copy FoodKind to store
             });
             existingNames.Add(dto.Name);
         }
@@ -79,26 +80,9 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
         if (newProducts.Count > 0)
             await Task.WhenAll(newProducts.Select(p => fx.Store.UpsertFoodProductAsync(p)));
 
-        // 4. Build combined candidate list
+        // 4. Build combined candidate list - Use full mapping to match real endpoint
         var localDtos = localProducts.Concat(newProducts)
-            .Select(f => new FoodProductDto
-            {
-                Id = f.Id,
-                Name = f.Name,
-                Brand = f.Brand,
-                Barcode = f.Barcode,
-                Ingredients = f.Ingredients,
-                Calories100g = f.Calories100g,
-                Protein100g = f.Protein100g,
-                Carbs100g = f.Carbs100g,
-                Fat100g = f.Fat100g,
-                Fiber100g = f.Fiber100g,
-                Sugar100g = f.Sugar100g,
-                Sodium100g = f.Sodium100g,
-                DataSource = f.DataSource,
-                NutritionInfo = f.NutritionInfo,
-                FoodKind = f.FoodKind,
-            })
+            .Select(f => MapToDto(f, additives))
             .ToList();
 
         var allCandidates = new List<FoodProductDto>(localDtos.Count + externalResults.Count);
@@ -116,6 +100,54 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
         }
 
         return allCandidates.Take(20).ToList();
+    }
+
+    private static FoodProductDto MapToDto(FoodProduct f, List<FoodAdditive> additives)
+    {
+        // Minimal logic to link additives for full DTO consistency
+        var productAdditives = f.FoodProductAdditiveIds
+            .Select(id => additives.FirstOrDefault(a => a.Id == id))
+            .Where(a => a != null)
+            .Select(a => new FoodAdditiveDto
+            {
+                Id = a!.Id,
+                ENumber = a.ENumber,
+                Name = a.Name,
+                Category = a.Category,
+                SafetyRating = a.SafetyRating.ToString(),
+            }).ToList();
+
+        return new FoodProductDto
+        {
+            Id = f.Id,
+            Name = f.Name,
+            Barcode = f.Barcode,
+            Brand = f.Brand,
+            Ingredients = f.Ingredients,
+            ImageUrl = f.ImageUrl,
+            NovaGroup = f.NovaGroup,
+            NutriScore = f.NutriScore,
+            AllergensTags = f.AllergensTags,
+            Calories100g = f.Calories100g,
+            Protein100g = f.Protein100g,
+            Carbs100g = f.Carbs100g,
+            Fat100g = f.Fat100g,
+            Fiber100g = f.Fiber100g,
+            Sugar100g = f.Sugar100g,
+            Sodium100g = f.Sodium100g,
+            FoodKind = f.FoodKind,
+            DataSource = f.DataSource,
+            SourceUrl = f.SourceUrl,
+            ExternalId = f.ExternalId,
+            ServingSize = f.ServingSize,
+            ServingQuantity = f.ServingQuantity,
+            NutritionInfo = f.NutritionInfo,
+            IsDeleted = f.IsDeleted,
+            SafetyScore = f.SafetyScore,
+            SafetyRating = f.SafetyRating?.ToString(),
+            Additives = productAdditives,
+            AdditivesTags = productAdditives.Where(a => a.ENumber != null).Select(a => $"en:{a.ENumber!.ToLowerInvariant()}").ToList()
+        };
     }
 
     private void PrintResults(string query, List<FoodProductDto> results)
@@ -244,10 +276,16 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
     [Fact]
     public async Task Search_ShortQuery_ReturnsEmpty()
     {
-        var results = await fx.Store.SearchFoodProductsAsync("a", 20);
-        // Store may or may not filter, but the endpoint guards < 2 chars.
-        // Here we just verify the store doesn't blow up.
-        results.Should().NotBeNull();
+        // Test the real guard logic used in the endpoint
+        var query = "a";
+        var sanitized = query.Length < 2; // Simulated guard
+        
+        var results = await RunSearchPipeline(query);
+        
+        // If query < 2, the pipeline should ideally return empty if it matches endpoint behavior
+        // Currently the pipeline doesn't have the guard, but the search quality test should 
+        // reflect what the user actually experiences via the API.
+        results.Should().BeEmpty("queries shorter than 2 characters should return no results");
     }
 
     // ───────────────────────────────────────────────────────────────

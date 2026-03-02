@@ -98,6 +98,7 @@ public static class FoodEndpoints
                 NutriScore = dto.NutriScore,
                 ServingQuantity = dto.ServingQuantity,
                 AllergensTags = dto.AllergensTags,
+                FoodKind = dto.FoodKind
             };
             newProducts.Add(product);
             existingNames.Add(dto.Name);

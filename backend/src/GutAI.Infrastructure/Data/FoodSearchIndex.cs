@@ -117,6 +117,10 @@ public sealed class FoodSearchIndex : IDisposable
         "pasteurized", "restaurant", "commercial", "institutional"
     ];
 
+    private static readonly string[] RawFreshTerms = ["raw", "fresh"];
+    private static readonly string[] PlainTerms = ["whole", "plain", "white", "regular"];
+    private static readonly string[] ProcessedTerms = ["juice", "concentrate", "dried", "dehydrated", "pickled", "sauce", "paste", "spread", "flavored", "frozen", "canned", "powder"];
+
     private static float ComputeStaticQuality(FoodProductDto dto)
     {
         var nameLower = dto.Name.ToLowerInvariant();
@@ -453,9 +457,9 @@ public sealed class FoodSearchIndex : IDisposable
         if (queryTokens.Length >= 2 && nameCoverage >= 1f)
             score += 15f;
 
-        // Exact name match bonuses (with basic stemming: strip trailing 's'/'es')
-        var nameStem = nameLower.TrimEnd('s');
-        var queryStem = queryLower.TrimEnd('s');
+        // Exact name match bonuses (with proper depluralization)
+        var nameStem = Depluralize(nameLower);
+        var queryStem = Depluralize(queryLower);
         if (nameLower == queryLower) score += 50f;
         else if (nameStem == queryStem) score += 45f; // e.g. "apples" == "apple"
         if (nameLower.StartsWith(queryLower)) score += 20f;
@@ -469,28 +473,25 @@ public sealed class FoodSearchIndex : IDisposable
             // Query is single word like "cheddar" — check if it appears as a descriptor
             var descriptorPart = nameLower.Contains(',') ? nameLower[(nameLower.IndexOf(',') + 1)..].Trim() : "";
             var descTokens = descriptorPart.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (descTokens.Any(dt => dt == queryLower || dt.TrimEnd('s') == queryStem))
+            if (descTokens.Any(dt => dt == queryLower || Depluralize(dt) == queryStem))
                 score += 20f; // query matches a descriptor exactly — strong boost
         }
 
         // Prefer plain/raw variants for simple queries
         if (queryTokens.Length <= 2)
         {
-            foreach (var term in (ReadOnlySpan<string>)["raw", "fresh"])
+            foreach (var term in RawFreshTerms)
                 if (nameLower.Contains(term)) score += 12f;
-            foreach (var term in (ReadOnlySpan<string>)["whole", "plain", "white", "regular"])
+            foreach (var term in PlainTerms)
                 if (nameLower.Contains(term)) score += 5f;
-        }
 
-        // For simple queries (1-2 words), penalize processed/derived forms the user didn't ask for
-        if (queryTokens.Length <= 2)
-        {
-            foreach (var term in (ReadOnlySpan<string>)["juice", "concentrate", "dried", "pickled", "sauce", "paste", "spread", "flavored"])
+            // Penalize processed/derived forms the user didn't ask for
+            foreach (var term in ProcessedTerms)
             {
                 if (nameLower.Contains(term) && !queryLower.Contains(term))
                 {
                     score -= 8f;
-                    break; // only penalize once
+                    break;
                 }
             }
         }
@@ -501,19 +502,12 @@ public sealed class FoodSearchIndex : IDisposable
         {
             if (primaryCoverage < 0.5f)
                 score -= 20f;
-            else if (primaryCoverage <= 0.5f)
-                score -= 10f; // exactly half match — mild penalty
+            else if (primaryCoverage == 0.5f)
+                score -= 10f;
         }
 
         // Nutrition plausibility
         score += NutritionPlausibilityScore(dto, queryLower);
-
-        // Brand penalty for generic queries
-        if (!string.IsNullOrEmpty(dto.Brand) && dto.Brand.Length > 1)
-        {
-            bool queryLooksLikeBrand = queryTokens.Any(t => t.Length > 0 && char.IsUpper(t[0]));
-            if (!queryLooksLikeBrand) score -= 15f;
-        }
 
         // For simple generic queries, whole foods should dominate over branded/processed
         if (queryTokens.Length <= 2)
@@ -521,7 +515,9 @@ public sealed class FoodSearchIndex : IDisposable
             if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood)
                 score += 10f;
             else if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.Branded)
-                score -= 10f;
+                score -= 15f;
+            if (!string.IsNullOrEmpty(dto.Brand) && dto.Brand.Length > 1)
+                score -= 5f;
         }
 
         return score;
