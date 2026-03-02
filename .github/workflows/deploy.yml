@@ -91,11 +91,11 @@ jobs:
       - name: Deploy Bicep
         id: deploy
         run: |
-          # Use the exact image pushed in the previous job. 
-          # metadata-action outputs multiple tags; build-and-push outputs.image is the full list.
-          # We'll use the 'latest' tag or a specific one. For reliability, we use the specific SHA tag.
+          # Use the exact image pushed in the previous job.
+          # metadata-action's 'version' output is the primary tag (sha-<7-chars>).
           IMAGE_BASE="ghcr.io/${{ steps.owner.outputs.owner }}/gutai-api"
-          IMAGE="$IMAGE_BASE:${{ needs.build-and-push.outputs.tag }}"
+          TAG="${{ needs.build-and-push.outputs.tag }}"
+          IMAGE="$IMAGE_BASE:$TAG"
 
           echo "Deploying image: $IMAGE"
 
