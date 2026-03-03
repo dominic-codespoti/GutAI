@@ -3,8 +3,10 @@ import { Platform } from "react-native";
 import Purchases, { LOG_LEVEL } from "react-native-purchases";
 import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
 
-const API_KEY = "test_UleVTskToJYezcnQbuEpfleLOYX";
 const ENTITLEMENT_ID = "Gut Lens Pro";
+const APPLE_API_KEY = "appl_CMDYhmUXPKIYvLBPOqaSrGbPtyL";
+const GOOGLE_API_KEY = "goog_VWxjwVUrPyHZbITZozKEhgAoKvo";
+const TEST_API_KEY = "test_UleVTskToJYezcnQbuEpfleLOYX";
 
 interface SubscriptionState {
   isPro: boolean;
@@ -47,8 +49,15 @@ export const useSubscriptionStore = create<SubscriptionState>((set) => ({
 export async function configurePurchases(userId: string) {
   if (__DEV__) {
     Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+    await Purchases.configure({ apiKey: TEST_API_KEY });
   }
-  Purchases.configure({ apiKey: API_KEY });
+
+  if (Platform.OS === "ios") {
+    await Purchases.configure({ apiKey: APPLE_API_KEY });
+  } else if (Platform.OS === "android") {
+    await Purchases.configure({ apiKey: GOOGLE_API_KEY });
+  }
+
   await Purchases.logIn(userId);
 }
 

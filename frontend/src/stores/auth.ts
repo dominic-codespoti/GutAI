@@ -19,6 +19,16 @@ async function syncTimezone() {
   } catch {}
 }
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    // expired if less than 60s remaining
+    return payload.exp * 1000 < Date.now() + 60_000;
+  } catch {
+    return true;
+  }
+}
+
 interface AuthState {
   user: UserProfile | null;
   isAuthenticated: boolean;
@@ -72,11 +82,34 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   hydrate: async () => {
     try {
-      const token = await getItem("accessToken");
+      let token = await getItem("accessToken");
+      const refreshToken = await getItem("refreshToken");
+
+      if (!token && !refreshToken) {
+        set({ isLoading: false });
+        return;
+      }
+
+      // Proactively refresh if access token is missing or expired
+      if ((!token || isTokenExpired(token)) && refreshToken) {
+        try {
+          const { data } = await authApi.refresh(refreshToken);
+          await setItem("accessToken", data.accessToken);
+          await setItem("refreshToken", data.refreshToken);
+          token = data.accessToken;
+        } catch {
+          // Refresh failed — but don't delete tokens yet,
+          // could be a transient network error. Let user retry next launch.
+          set({ isLoading: false });
+          return;
+        }
+      }
+
       if (!token) {
         set({ isLoading: false });
         return;
       }
+
       const { userApi } = await import("../api");
       const { data } = await userApi.getProfile();
       set({ user: data, isAuthenticated: true, isLoading: false });
@@ -84,8 +117,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 401 || status === 403) {
+        // Only delete access token; keep refresh token for next attempt
         await deleteItem("accessToken");
-        await deleteItem("refreshToken");
         set({ user: null, isAuthenticated: false, isLoading: false });
       } else {
         // Network error / timeout — keep tokens, let user retry

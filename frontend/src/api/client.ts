@@ -71,8 +71,9 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
+        // Only delete access token; keep refresh token so the next
+        // app launch can retry (failure may be transient).
         await deleteItem("accessToken");
-        await deleteItem("refreshToken");
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
