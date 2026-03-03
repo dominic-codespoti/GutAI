@@ -113,6 +113,7 @@ export function MealGroup({
       {meals.map((meal) => (
         <View key={meal.id}>
           <TouchableOpacity
+            onPress={() => onEdit(meal)}
             onLongPress={() => handleLongPressMeal(meal)}
             delayLongPress={400}
             activeOpacity={0.7}
@@ -121,7 +122,11 @@ export function MealGroup({
               alignItems: "center",
               justifyContent: "space-between",
               paddingTop: 6,
-              paddingBottom: 2,
+              paddingBottom: 4,
+              paddingHorizontal: 8,
+              marginTop: 4,
+              backgroundColor: colors.borderLight,
+              borderRadius: radius.sm,
             }}
           >
             <Text style={{ fontSize: 11, color: colors.textMuted }}>
@@ -132,11 +137,18 @@ export function MealGroup({
               {" · "}
               {meal.totalCalories} cal
             </Text>
-            <Ionicons
-              name="ellipsis-horizontal"
-              size={14}
-              color={colors.textLight}
-            />
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+            >
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                Edit
+              </Text>
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={14}
+                color={colors.textMuted}
+              />
+            </View>
           </TouchableOpacity>
 
           {meal.items.map((item, idx) => (
