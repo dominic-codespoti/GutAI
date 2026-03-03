@@ -86,7 +86,7 @@ public class FodmapService
         var hasRealIngredients = !string.IsNullOrWhiteSpace(product.Ingredients) && product.Ingredients.Contains(',');
         foreach (var (pattern, info) in WholeFood_Triggers)
         {
-            if (productName.Contains(pattern) && !HasTrigger(triggers, info))
+            if (Regex.IsMatch(productName, $@"\b{Regex.Escape(pattern)}\b", RegexOptions.IgnoreCase) && !HasTrigger(triggers, info))
             {
                 if (hasRealIngredients && GenericWholeFoodPatterns.Any(g => pattern.Contains(g, StringComparison.OrdinalIgnoreCase)))
                     continue;
@@ -461,7 +461,7 @@ public class FodmapService
             Explanation = "Standard pasta is wheat-based. Rice or corn pasta are low-FODMAP alternatives." }),
         ("noodle", null, new() { Name = "Noodles (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Wheat noodles are high in fructans. Rice noodles are a low-FODMAP alternative." }),
-        ("pita", null, new() { Name = "Pita Bread (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
+        ("pita", MatchUtils.WordBoundary("pita"), new() { Name = "Pita Bread (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Pita is wheat bread — high in fructans." }),
         ("naan", null, new() { Name = "Naan (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Naan is wheat flatbread, often containing garlic — double fructan source." }),

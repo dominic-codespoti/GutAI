@@ -28,6 +28,8 @@ import type {
   FoodDiaryAnalysis,
   EliminationDietStatus,
   ChatMessage,
+  RecentFood,
+  Streak,
 } from "../types";
 
 interface UpdateProfileRequest {
@@ -76,6 +78,9 @@ export const mealApi = {
     api.get<DailyNutritionSummary>(`/api/meals/daily-summary/${date}`),
   export: (from?: string, to?: string) =>
     api.get<DataExport>("/api/meals/export", { params: { from, to } }),
+  recentFoods: (limit?: number) =>
+    api.get<RecentFood[]>("/api/meals/recent-foods", { params: { limit } }),
+  streak: () => api.get<Streak>("/api/meals/streak"),
 };
 
 export const foodApi = {

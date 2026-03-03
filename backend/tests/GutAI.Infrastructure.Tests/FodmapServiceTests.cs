@@ -712,4 +712,18 @@ public class FodmapServiceTests
         var result = _sut.Assess(MakeProduct(name: "Berry Smoothie"));
         result.Triggers.Should().NotContain(t => t.SubCategory == "Excess Fructose");
     }
+
+    [Fact]
+    public void Test_Pepitas_DoesNotMatchPita()
+    {
+        var result = _sut.Assess(MakeProduct("Carman's Protein Bar", "pepitas, sunflower seeds, soy protein"));
+        result.Triggers.Should().NotContain(t => t.Name.Contains("Pita"));
+    }
+
+    [Fact]
+    public void Test_PitaBread_MatchesPita()
+    {
+        var result = _sut.Assess(MakeProduct("Pita Bread", "pita, water, yeast"));
+        result.Triggers.Should().Contain(t => t.Name.Contains("Pita"));
+    }
 }

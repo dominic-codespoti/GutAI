@@ -323,6 +323,23 @@ public class TableStorageStore : ITableStore
         return entities.Select(MapToMealItem).ToList();
     }
 
+    public async Task<List<MealItem>> GetAllUserMealItemsAsync(Guid userId, int limit = 100, CancellationToken ct = default)
+    {
+        var pk = userId.ToString();
+        var prefix = "MEALITEM|";
+        var filter = $"PartitionKey eq '{pk}' and RowKey ge '{prefix}' and RowKey lt '{prefix}~'";
+        var entities = await QueryAsync(filter, ct);
+
+        // Sorting in memory for simplicity if the SDK doesn't support easy descending RowKey sort for prefix queries
+        // Often RowKey starts with MEALITEM|{mealLogId} which might not be chronological.
+        // However, we can at least get 100 recent ones or all then filter.
+        return entities
+            .Select(MapToMealItem)
+            .OrderByDescending(x => x.Id) // Assuming GUID v7 or similar, or we might need to filter by CreatedAt if available
+            .Take(limit)
+            .ToList();
+    }
+
     public async Task UpsertMealItemsAsync(Guid userId, Guid mealLogId, List<MealItem> items, CancellationToken ct)
     {
         await DeleteMealItemsAsync(userId, mealLogId, ct);

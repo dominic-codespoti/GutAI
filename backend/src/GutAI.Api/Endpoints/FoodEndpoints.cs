@@ -28,8 +28,9 @@ public static class FoodEndpoints
         return group;
     }
 
-    static async Task<IResult> SearchFoodProducts(string? q, ITableStore store, IFoodApiService foodApi, ICacheService cache, ILogger<Program> logger)
+    static async Task<IResult> SearchFoodProducts(string? q, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, ICacheService cache, ILogger<Program> logger)
     {
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
         var query = QuerySanitizer.Sanitize(q ?? string.Empty);
         if (query.Length < 2)
             return Results.Ok(Array.Empty<FoodProductDto>());
@@ -37,7 +38,20 @@ public static class FoodEndpoints
         if (query.Length > 200)
             return Results.BadRequest(new { error = "Search query must not exceed 200 characters" });
 
-        var cacheKey = $"food-search:{query.ToLowerInvariant()}";
+        // Personalization: Fetch history to boost items
+        var boostIds = new List<Guid>();
+        if (Guid.TryParse(userId, out var uid))
+        {
+            var history = await store.GetAllUserMealItemsAsync(uid, 50);
+            boostIds = history
+                .Where(x => x.FoodProductId.HasValue)
+                .Select(x => x.FoodProductId!.Value)
+                .Distinct()
+                .ToList();
+        }
+
+        // Incorporate boostIds into cache key to avoid mixed results for different users
+        var cacheKey = $"food-search:{query.ToLowerInvariant()}:{userId ?? "anonymous"}";
         var cached = await cache.GetAsync<List<FoodProductDto>>(cacheKey);
         if (cached is not null)
             return Results.Ok(cached);
@@ -46,7 +60,7 @@ public static class FoodEndpoints
         var additivesTask = store.GetAllFoodAdditivesAsync();
 
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var externalTask = foodApi.SearchAsync(query, cts.Token);
+        var externalTask = foodApi.SearchPersonalizedAsync(query, boostIds, cts.Token);
 
         try
         {

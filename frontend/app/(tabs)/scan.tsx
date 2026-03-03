@@ -22,6 +22,8 @@ import { ErrorState } from "../../components/ErrorState";
 import { NutritionBar } from "../../components/NutritionBar";
 import { MealTypePicker } from "../../components/MealTypePicker";
 import { ServingSizeSelector } from "../../components/ServingSizeSelector";
+import { FoodSearchResult } from "../../components/FoodSearchResult";
+import { BottomSheet } from "../../components/BottomSheet";
 import {
   scaleNutrition,
   nutritionSummaryText,
@@ -212,6 +214,23 @@ export default function ScanScreen() {
     onError: () => toast.error("Failed to add to meal"),
   });
 
+  const handleDetailPress = (product: FoodProduct) => {
+    router.push({
+      pathname: "/food/[id]",
+      params: { id: product.id },
+    });
+  };
+
+  const handleProductPress = (product: FoodProduct) => {
+    setAddToMealProduct(product);
+    setAddToMealServingG(
+      product.servingQuantity ? Math.round(product.servingQuantity) : 100,
+    );
+    setAddToMealMultiplier(1);
+    setCustomServingText("");
+    setShowAddToMeal(true);
+  };
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: "#f8fafc" }}
@@ -283,14 +302,9 @@ export default function ScanScreen() {
             onPress={() => handleSelectProduct(barcodeQuery.data!)}
             style={{ marginTop: 12 }}
           >
-            <ProductCard
+            <FoodSearchResult
               product={barcodeQuery.data}
-              onDetailPress={() => {
-                const pid = barcodeQuery.data!.id;
-                if (pid && pid !== "00000000-0000-0000-0000-000000000000") {
-                  router.push(`/food/${pid}`);
-                }
-              }}
+              onPress={handleProductPress}
             />
           </TouchableOpacity>
         )}
@@ -350,23 +364,122 @@ export default function ScanScreen() {
           </View>
         )}
         {searchResults.data?.map((product, index) => (
-          <TouchableOpacity
+          <FoodSearchResult
             key={product.barcode || `search-${index}`}
-            onPress={() => handleSelectProduct(product)}
-            style={{ marginTop: 8 }}
-          >
-            <ProductCard
-              product={product}
-              onDetailPress={() => {
-                const pid = product.id;
-                if (pid && pid !== "00000000-0000-0000-0000-000000000000") {
-                  router.push(`/food/${pid}`);
-                }
-              }}
-            />
-          </TouchableOpacity>
+            product={product}
+            onPress={handleProductPress}
+          />
         ))}
       </View>
+
+      <BottomSheet
+        visible={showAddToMeal && !!addToMealProduct}
+        onClose={() => {
+          setShowAddToMeal(false);
+          setAddToMealProduct(null);
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 20,
+            fontWeight: "700",
+            color: "#0f172a",
+            marginBottom: 4,
+          }}
+        >
+          Add to Meal
+        </Text>
+        <Text
+          style={{
+            fontSize: 16,
+            color: "#64748b",
+            marginBottom: 20,
+          }}
+        >
+          {addToMealProduct?.name}
+        </Text>
+
+        <View style={{ marginBottom: 20 }}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: "600",
+              color: "#334155",
+              marginBottom: 8,
+            }}
+          >
+            Meal Type:
+          </Text>
+          <MealTypePicker
+            selected={addToMealType}
+            onSelect={setAddToMealType}
+          />
+        </View>
+
+        <ServingSizeSelector
+          servingG={addToMealServingG}
+          onServingChange={setAddToMealServingG}
+          customText={customServingText}
+          onCustomTextChange={setCustomServingText}
+          multiplier={addToMealMultiplier}
+          onMultiplierChange={setAddToMealMultiplier}
+          product={addToMealProduct}
+          summaryText={
+            addToMealProduct
+              ? nutritionSummaryText(
+                  scaleNutrition(addToMealProduct, effectiveGrams),
+                  effectiveGrams,
+                )
+              : undefined
+          }
+        />
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            gap: 12,
+            marginTop: 24,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              setShowAddToMeal(false);
+              setAddToMealProduct(null);
+            }}
+            style={{
+              flex: 1,
+              paddingVertical: 14,
+              borderRadius: 12,
+              backgroundColor: "#f1f5f9",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#64748b", fontWeight: "600", fontSize: 16 }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => addToMealMutation.mutate(addToMealProduct!)}
+            disabled={addToMealMutation.isPending}
+            style={{
+              flex: 1,
+              backgroundColor: "#22c55e",
+              paddingVertical: 14,
+              borderRadius: 12,
+              alignItems: "center",
+            }}
+          >
+            {addToMealMutation.isPending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>
+                Log It
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
       {/* Safety Report */}
       {safetyReport.isLoading && (
@@ -654,76 +767,5 @@ export default function ScanScreen() {
         </View>
       )}
     </ScrollView>
-  );
-}
-
-function ProductCard({
-  product,
-  onDetailPress,
-}: {
-  product: FoodProduct;
-  onDetailPress?: () => void;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: "#f8fafc",
-        borderRadius: 8,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-        flexDirection: "row",
-      }}
-    >
-      {product.imageUrl && (
-        <Image
-          source={{ uri: product.imageUrl }}
-          style={{ width: 60, height: 60, borderRadius: 8, marginRight: 12 }}
-          contentFit="contain"
-          transition={200}
-        />
-      )}
-      <View style={{ flex: 1 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: "600", color: "#0f172a" }}>
-              {product.name}
-            </Text>
-            {product.brand && (
-              <Text style={{ fontSize: 13, color: "#64748b" }}>
-                {product.brand}
-              </Text>
-            )}
-          </View>
-          {onDetailPress && (
-            <TouchableOpacity onPress={onDetailPress} style={{ padding: 4 }}>
-              <Ionicons
-                name="information-circle-outline"
-                size={20}
-                color="#3b82f6"
-              />
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={{ flexDirection: "row", marginTop: 8 }}>
-          {product.calories100g != null && (
-            <Text style={{ fontSize: 12, color: "#334155", marginRight: 12 }}>
-              {Math.round(product.calories100g)} cal/100g
-            </Text>
-          )}
-          {product.safetyRating && (
-            <Text style={{ fontSize: 12, fontWeight: "600", color: "#334155" }}>
-              Safety: {product.safetyRating}
-            </Text>
-          )}
-        </View>
-      </View>
-    </View>
   );
 }

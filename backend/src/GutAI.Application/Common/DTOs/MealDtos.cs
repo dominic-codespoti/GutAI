@@ -85,3 +85,27 @@ public record DailyNutritionSummaryDto
     public int MealCount { get; init; }
     public int CalorieGoal { get; init; }
 }
+
+public record RecentFoodDto
+{
+    public string FoodName { get; init; } = default!;
+    public Guid? FoodProductId { get; init; }
+    public decimal Calories { get; init; }
+    public decimal ProteinG { get; init; }
+    public decimal CarbsG { get; init; }
+    public decimal FatG { get; init; }
+    public decimal FiberG { get; init; }
+    public decimal SugarG { get; init; }
+    public decimal SodiumMg { get; init; }
+    public decimal? ServingWeightG { get; init; }
+    public string ServingUnit { get; init; } = "serving";
+    public DateTime LastLoggedAt { get; init; }
+    public int LogCount { get; init; }
+}
+
+public record StreakDto
+{
+    public int CurrentStreak { get; init; }
+    public int LongestStreak { get; init; }
+    public int TotalDaysLogged { get; init; }
+}

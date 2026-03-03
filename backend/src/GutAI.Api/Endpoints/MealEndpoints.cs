@@ -11,6 +11,8 @@ public static class MealEndpoints
         group.MapPost("/", CreateMeal);
         group.MapPost("/log-natural", LogNatural);
         group.MapGet("/", GetMealsByDate);
+        group.MapGet("/recent-foods", GetRecentFoods);
+        group.MapGet("/streak", GetStreak);
         group.MapGet("/{id:guid}", GetMeal);
         group.MapPut("/{id:guid}", UpdateMeal);
         group.MapDelete("/{id:guid}", DeleteMeal);
@@ -326,5 +328,95 @@ public static class MealEndpoints
             await cache.RemoveAsync($"additive-exposure:{userId}:{from}:{today}");
             await cache.RemoveAsync($"trigger-foods:{userId}:{from}:{today}");
         }
+    }
+
+    static async Task<IResult> GetRecentFoods(ClaimsPrincipal principal, ITableStore store, int? limit)
+    {
+        var userId = GetUserId(principal);
+        var maxItems = Math.Min(limit ?? 20, 50);
+        var items = await store.GetAllUserMealItemsAsync(userId, 500);
+
+        var recentFoods = items
+            .GroupBy(i => i.FoodName.ToLowerInvariant())
+            .Select(g =>
+            {
+                var latest = g.OrderByDescending(i => i.Id).First(); // newest by ID
+                return new RecentFoodDto
+                {
+                    FoodName = latest.FoodName,
+                    FoodProductId = latest.FoodProductId,
+                    Calories = latest.Calories,
+                    ProteinG = latest.ProteinG,
+                    CarbsG = latest.CarbsG,
+                    FatG = latest.FatG,
+                    FiberG = latest.FiberG,
+                    SugarG = latest.SugarG,
+                    SodiumMg = latest.SodiumMg,
+                    ServingWeightG = latest.ServingWeightG,
+                    ServingUnit = latest.ServingUnit,
+                    LastLoggedAt = DateTime.UtcNow, // approximate – items don't store loggedAt
+                    LogCount = g.Count()
+                };
+            })
+            .OrderByDescending(f => f.LogCount)
+            .ThenByDescending(f => f.LastLoggedAt)
+            .Take(maxItems)
+            .ToList();
+
+        return Results.Ok(recentFoods);
+    }
+
+    static async Task<IResult> GetStreak(ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = GetUserId(principal);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneInfo.Utc;
+        if (user?.TimezoneId is not null)
+        {
+            try { tz = TimeZoneInfo.FindSystemTimeZoneById(user.TimezoneId); }
+            catch { /* fall back to UTC */ }
+        }
+
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var from = today.AddDays(-90);
+        var meals = await store.GetMealLogsByDateRangeAsync(userId, from, today);
+
+        var daysWithMeals = meals
+            .Select(m => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(m.LoggedAt, tz)))
+            .Distinct()
+            .OrderByDescending(d => d)
+            .ToHashSet();
+
+        // Current streak: count consecutive days backwards from today
+        var currentStreak = 0;
+        var checkDate = today;
+        while (daysWithMeals.Contains(checkDate))
+        {
+            currentStreak++;
+            checkDate = checkDate.AddDays(-1);
+        }
+
+        // Longest streak: find the longest run in the set
+        var longestStreak = 0;
+        var streak = 0;
+        for (var d = from; d <= today; d = d.AddDays(1))
+        {
+            if (daysWithMeals.Contains(d))
+            {
+                streak++;
+                if (streak > longestStreak) longestStreak = streak;
+            }
+            else
+            {
+                streak = 0;
+            }
+        }
+
+        return Results.Ok(new StreakDto
+        {
+            CurrentStreak = currentStreak,
+            LongestStreak = longestStreak,
+            TotalDaysLogged = daysWithMeals.Count
+        });
     }
 }

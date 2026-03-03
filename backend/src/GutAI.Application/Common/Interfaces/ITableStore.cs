@@ -19,6 +19,7 @@ public interface ITableStore
     Task UpsertMealLogAsync(MealLog meal, CancellationToken ct = default);
 
     Task<List<MealItem>> GetMealItemsAsync(Guid userId, Guid mealLogId, CancellationToken ct = default);
+    Task<List<MealItem>> GetAllUserMealItemsAsync(Guid userId, int limit = 100, CancellationToken ct = default);
     Task UpsertMealItemsAsync(Guid userId, Guid mealLogId, List<MealItem> items, CancellationToken ct = default);
     Task DeleteMealItemsAsync(Guid userId, Guid mealLogId, CancellationToken ct = default);
 

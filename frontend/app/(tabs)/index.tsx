@@ -202,6 +202,12 @@ export default function DashboardScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: streak } = useQuery({
+    queryKey: ["streak"],
+    queryFn: () => mealApi.streak().then((r) => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -236,8 +242,10 @@ export default function DashboardScreen() {
     );
   }
 
-  const caloriesEaten = summary?.totalCalories ?? 0;
-  const calorieGoal = summary?.calorieGoal ?? user?.dailyCalorieGoal ?? 2000;
+  const caloriesEaten = Math.round(summary?.totalCalories ?? 0);
+  const calorieGoal = Math.round(
+    summary?.calorieGoal ?? user?.dailyCalorieGoal ?? 2000,
+  );
   const caloriesRemaining = Math.max(calorieGoal - caloriesEaten, 0);
   const mealCount = meals?.length ?? 0;
   const symptomCount = todaysSymptoms?.length ?? 0;
@@ -430,6 +438,37 @@ export default function DashboardScreen() {
                 cal left
               </Text>
             </View>
+            {streak && streak.currentStreak > 0 && (
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: "#fff7ed",
+                  borderRadius: radius.md,
+                  padding: 14,
+                  alignItems: "center",
+                  ...shadow,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 24,
+                    fontWeight: "800",
+                    color: "#ea580c",
+                  }}
+                >
+                  {streak.currentStreak}🔥
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#ea580c",
+                    fontWeight: "500",
+                  }}
+                >
+                  day streak
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Calorie Ring Card */}

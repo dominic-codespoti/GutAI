@@ -42,6 +42,9 @@ public class CompositeFoodApiService : IFoodApiService
     }
 
     public async Task<List<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
+        => await SearchPersonalizedAsync(query, [], ct);
+
+    public async Task<List<FoodProductDto>> SearchPersonalizedAsync(string query, IEnumerable<Guid> boostIds, CancellationToken ct = default)
     {
         var tasks = _clients
             .Where(c => c is not CompositeFoodApiService)
@@ -80,7 +83,7 @@ public class CompositeFoodApiService : IFoodApiService
         if (merged.Count > 1)
         {
             using var rankIndex = new FoodSearchIndex(merged);
-            return rankIndex.Search(query, 20);
+            return rankIndex.SearchPersonalized(query, boostIds, 20);
         }
 
         return merged;

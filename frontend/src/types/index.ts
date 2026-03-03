@@ -433,6 +433,28 @@ export interface ReintroductionResult {
   testCount: number;
 }
 
+export interface RecentFood {
+  foodName: string;
+  foodProductId?: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG: number;
+  sugarG: number;
+  sodiumMg: number;
+  servingWeightG?: number;
+  servingUnit: string;
+  lastLoggedAt: string;
+  logCount: number;
+}
+
+export interface Streak {
+  currentStreak: number;
+  longestStreak: number;
+  totalDaysLogged: number;
+}
+
 export interface MealFood {
   id: string;
   name: string;
