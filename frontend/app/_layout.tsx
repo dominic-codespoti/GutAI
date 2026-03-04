@@ -9,6 +9,7 @@ import ToastContainer from "../components/Toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Ionicons } from "@expo/vector-icons";
 import { queryClient } from "../src/queryClient";
+import { api } from "../src/api/client";
 import {
   useSubscriptionStore,
   configurePurchases,
@@ -22,6 +23,7 @@ function AuthGate() {
 
   useEffect(() => {
     hydrate();
+    api.get("/health").catch(() => {});
   }, []);
 
   // Initialize RevenueCat when user is authenticated
