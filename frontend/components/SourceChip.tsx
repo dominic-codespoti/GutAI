@@ -6,7 +6,8 @@ import {
   ViewStyle,
   TextStyle,
 } from "react-native";
-import { colors, radius, spacing } from "../src/utils/theme";
+import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 
 interface SourceChipProps {
   source: string | null;
@@ -15,6 +16,7 @@ interface SourceChipProps {
 }
 
 export function SourceChip({ source, url, style }: SourceChipProps) {
+  const colors = useThemeColors();
   if (!source) return null;
 
   const handlePress = () => {

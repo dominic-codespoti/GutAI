@@ -15,14 +15,12 @@ import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { mealSheet } from "../../src/stores/mealSheet";
 import { MEAL_TYPES } from "../../src/utils/constants";
+import { radius, spacing } from "../../src/utils/theme";
 import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-} from "../../src/utils/theme";
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { MealCardSkeleton } from "../../components/SkeletonLoader";
 import { MealDateNav } from "../../components/meals/MealDateNav";
@@ -38,6 +36,9 @@ import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
 import type { MealLog } from "../../src/types";
 
 export default function MealsScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow, shadowMd } = useThemeShadow();
   const router = useRouter();
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
   const selectedMealType = useMealSheetStore((s) => s.selectedMealType);

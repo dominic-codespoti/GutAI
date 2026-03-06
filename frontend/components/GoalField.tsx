@@ -1,5 +1,6 @@
 import { View, Text, TextInput } from "react-native";
-import { colors, radius, spacing, fonts } from "../src/utils/theme";
+import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 
 interface GoalFieldProps {
   label: string;
@@ -8,6 +9,8 @@ interface GoalFieldProps {
 }
 
 export function GoalField({ label, value, onChangeText }: GoalFieldProps) {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
   return (
     <View style={{ marginBottom: spacing.md }}>
       <Text style={{ ...fonts.caption, marginBottom: spacing.xs }}>

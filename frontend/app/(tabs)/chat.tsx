@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import EventSource from "react-native-sse";
-import { colors } from "../../src/utils/theme";
+import { useThemeColors } from "../../src/stores/theme";
 import { chatApi } from "../../src/api";
 import { getItem } from "../../src/utils/storage";
 import Constants from "expo-constants";
@@ -44,6 +44,9 @@ interface LocalMessage {
 }
 
 export default function ChatScreen() {
+  const colors = useThemeColors();
+  const styles = getStyles(colors);
+  const mdStyles = getMarkdownStyles(colors);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
@@ -205,48 +208,51 @@ export default function ChatScreen() {
     };
   }, []);
 
-  const renderMessage = useCallback(({ item }: { item: LocalMessage }) => {
-    const isUser = item.role === "user";
-    return (
-      <View
-        style={[
-          styles.bubble,
-          isUser ? styles.userBubble : styles.assistantBubble,
-        ]}
-      >
-        {!isUser && (
-          <View style={styles.avatarRow}>
-            <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={14} color="#fff" />
+  const renderMessage = useCallback(
+    ({ item }: { item: LocalMessage }) => {
+      const isUser = item.role === "user";
+      return (
+        <View
+          style={[
+            styles.bubble,
+            isUser ? styles.userBubble : styles.assistantBubble,
+          ]}
+        >
+          {!isUser && (
+            <View style={styles.avatarRow}>
+              <View style={styles.avatar}>
+                <Ionicons name="sparkles" size={14} color="#fff" />
+              </View>
+              <Text style={styles.avatarLabel}>GutAI Coach</Text>
             </View>
-            <Text style={styles.avatarLabel}>GutAI Coach</Text>
-          </View>
-        )}
-        {item.toolStatus && (
-          <View style={styles.toolBadge}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.toolText}>{item.toolStatus}</Text>
-          </View>
-        )}
-        {isUser ? (
-          <Text style={[styles.msgText, styles.userText]}>
-            {item.content}
-            {item.isStreaming && !item.content && !item.toolStatus && "…"}
-          </Text>
-        ) : (
-          <>
-            <Markdown style={markdownStyles}>
-              {item.content ||
-                (item.isStreaming && !item.toolStatus ? "…" : "")}
-            </Markdown>
-            {item.isStreaming && item.content && (
-              <View style={styles.cursorDot} />
-            )}
-          </>
-        )}
-      </View>
-    );
-  }, []);
+          )}
+          {item.toolStatus && (
+            <View style={styles.toolBadge}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.toolText}>{item.toolStatus}</Text>
+            </View>
+          )}
+          {isUser ? (
+            <Text style={[styles.msgText, styles.userText]}>
+              {item.content}
+              {item.isStreaming && !item.content && !item.toolStatus && "…"}
+            </Text>
+          ) : (
+            <>
+              <Markdown style={mdStyles}>
+                {item.content ||
+                  (item.isStreaming && !item.toolStatus ? "…" : "")}
+              </Markdown>
+              {item.isStreaming && item.content && (
+                <View style={styles.cursorDot} />
+              )}
+            </>
+          )}
+        </View>
+      );
+    },
+    [colors, styles, mdStyles],
+  );
 
   // Paywall gate — show upgrade screen if not subscribed
   if (!subLoaded) {
@@ -431,26 +437,26 @@ function formatToolName(name?: string): string {
   return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const markdownStyles = {
+const getMarkdownStyles = (colors: any) => ({
   body: { fontSize: 15, lineHeight: 22, color: colors.text },
   paragraph: { marginTop: 0, marginBottom: 6 },
   strong: { fontWeight: "700" as const },
   link: { color: colors.primary },
   code_inline: {
-    backgroundColor: "#f1f5f9",
+    backgroundColor: colors.borderLight,
     borderRadius: 4,
     paddingHorizontal: 4,
     fontSize: 13,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    color: "#334155",
+    color: colors.textSecondary,
   },
   fence: {
-    backgroundColor: "#f1f5f9",
+    backgroundColor: colors.borderLight,
     borderRadius: 8,
     padding: 10,
     fontSize: 13,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    color: "#334155",
+    color: colors.textSecondary,
   },
   bullet_list: { marginTop: 2, marginBottom: 6 },
   ordered_list: { marginTop: 2, marginBottom: 6 },
@@ -473,200 +479,205 @@ const markdownStyles = {
     color: colors.text,
     marginBottom: 4,
   },
-};
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.primaryBorder,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
-  headerSubtitle: { fontSize: 12, color: colors.textMuted },
-  clearBtn: { padding: 8 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  emptyIcon: { marginBottom: 16 },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  suggestions: { gap: 8, width: "100%" },
-  suggestionChip: {
-    backgroundColor: colors.primaryBg,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  suggestionText: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: "500",
-  },
-  messageList: { paddingHorizontal: 12, paddingVertical: 16 },
-  bubble: {
-    maxWidth: "85%",
-    marginBottom: 12,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  userBubble: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.primary,
-    borderBottomRightRadius: 4,
-  },
-  assistantBubble: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.card,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  avatarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
-  },
-  avatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarLabel: { fontSize: 11, fontWeight: "600", color: colors.textMuted },
-  toolBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: colors.primaryBg,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginBottom: 6,
-    alignSelf: "flex-start",
-  },
-  toolText: { fontSize: 11, color: colors.primary, fontWeight: "500" },
-  msgText: { fontSize: 15, lineHeight: 22 },
-  userText: { color: "#fff" },
-  aiText: { color: colors.text },
-  cursorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-    marginTop: 4,
-    opacity: 0.6,
-  },
-  inputBar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-    gap: 8,
-  },
-  textInput: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: colors.text,
-    maxHeight: 100,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
-  paywallGate: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  paywallIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primaryBg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  paywallTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  paywallBody: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  paywallBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    width: "100%",
-  },
-  paywallBtnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
 });
+
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingBottom: 12,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.primaryBorder,
+    },
+    headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+    headerIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
+    headerSubtitle: { fontSize: 12, color: colors.textMuted },
+    clearBtn: { padding: 8 },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 32,
+    },
+    emptyIcon: { marginBottom: 16 },
+    emptyTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.text,
+      textAlign: "center",
+      marginBottom: 8,
+    },
+    emptySubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+      lineHeight: 20,
+      marginBottom: 24,
+    },
+    suggestions: { gap: 8, width: "100%" },
+    suggestionChip: {
+      backgroundColor: colors.primaryBg,
+      borderWidth: 1,
+      borderColor: colors.primaryBorder,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+    },
+    suggestionText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: "500",
+    },
+    messageList: { paddingHorizontal: 12, paddingVertical: 16 },
+    bubble: {
+      maxWidth: "85%",
+      marginBottom: 12,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    userBubble: {
+      alignSelf: "flex-end",
+      backgroundColor: colors.primary,
+      borderBottomRightRadius: 4,
+    },
+    assistantBubble: {
+      alignSelf: "flex-start",
+      backgroundColor: colors.card,
+      borderBottomLeftRadius: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    avatarRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 4,
+    },
+    avatar: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarLabel: { fontSize: 11, fontWeight: "600", color: colors.textMuted },
+    toolBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: colors.primaryBg,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      marginBottom: 6,
+      alignSelf: "flex-start",
+    },
+    toolText: { fontSize: 11, color: colors.primary, fontWeight: "500" },
+    msgText: { fontSize: 15, lineHeight: 22 },
+    userText: { color: "#fff" },
+    aiText: { color: colors.text },
+    cursorDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.primary,
+      marginTop: 4,
+      opacity: 0.6,
+    },
+    inputBar: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      backgroundColor: colors.card,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      gap: 8,
+    },
+    textInput: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: colors.text,
+      maxHeight: 100,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sendBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 2,
+    },
+    sendBtnDisabled: { opacity: 0.5 },
+    paywallGate: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 32,
+    },
+    paywallIconWrap: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: colors.primaryBg,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 20,
+    },
+    paywallTitle: {
+      fontSize: 22,
+      fontWeight: "700",
+      color: colors.text,
+      textAlign: "center",
+      marginBottom: 12,
+    },
+    paywallBody: {
+      fontSize: 15,
+      color: colors.textSecondary,
+      textAlign: "center",
+      lineHeight: 22,
+      marginBottom: 28,
+    },
+    paywallBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 28,
+      width: "100%",
+    },
+    paywallBtnText: {
+      color: "#fff",
+      fontSize: 16,
+      fontWeight: "700",
+    },
+  });

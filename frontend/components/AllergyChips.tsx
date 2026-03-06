@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { ALLERGY_OPTIONS } from "../src/utils/options";
-import { colors, radius, spacing } from "../src/utils/theme";
+import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 
 interface AllergyChipsProps {
   selected: string[];
@@ -8,6 +9,7 @@ interface AllergyChipsProps {
 }
 
 export function AllergyChips({ selected, onToggle }: AllergyChipsProps) {
+  const colors = useThemeColors();
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       {ALLERGY_OPTIONS.map((a) => {

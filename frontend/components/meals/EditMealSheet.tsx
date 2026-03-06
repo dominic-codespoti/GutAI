@@ -17,16 +17,13 @@ import { mapEditItemToRequest } from "../../src/utils/mealMappers";
 import { shiftDate, formatDateLabel } from "../../src/utils/date";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { toast } from "../../src/stores/toast";
-import {
-  colors,
-  radius,
-  spacing,
-  fonts,
-  mealTypeEmoji,
-} from "../../src/utils/theme";
+import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../../src/stores/theme";
 import type { MealItem, FoodProduct } from "../../src/types";
 
 export function EditMealSheet() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
   const mode = useMealSheetStore((s) => s.mode);
   const editingMeal = useMealSheetStore((s) => s.editingMeal);
   const close = useMealSheetStore((s) => s.close);

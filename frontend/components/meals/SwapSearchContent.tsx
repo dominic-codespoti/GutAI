@@ -12,7 +12,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { foodApi } from "../../src/api";
 import { FoodSearchResult } from "../FoodSearchResult";
-import { colors, radius, spacing } from "../../src/utils/theme";
+import { radius, spacing } from "../../src/utils/theme";
+import { useThemeColors } from "../../src/stores/theme";
 import type { FoodProduct } from "../../src/types";
 
 interface Props {
@@ -20,12 +21,12 @@ interface Props {
   onSelect: (food: FoodProduct) => void;
   onBack: () => void;
 }
-
 export function SwapSearchContent({
   initialSearch = "",
   onSelect,
   onBack,
 }: Props) {
+  const colors = useThemeColors();
   const router = useRouter();
   const [search, setSearch] = useState(initialSearch);
   const [debounced, setDebounced] = useState(initialSearch);
@@ -74,6 +75,8 @@ export function SwapSearchContent({
         value={search}
         onChangeText={setSearch}
         autoFocus
+        autoCapitalize="sentences"
+        returnKeyType="search"
         style={{
           backgroundColor: colors.bg,
           borderRadius: radius.sm,

@@ -20,17 +20,13 @@ import {
   DIET_OPTIONS,
   GUT_CONDITION_OPTIONS,
 } from "../src/utils/options";
-import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-} from "../src/utils/theme";
+import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 import { SafeScreen } from "../components/SafeScreen";
 
 export default function OnboardingScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
   const { setUser } = useAuthStore();
   const router = useRouter();
   const [step, setStep] = useState(0);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,17 +16,24 @@ import { Ionicons } from "@expo/vector-icons";
 import { DashboardSkeleton } from "../../components/SkeletonLoader";
 import { ErrorState } from "../../components/ErrorState";
 import { useRouter } from "expo-router";
-import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-  mealTypeEmoji,
-} from "../../src/utils/theme";
 import Svg, { Circle } from "react-native-svg";
+import ReanimatedObj, {
+  useSharedValue,
+  useAnimatedProps,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import { SafeScreen } from "../../components/SafeScreen";
+import {
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
+import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
+
+const AnimatedCircle = ReanimatedObj.createAnimatedComponent(Circle);
+const AnimatedView = ReanimatedObj.createAnimatedComponent(View);
 
 function CalorieRing({
   eaten,
@@ -37,12 +44,26 @@ function CalorieRing({
   goal: number;
   size?: number;
 }) {
+  const c = useThemeColors();
   const strokeWidth = 12;
   const r = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * r;
   const progress = Math.min(eaten / goal, 1);
-  const strokeDashoffset = circumference * (1 - progress);
   const overGoal = eaten > goal;
+
+  const animProgress = useSharedValue(0);
+
+  useEffect(() => {
+    animProgress.value = 0;
+    animProgress.value = withTiming(progress, {
+      duration: 1000,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [eaten, goal]);
+
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * (1 - animProgress.value),
+  }));
 
   return (
     <View
@@ -62,20 +83,20 @@ function CalorieRing({
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke={colors.borderLight}
+          stroke={c.borderLight}
           strokeWidth={strokeWidth}
           fill="none"
         />
-        <Circle
+        <AnimatedCircle
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke={overGoal ? colors.danger : colors.primaryLight}
+          stroke={overGoal ? c.danger : c.primaryLight}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={`${circumference}`}
-          strokeDashoffset={strokeDashoffset}
           strokeLinecap="round"
+          animatedProps={animatedProps}
         />
       </Svg>
       <View style={{ position: "absolute", alignItems: "center" }}>
@@ -83,12 +104,12 @@ function CalorieRing({
           style={{
             fontSize: 32,
             fontWeight: "800",
-            color: overGoal ? colors.danger : colors.primary,
+            color: overGoal ? c.danger : c.primary,
           }}
         >
           {eaten}
         </Text>
-        <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: -2 }}>
+        <Text style={{ fontSize: 12, color: c.textMuted, marginTop: -2 }}>
           of {goal} cal
         </Text>
       </View>
@@ -109,7 +130,25 @@ function MacroBar({
   color: string;
   unit?: string;
 }) {
+  const c = useThemeColors();
   const pct = Math.min(value / goal, 1);
+  const animWidth = useSharedValue(0);
+
+  useEffect(() => {
+    animWidth.value = 0;
+    animWidth.value = withTiming(pct, {
+      duration: 800,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [value, goal]);
+
+  const barStyle = useAnimatedStyle(() => ({
+    height: 6,
+    backgroundColor: color,
+    borderRadius: 3,
+    width: `${animWidth.value * 100}%`,
+  }));
+
   return (
     <View style={{ marginBottom: 14 }}>
       <View
@@ -123,12 +162,12 @@ function MacroBar({
           style={{
             fontSize: 13,
             fontWeight: "600",
-            color: colors.textSecondary,
+            color: c.textSecondary,
           }}
         >
           {label}
         </Text>
-        <Text style={{ fontSize: 13, color: colors.textMuted }}>
+        <Text style={{ fontSize: 13, color: c.textMuted }}>
           <Text style={{ fontWeight: "700", color }}>{Math.round(value)}</Text>{" "}
           / {goal}
           {unit}
@@ -137,24 +176,20 @@ function MacroBar({
       <View
         style={{
           height: 6,
-          backgroundColor: colors.borderLight,
+          backgroundColor: c.borderLight,
           borderRadius: 3,
         }}
       >
-        <View
-          style={{
-            height: 6,
-            backgroundColor: color,
-            borderRadius: 3,
-            width: `${pct * 100}%`,
-          }}
-        />
+        <AnimatedView style={barStyle} />
       </View>
     </View>
   );
 }
 
 export default function DashboardScreen() {
+  const c = useThemeColors();
+  const f = useThemeFonts();
+  const { shadow: sh, shadowMd: shMd } = useThemeShadow();
   const [fabOpen, setFabOpen] = useState(false);
   const [macrosExpanded, setMacrosExpanded] = useState(false);
 
@@ -219,7 +254,7 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView style={{ flex: 1, backgroundColor: c.bg }}>
         <DashboardSkeleton />
       </ScrollView>
     );
@@ -228,12 +263,12 @@ export default function DashboardScreen() {
   if (mealsError) {
     return (
       <ScrollView
-        style={{ flex: 1, backgroundColor: colors.bg }}
+        style={{ flex: 1, backgroundColor: c.bg }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
+            tintColor={c.primary}
           />
         }
       >
@@ -271,19 +306,19 @@ export default function DashboardScreen() {
     {
       label: "Food Lookup",
       icon: "search" as const,
-      color: colors.accent,
+      color: c.accent,
       route: "/(tabs)/scan" as const,
     },
     {
       label: "Log Symptom",
       icon: "pulse" as const,
-      color: colors.secondary,
+      color: c.secondary,
       route: "/(tabs)/symptoms" as const,
     },
     {
       label: "Log Meal",
       icon: "restaurant" as const,
-      color: colors.primary,
+      color: c.primary,
       route: "/(tabs)/meals" as const,
     },
   ];
@@ -296,7 +331,7 @@ export default function DashboardScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
+            tintColor={c.primary}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -304,10 +339,10 @@ export default function DashboardScreen() {
         <View style={{ padding: spacing.xl }}>
           {/* Header */}
           <View style={{ marginBottom: spacing.lg }}>
-            <Text style={{ fontSize: 15, color: colors.textMuted }}>
+            <Text style={{ fontSize: 15, color: c.textMuted }}>
               {greeting},
             </Text>
-            <Text style={fonts.h1}>{user?.displayName ?? "there"} 👋</Text>
+            <Text style={f.h1}>{user?.displayName ?? "there"} 👋</Text>
           </View>
 
           {/* Alerts */}
@@ -315,20 +350,20 @@ export default function DashboardScreen() {
             <TouchableOpacity
               onPress={() => router.push("/(tabs)/profile")}
               style={{
-                backgroundColor: colors.dangerBg,
+                backgroundColor: c.dangerBg,
                 borderRadius: radius.md,
                 padding: 14,
                 marginBottom: spacing.lg,
                 flexDirection: "row",
                 alignItems: "center",
                 borderWidth: 1,
-                borderColor: colors.dangerBorder,
+                borderColor: c.dangerBorder,
               }}
             >
-              <Ionicons name="warning" size={18} color={colors.danger} />
+              <Ionicons name="warning" size={18} color={c.danger} />
               <Text
                 style={{
-                  color: colors.danger,
+                  color: c.danger,
                   fontWeight: "600",
                   marginLeft: 8,
                   flex: 1,
@@ -338,11 +373,7 @@ export default function DashboardScreen() {
                 {alerts.length} food additive alert
                 {alerts.length !== 1 ? "s" : ""} active
               </Text>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.danger}
-              />
+              <Ionicons name="chevron-forward" size={16} color={c.danger} />
             </TouchableOpacity>
           )}
 
@@ -353,119 +384,134 @@ export default function DashboardScreen() {
             <View
               style={{
                 flex: 1,
-                backgroundColor: colors.primaryBg,
+                backgroundColor: c.primaryBg,
                 borderRadius: radius.md,
                 padding: 14,
                 alignItems: "center",
-                ...shadow,
+                justifyContent: "center",
+                ...sh,
               }}
             >
               <Text
                 style={{
                   fontSize: 24,
                   fontWeight: "800",
-                  color: colors.primary,
+                  color: c.primary,
                 }}
               >
                 {mealCount}
               </Text>
               <Text
                 style={{
-                  fontSize: 12,
-                  color: colors.primary,
-                  fontWeight: "500",
+                  fontSize: 11,
+                  color: c.primary,
+                  fontWeight: "600",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  textAlign: "center",
                 }}
               >
-                meals today
+                Meals
               </Text>
             </View>
             <View
               style={{
                 flex: 1,
-                backgroundColor:
-                  symptomCount > 0 ? colors.warningBg : colors.primaryBg,
+                backgroundColor: symptomCount > 0 ? c.warningBg : c.primaryBg,
                 borderRadius: radius.md,
                 padding: 14,
                 alignItems: "center",
-                ...shadow,
+                justifyContent: "center",
+                ...sh,
               }}
             >
               <Text
                 style={{
                   fontSize: 24,
                   fontWeight: "800",
-                  color: symptomCount > 0 ? colors.warning : colors.primary,
+                  color: symptomCount > 0 ? c.warning : c.primary,
                 }}
               >
                 {symptomCount}
               </Text>
               <Text
                 style={{
-                  fontSize: 12,
-                  color: symptomCount > 0 ? colors.warning : colors.primary,
-                  fontWeight: "500",
+                  fontSize: 11,
+                  color: symptomCount > 0 ? c.warning : c.primary,
+                  fontWeight: "600",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  textAlign: "center",
                 }}
               >
-                symptom{symptomCount !== 1 ? "s" : ""}
+                Symptoms
               </Text>
             </View>
             <View
               style={{
                 flex: 1,
-                backgroundColor: colors.secondaryBg,
+                backgroundColor: c.secondaryBg,
                 borderRadius: radius.md,
                 padding: 14,
                 alignItems: "center",
-                ...shadow,
+                justifyContent: "center",
+                ...sh,
               }}
             >
               <Text
                 style={{
                   fontSize: 24,
                   fontWeight: "800",
-                  color: colors.secondary,
+                  color: c.secondary,
                 }}
               >
                 {caloriesRemaining}
               </Text>
               <Text
                 style={{
-                  fontSize: 12,
-                  color: colors.secondary,
-                  fontWeight: "500",
+                  fontSize: 11,
+                  color: c.secondary,
+                  fontWeight: "600",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  textAlign: "center",
                 }}
               >
-                cal left
+                Cal Left
               </Text>
             </View>
             {streak && streak.currentStreak > 0 && (
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#fff7ed",
+                  backgroundColor: c.warningBg,
                   borderRadius: radius.md,
                   padding: 14,
                   alignItems: "center",
-                  ...shadow,
+                  justifyContent: "center",
+                  ...sh,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 24,
                     fontWeight: "800",
-                    color: "#ea580c",
+                    color: c.warning,
                   }}
                 >
-                  {streak.currentStreak}🔥
+                  {streak.currentStreak} 🔥
                 </Text>
                 <Text
                   style={{
-                    fontSize: 12,
-                    color: "#ea580c",
-                    fontWeight: "500",
+                    fontSize: 11,
+                    color: c.warning,
+                    fontWeight: "600",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    textAlign: "center",
                   }}
                 >
-                  day streak
+                  Streak
                 </Text>
               </View>
             )}
@@ -474,14 +520,14 @@ export default function DashboardScreen() {
           {/* Calorie Ring Card */}
           <View
             style={{
-              backgroundColor: colors.card,
+              backgroundColor: c.card,
               borderRadius: radius.lg,
               padding: spacing.xl,
               marginBottom: spacing.lg,
-              ...shadowMd,
+              ...shMd,
             }}
           >
-            <Text style={{ ...fonts.h4, marginBottom: spacing.lg }}>
+            <Text style={{ ...f.h4, marginBottom: spacing.lg }}>
               Today's Calories
             </Text>
             <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
@@ -495,26 +541,25 @@ export default function DashboardScreen() {
                   style={{
                     fontSize: 20,
                     fontWeight: "700",
-                    color: colors.primary,
+                    color: c.primary,
                   }}
                 >
                   {caloriesEaten}
                 </Text>
-                <Text style={fonts.caption}>eaten</Text>
+                <Text style={f.caption}>eaten</Text>
               </View>
-              <View style={{ width: 1, backgroundColor: colors.borderLight }} />
+              <View style={{ width: 1, backgroundColor: c.borderLight }} />
               <View style={{ alignItems: "center" }}>
                 <Text
                   style={{
                     fontSize: 20,
                     fontWeight: "700",
-                    color:
-                      caloriesRemaining > 0 ? colors.secondary : colors.danger,
+                    color: caloriesRemaining > 0 ? c.secondary : c.danger,
                   }}
                 >
                   {caloriesRemaining}
                 </Text>
-                <Text style={fonts.caption}>remaining</Text>
+                <Text style={f.caption}>remaining</Text>
               </View>
             </View>
           </View>
@@ -522,11 +567,11 @@ export default function DashboardScreen() {
           {/* Macros Card */}
           <View
             style={{
-              backgroundColor: colors.card,
+              backgroundColor: c.card,
               borderRadius: radius.lg,
               padding: spacing.xl,
               marginBottom: spacing.lg,
-              ...shadow,
+              ...sh,
             }}
           >
             <View
@@ -538,9 +583,7 @@ export default function DashboardScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={{ ...fonts.h4, marginBottom: spacing.lg }}>
-                Macros
-              </Text>
+              <Text style={{ ...f.h4, marginBottom: spacing.lg }}>Macros</Text>
 
               <Ionicons
                 name={macrosExpanded ? "chevron-up" : "chevron-down"}
@@ -548,26 +591,26 @@ export default function DashboardScreen() {
                   setMacrosExpanded((prev) => !prev);
                 }}
                 size={20}
-                color={colors.secondary}
+                color={c.secondary}
               />
             </View>
             <MacroBar
               label="Protein"
               value={summary?.totalProteinG ?? 0}
               goal={user?.dailyProteinGoalG ?? 150}
-              color={colors.protein}
+              color={c.protein}
             />
             <MacroBar
               label="Carbs"
               value={summary?.totalCarbsG ?? 0}
               goal={user?.dailyCarbGoalG ?? 250}
-              color={colors.carbs}
+              color={c.carbs}
             />
             <MacroBar
               label="Fat"
               value={summary?.totalFatG ?? 0}
               goal={user?.dailyFatGoalG ?? 65}
-              color={colors.fat}
+              color={c.fat}
             />
 
             {macrosExpanded && (
@@ -576,12 +619,12 @@ export default function DashboardScreen() {
                   label="Fiber"
                   value={summary?.totalFiberG ?? 0}
                   goal={user?.dailyFiberGoalG ?? 30}
-                  color={colors.fiber}
+                  color={c.fiber}
                 />
                 <View
                   style={{
                     height: 1,
-                    backgroundColor: colors.divider,
+                    backgroundColor: c.divider,
                     marginVertical: 4,
                   }}
                 />
@@ -589,13 +632,13 @@ export default function DashboardScreen() {
                   label="Sugar"
                   value={summary?.totalSugarG ?? 0}
                   goal={50}
-                  color={colors.sugar}
+                  color={c.sugar}
                 />
                 <MacroBar
                   label="Sodium"
                   value={summary?.totalSodiumMg ?? 0}
                   goal={2300}
-                  color={colors.sodium}
+                  color={c.sodium}
                   unit="mg"
                 />
               </>
@@ -612,12 +655,12 @@ export default function DashboardScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={fonts.h3}>Today's Meals</Text>
+              <Text style={f.h3}>Today's Meals</Text>
               <TouchableOpacity onPress={() => router.push("/(tabs)/meals")}>
                 <Text
                   style={{
                     fontSize: 13,
-                    color: colors.secondary,
+                    color: c.secondary,
                     fontWeight: "600",
                   }}
                 >
@@ -631,13 +674,13 @@ export default function DashboardScreen() {
                   key={meal.id}
                   onPress={() => router.push("/(tabs)/meals")}
                   style={{
-                    backgroundColor: colors.card,
+                    backgroundColor: c.card,
                     borderRadius: radius.md,
                     padding: spacing.lg,
                     marginBottom: spacing.sm,
                     flexDirection: "row",
                     alignItems: "center",
-                    ...shadow,
+                    ...sh,
                   }}
                 >
                   <View
@@ -645,7 +688,7 @@ export default function DashboardScreen() {
                       width: 40,
                       height: 40,
                       borderRadius: radius.sm,
-                      backgroundColor: colors.primaryBg,
+                      backgroundColor: c.primaryBg,
                       alignItems: "center",
                       justifyContent: "center",
                       marginRight: spacing.md,
@@ -660,7 +703,7 @@ export default function DashboardScreen() {
                       style={{
                         fontSize: 15,
                         fontWeight: "600",
-                        color: colors.text,
+                        color: c.text,
                       }}
                     >
                       {meal.mealType}
@@ -668,7 +711,7 @@ export default function DashboardScreen() {
                     <Text
                       style={{
                         fontSize: 12,
-                        color: colors.textMuted,
+                        color: c.textMuted,
                         marginTop: 2,
                       }}
                     >
@@ -684,7 +727,7 @@ export default function DashboardScreen() {
                     style={{
                       fontSize: 16,
                       fontWeight: "700",
-                      color: colors.text,
+                      color: c.text,
                     }}
                   >
                     {meal.totalCalories}
@@ -692,7 +735,7 @@ export default function DashboardScreen() {
                   <Text
                     style={{
                       fontSize: 12,
-                      color: colors.textMuted,
+                      color: c.textMuted,
                       marginLeft: 2,
                     }}
                   >
@@ -703,21 +746,21 @@ export default function DashboardScreen() {
             ) : (
               <View
                 style={{
-                  backgroundColor: colors.card,
+                  backgroundColor: c.card,
                   borderRadius: radius.md,
                   padding: spacing.xxxl,
                   alignItems: "center",
-                  ...shadow,
+                  ...sh,
                 }}
               >
                 <Ionicons
                   name="restaurant-outline"
                   size={36}
-                  color={colors.textLight}
+                  color={c.textLight}
                 />
                 <Text
                   style={{
-                    color: colors.textMuted,
+                    color: c.textMuted,
                     marginTop: spacing.sm,
                     fontSize: 14,
                   }}
@@ -728,7 +771,7 @@ export default function DashboardScreen() {
                   onPress={() => router.push("/(tabs)/meals")}
                   style={{
                     marginTop: spacing.md,
-                    backgroundColor: colors.primaryBg,
+                    backgroundColor: c.primaryBg,
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: radius.sm,
@@ -736,7 +779,7 @@ export default function DashboardScreen() {
                 >
                   <Text
                     style={{
-                      color: colors.primary,
+                      color: c.primary,
                       fontWeight: "600",
                       fontSize: 13,
                     }}
@@ -758,12 +801,12 @@ export default function DashboardScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={fonts.h3}>Today's Symptoms</Text>
+              <Text style={f.h3}>Today's Symptoms</Text>
               <TouchableOpacity onPress={() => router.push("/(tabs)/symptoms")}>
                 <Text
                   style={{
                     fontSize: 13,
-                    color: colors.secondary,
+                    color: c.secondary,
                     fontWeight: "600",
                   }}
                 >
@@ -777,13 +820,13 @@ export default function DashboardScreen() {
                   key={log.id}
                   onPress={() => router.push("/(tabs)/symptoms")}
                   style={{
-                    backgroundColor: colors.card,
+                    backgroundColor: c.card,
                     borderRadius: radius.md,
                     padding: 14,
                     marginBottom: spacing.sm,
                     flexDirection: "row",
                     alignItems: "center",
-                    ...shadow,
+                    ...sh,
                   }}
                 >
                   <Text style={{ fontSize: 22, marginRight: spacing.md }}>
@@ -794,7 +837,7 @@ export default function DashboardScreen() {
                       style={{
                         fontSize: 15,
                         fontWeight: "600",
-                        color: colors.text,
+                        color: c.text,
                       }}
                     >
                       {log.symptomName}
@@ -802,7 +845,7 @@ export default function DashboardScreen() {
                     <Text
                       style={{
                         fontSize: 12,
-                        color: colors.textMuted,
+                        color: c.textMuted,
                         marginTop: 2,
                       }}
                     >
@@ -817,10 +860,10 @@ export default function DashboardScreen() {
                     style={{
                       backgroundColor:
                         log.severity <= 3
-                          ? colors.primaryBg
+                          ? c.primaryBg
                           : log.severity <= 6
-                            ? colors.warningBg
-                            : colors.dangerBg,
+                            ? c.warningBg
+                            : c.dangerBg,
                       borderRadius: 6,
                       paddingHorizontal: 8,
                       paddingVertical: 4,
@@ -832,10 +875,10 @@ export default function DashboardScreen() {
                         fontWeight: "700",
                         color:
                           log.severity <= 3
-                            ? colors.primary
+                            ? c.primary
                             : log.severity <= 6
-                              ? colors.warning
-                              : colors.danger,
+                              ? c.warning
+                              : c.danger,
                       }}
                     >
                       {log.severity}/10
@@ -846,17 +889,17 @@ export default function DashboardScreen() {
             ) : (
               <View
                 style={{
-                  backgroundColor: colors.card,
+                  backgroundColor: c.card,
                   borderRadius: radius.md,
                   padding: spacing.xxxl,
                   alignItems: "center",
-                  ...shadow,
+                  ...sh,
                 }}
               >
                 <Text style={{ fontSize: 32 }}>😊</Text>
                 <Text
                   style={{
-                    color: colors.primary,
+                    color: c.primary,
                     marginTop: spacing.sm,
                     fontWeight: "600",
                     fontSize: 14,
@@ -868,7 +911,7 @@ export default function DashboardScreen() {
                   onPress={() => router.push("/(tabs)/symptoms")}
                   style={{
                     marginTop: spacing.md,
-                    backgroundColor: colors.primaryBg,
+                    backgroundColor: c.primaryBg,
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: radius.sm,
@@ -876,7 +919,7 @@ export default function DashboardScreen() {
                 >
                   <Text
                     style={{
-                      color: colors.primary,
+                      color: c.primary,
                       fontWeight: "600",
                       fontSize: 13,
                     }}
@@ -934,17 +977,15 @@ export default function DashboardScreen() {
           >
             <View
               style={{
-                backgroundColor: colors.card,
+                backgroundColor: c.card,
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: radius.sm,
                 marginRight: 12,
-                ...shadow,
+                ...sh,
               }}
             >
-              <Text
-                style={{ fontSize: 13, fontWeight: "600", color: colors.text }}
-              >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: c.text }}>
                 {action.label}
               </Text>
             </View>
@@ -960,7 +1001,7 @@ export default function DashboardScreen() {
                 backgroundColor: action.color,
                 alignItems: "center",
                 justifyContent: "center",
-                ...shadowMd,
+                ...shMd,
               }}
             >
               <Ionicons name={action.icon} size={22} color="#fff" />
@@ -980,10 +1021,10 @@ export default function DashboardScreen() {
           width: 56,
           height: 56,
           borderRadius: 28,
-          backgroundColor: colors.primary,
+          backgroundColor: c.primary,
           alignItems: "center",
           justifyContent: "center",
-          ...shadowMd,
+          ...shMd,
           elevation: 6,
         }}
       >

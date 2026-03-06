@@ -8,7 +8,8 @@ import {
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radius } from "../src/utils/theme";
+import { radius } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 
 interface Props {
   children: React.ReactNode;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function SwipeableItemRow({ children, onSwap, onDelete }: Props) {
+  const colors = useThemeColors();
   const swipeableRef = useRef<Swipeable>(null);
 
   const close = useCallback(() => {

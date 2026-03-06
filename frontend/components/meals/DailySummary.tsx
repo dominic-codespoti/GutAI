@@ -1,5 +1,10 @@
 import { View, Text } from "react-native";
-import { colors, shadow, radius, spacing, fonts } from "../../src/utils/theme";
+import { radius, spacing } from "../../src/utils/theme";
+import {
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import type { DailyNutritionSummary as Summary } from "../../src/types";
 
 interface Props {
@@ -7,6 +12,9 @@ interface Props {
 }
 
 export function DailySummary({ summary }: Props) {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow } = useThemeShadow();
   return (
     <View
       style={{

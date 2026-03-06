@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { MEAL_TYPES } from "../src/utils/constants";
-import { colors } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 
 interface MealTypePickerProps {
   selected: string;
@@ -8,6 +8,7 @@ interface MealTypePickerProps {
 }
 
 export function MealTypePicker({ selected, onSelect }: MealTypePickerProps) {
+  const colors = useThemeColors();
   return (
     <View style={{ flexDirection: "row", marginBottom: 12 }}>
       {MEAL_TYPES.map((type) => (

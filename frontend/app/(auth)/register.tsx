@@ -12,20 +12,21 @@ import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../../src/stores/auth";
 import { toast } from "../../src/stores/toast";
+import { radius, spacing } from "../../src/utils/theme";
 import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-} from "../../src/utils/theme";
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 export default function RegisterScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow, shadowMd } = useThemeShadow();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -157,7 +158,12 @@ export default function RegisterScreen() {
                 placeholderTextColor={colors.textLight}
                 value={displayName}
                 onChangeText={setDisplayName}
-                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  fontSize: 16,
+                  color: colors.text,
+                }}
               />
             </View>
 
@@ -173,7 +179,11 @@ export default function RegisterScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
+              <Ionicons
+                name="mail-outline"
+                size={18}
+                color={colors.textMuted}
+              />
               <TextInput
                 placeholder="Email"
                 placeholderTextColor={colors.textLight}
@@ -181,7 +191,12 @@ export default function RegisterScreen() {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  fontSize: 16,
+                  color: colors.text,
+                }}
               />
             </View>
 
@@ -211,10 +226,14 @@ export default function RegisterScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
-                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  fontSize: 16,
+                  color: colors.text,
+                }}
               />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}>
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons
                   name={showPassword ? "eye-off" : "eye"}
                   size={20}
@@ -246,7 +265,12 @@ export default function RegisterScreen() {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showPassword}
-                style={{ flex: 1, padding: 14, fontSize: 16, color: colors.text }}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  fontSize: 16,
+                  color: colors.text,
+                }}
               />
               {confirmPassword !== "" && (
                 <Ionicons
@@ -257,7 +281,9 @@ export default function RegisterScreen() {
                   }
                   size={20}
                   color={
-                    password === confirmPassword ? colors.primary : colors.danger
+                    password === confirmPassword
+                      ? colors.primary
+                      : colors.danger
                   }
                 />
               )}
@@ -277,7 +303,9 @@ export default function RegisterScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
+                <Text
+                  style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}
+                >
                   Create Account
                 </Text>
               )}

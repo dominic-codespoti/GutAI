@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  Keyboard,
 } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,29 +19,26 @@ import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { mealApi } from "../../src/api";
 import { toast } from "../../src/stores/toast";
 import { mapParsedItemToRequest } from "../../src/utils/mealMappers";
-import {
-  colors,
-  radius,
-  spacing,
-  fonts,
-  shadowMd,
-} from "../../src/utils/theme";
+import { radius, spacing } from "../../src/utils/theme";
+import { useThemeColors } from "../../src/stores/theme";
 import type { ParsedFoodItem, FoodProduct } from "../../src/types";
-
-const editFieldStyle = {
-  borderWidth: 1 as const,
-  borderColor: colors.border,
-  borderRadius: radius.sm,
-  padding: 6,
-  fontSize: 13,
-  color: colors.text,
-  textAlign: "center" as const,
-  backgroundColor: colors.card,
-};
 
 type Tab = "describe" | "manual";
 
 export function AddMealSheet() {
+  const colors = useThemeColors();
+
+  const editFieldStyle = {
+    borderWidth: 1 as const,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: 6,
+    fontSize: 13,
+    color: colors.text,
+    textAlign: "center" as const,
+    backgroundColor: colors.card,
+  };
+
   const mode = useMealSheetStore((s) => s.mode);
   const selectedMealType = useMealSheetStore((s) => s.selectedMealType);
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
@@ -394,7 +392,10 @@ export function AddMealSheet() {
 
           {/* ── Parsed review ── */}
           {activeTab === "describe" && showReview && (
-            <ScrollView style={{ maxHeight: 420 }}>
+            <ScrollView
+              style={{ maxHeight: 420 }}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text
                 style={{
                   fontWeight: "700",

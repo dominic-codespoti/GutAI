@@ -1,11 +1,6 @@
 import { View, Text, TouchableOpacity } from "react-native";
-import {
-  colors,
-  shadow,
-  radius,
-  spacing,
-  mealTypeEmoji,
-} from "../../src/utils/theme";
+import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
+import { useThemeColors, useThemeShadow } from "../../src/stores/theme";
 import { MEAL_TYPES, getMealTypeForTime } from "../../src/utils/constants";
 import { useMealSheetStore, type MealType } from "../../src/stores/mealSheet";
 
@@ -15,6 +10,8 @@ import { useMealSheetStore, type MealType } from "../../src/stores/mealSheet";
  * "All" shows everything and uses time-based type for new entries.
  */
 export function MealTypeChips() {
+  const colors = useThemeColors();
+  const { shadow } = useThemeShadow();
   const selectedMealType = useMealSheetStore((s) => s.selectedMealType);
   const setMealType = useMealSheetStore((s) => s.setMealType);
 

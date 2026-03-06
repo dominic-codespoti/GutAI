@@ -7,7 +7,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeScreen } from "../components/SafeScreen";
-import { colors, radius, spacing, fonts } from "../src/utils/theme";
+import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 
 const sources = [
   {
@@ -88,6 +89,9 @@ const sources = [
 ];
 
 export default function SourcesScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+
   return (
     <SafeScreen edges={["bottom"]}>
       <ScrollView

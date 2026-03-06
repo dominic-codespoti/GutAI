@@ -9,6 +9,7 @@ import {
   RefreshControl,
   BackHandler,
   Platform,
+  Keyboard,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,15 +25,12 @@ import {
 } from "../../components/SkeletonLoader";
 import { shiftDate, formatDateLabel } from "../../src/utils/date";
 import { severityColor } from "../../src/utils/colors";
+import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-  mealTypeEmoji,
-} from "../../src/utils/theme";
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import type {
   SymptomType,
   SymptomLog,
@@ -50,6 +48,8 @@ function SeverityDot({
   selected: boolean;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
+  const { shadowMd } = useThemeShadow();
   const bg = selected ? severityColor(n) : colors.borderLight;
   const size = selected ? 34 : 30;
   return (
@@ -112,6 +112,9 @@ function parseDurationToTimeSpan(input: string): string | undefined {
 }
 
 export default function SymptomsScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow, shadowMd } = useThemeShadow();
   const [selectedType, setSelectedType] = useState<SymptomType | null>(null);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
@@ -296,6 +299,8 @@ export default function SymptomsScreen() {
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

@@ -12,20 +12,21 @@ import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../../src/stores/auth";
 import { toast } from "../../src/stores/toast";
+import { radius, spacing } from "../../src/utils/theme";
 import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-} from "../../src/utils/theme";
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 export default function LoginScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow, shadowMd } = useThemeShadow();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

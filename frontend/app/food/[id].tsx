@@ -29,7 +29,6 @@ import {
 import { toast } from "../../src/stores/toast";
 import type { PersonalizedScore } from "../../src/types";
 import { maybeRequestReview } from "../../src/utils/review";
-import { colors } from "../../src/utils/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { Linking } from "react-native";
 import { SourceChip } from "../../components/SourceChip";

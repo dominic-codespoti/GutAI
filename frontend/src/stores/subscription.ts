@@ -50,9 +50,7 @@ export async function configurePurchases(userId: string) {
   if (__DEV__) {
     Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
     await Purchases.configure({ apiKey: TEST_API_KEY });
-  }
-
-  if (Platform.OS === "ios") {
+  } else if (Platform.OS === "ios") {
     await Purchases.configure({ apiKey: APPLE_API_KEY });
   } else if (Platform.OS === "android") {
     await Purchases.configure({ apiKey: GOOGLE_API_KEY });

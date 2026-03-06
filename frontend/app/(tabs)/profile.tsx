@@ -24,27 +24,29 @@ import { GoalField } from "../../components/GoalField";
 import type { UserFoodAlert, FoodAdditive } from "../../src/types";
 import { ratingColor } from "../../src/utils/colors";
 import { GUT_CONDITION_OPTIONS } from "../../src/utils/options";
+import { radius, spacing } from "../../src/utils/theme";
 import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-} from "../../src/utils/theme";
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 
-const inputStyle = {
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: radius.sm,
-  padding: spacing.md,
-  fontSize: 15,
-  color: colors.text,
-  backgroundColor: colors.bg,
-};
-
 export default function ProfileScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow, shadowMd } = useThemeShadow();
+
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    fontSize: 15,
+    color: colors.text,
+    backgroundColor: colors.bg,
+  };
+
   const { user, logout, setUser } = useAuthStore();
   const router = useRouter();
   const queryClient = useQueryClient();

@@ -27,18 +27,19 @@ import {
   confidenceColor,
   confidenceIcon,
 } from "../../src/utils/colors";
+import { radius, spacing } from "../../src/utils/theme";
 import {
-  colors,
-  shadow,
-  shadowMd,
-  radius,
-  spacing,
-  fonts,
-} from "../../src/utils/theme";
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { useRouter } from "expo-router";
 
 export default function InsightsScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow, shadowMd } = useThemeShadow();
   const [period, setPeriod] = useState(30);
   const router = useRouter();
   const [showAllCorrelations, setShowAllCorrelations] = useState(false);

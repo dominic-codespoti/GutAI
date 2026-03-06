@@ -1,5 +1,5 @@
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
-import { colors } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 import { buildServingPresets } from "../src/utils/nutrition";
 import type { FoodProduct } from "../src/types";
 
@@ -24,6 +24,7 @@ export function ServingSizeSelector({
   product,
   summaryText,
 }: ServingSizeSelectorProps) {
+  const colors = useThemeColors();
   const presets = buildServingPresets(product);
 
   return (

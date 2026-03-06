@@ -4,7 +4,7 @@
     "slug": "gut-ai",
     "scheme": "gutai",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -28,9 +28,7 @@
       },
       "package": "com.djapplications.gutai",
       "versionCode": 10,
-      "permissions": [
-        "android.permission.CAMERA"
-      ]
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "favicon": "./assets/favicon.png"

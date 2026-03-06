@@ -1,6 +1,6 @@
 import { View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 
 type Edge = "top" | "bottom" | "left" | "right";
 
@@ -14,6 +14,7 @@ export function SafeScreen({
   style?: ViewStyle;
 }) {
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
 
   return (
     <View

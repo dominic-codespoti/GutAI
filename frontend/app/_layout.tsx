@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useAuthStore } from "../src/stores/auth";
+import { useThemeStore, useThemeColors } from "../src/stores/theme";
 import ToastContainer from "../components/Toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,6 +18,7 @@ import {
 
 function AuthGate() {
   const { isAuthenticated, isLoading, hydrate, user } = useAuthStore();
+  const c = useThemeColors();
   const segments = useSegments();
   const router = useRouter();
   const rcConfigured = useRef(false);
@@ -80,16 +82,16 @@ function AuthGate() {
           headerShown: true,
           title: "Food Details",
           headerBackTitle: "Back",
-          headerStyle: { backgroundColor: "#f8fafc" },
+          headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
-          headerTintColor: "#0f172a",
+          headerTintColor: c.text,
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => router.back()}
               style={{ marginRight: 8, padding: 4 }}
             >
-              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+              <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
           ),
         }}
@@ -100,16 +102,16 @@ function AuthGate() {
           headerShown: true,
           title: "Settings",
           headerBackTitle: "Back",
-          headerStyle: { backgroundColor: "#f8fafc" },
+          headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
-          headerTintColor: "#0f172a",
+          headerTintColor: c.text,
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => router.back()}
               style={{ marginRight: 8, padding: 4 }}
             >
-              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+              <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
           ),
         }}
@@ -120,16 +122,16 @@ function AuthGate() {
           headerShown: true,
           title: "Sources & Disclaimer",
           headerBackTitle: "Back",
-          headerStyle: { backgroundColor: "#f8fafc" },
+          headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
-          headerTintColor: "#0f172a",
+          headerTintColor: c.text,
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => router.back()}
               style={{ marginRight: 8, padding: 4 }}
             >
-              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+              <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
           ),
         }}
@@ -140,16 +142,16 @@ function AuthGate() {
           headerShown: true,
           title: "Privacy Policy",
           headerBackTitle: "Back",
-          headerStyle: { backgroundColor: "#f8fafc" },
+          headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
-          headerTintColor: "#0f172a",
+          headerTintColor: c.text,
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => router.back()}
               style={{ marginRight: 8, padding: 4 }}
             >
-              <Ionicons name="chevron-back" size={24} color="#0f172a" />
+              <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
           ),
         }}
@@ -159,12 +161,15 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  const resolved = useThemeStore((s) => s.resolved);
+  const c = useThemeColors();
+
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="auto" />
-          <View style={{ flex: 1 }}>
+          <StatusBar style={resolved === "dark" ? "light" : "dark"} />
+          <View style={{ flex: 1, backgroundColor: c.bg }}>
             <AuthGate />
             <ToastContainer />
           </View>

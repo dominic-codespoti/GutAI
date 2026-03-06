@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { View, TouchableOpacity, Dimensions, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "../../src/utils/theme";
+import { useThemeColors } from "../../src/stores/theme";
 import Svg, { Path, Defs, Filter, FeDropShadow } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,6 +12,7 @@ const CURVE_DEPTH = 24;
 const NOTCH_WIDTH = 60;
 
 function TabBarBackground() {
+  const colors = useThemeColors();
   const w = SCREEN_WIDTH;
   const h = TAB_BAR_HEIGHT + CURVE_DEPTH;
   const cx = w / 2;
@@ -64,6 +65,7 @@ function CustomTabBar({
   navigation: any;
 }) {
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
 
   return (
     <View
@@ -74,6 +76,7 @@ function CustomTabBar({
         right: 0,
         height: TAB_BAR_HEIGHT + insets.bottom,
         paddingBottom: insets.bottom,
+        backgroundColor: colors.card,
       }}
     >
       <TabBarBackground />
@@ -184,6 +187,7 @@ function CustomTabBar({
 export default function TabLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -217,6 +221,7 @@ export default function TabLayout() {
         headerRight,
         sceneStyle: {
           paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
+          backgroundColor: colors.bg,
         },
       }}
     >
@@ -271,7 +276,7 @@ export default function TabLayout() {
         options={{
           title: "Coach",
           headerShown: false,
-          sceneStyle: { paddingBottom: 0 },
+          sceneStyle: { paddingBottom: 0, backgroundColor: colors.bg },
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={

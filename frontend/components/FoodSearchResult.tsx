@@ -3,7 +3,12 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { FoodProduct } from "../src/types";
-import { colors, spacing, radius, shadow, fonts } from "../src/utils/theme";
+import { spacing, radius } from "../src/utils/theme";
+import {
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../src/stores/theme";
 import { SourceChip } from "./SourceChip";
 import { ratingColor } from "../src/utils/colors";
 
@@ -20,8 +25,98 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
   onDetailPress,
   style,
 }) => {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow } = useThemeShadow();
   const calories = product.calories100g ?? 0;
   const rating = product.safetyRating;
+
+  const styles = React.useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flexDirection: "row",
+          backgroundColor: colors.card,
+          borderRadius: radius.md,
+          padding: spacing.sm,
+          marginBottom: spacing.sm,
+          borderWidth: 1,
+          borderColor: colors.borderLight,
+        },
+        imageContainer: {
+          width: 60,
+          height: 60,
+          borderRadius: radius.sm,
+          backgroundColor: colors.bg,
+          overflow: "hidden",
+          marginRight: spacing.md,
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        image: {
+          width: "100%",
+          height: "100%",
+        },
+        fallbackImage: {
+          width: "100%",
+          height: "100%",
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        content: {
+          flex: 1,
+          justifyContent: "center",
+        },
+        header: {
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+        },
+        name: {
+          ...fonts.h4,
+          color: colors.text,
+          fontSize: 15,
+        },
+        brand: {
+          ...fonts.caption,
+          marginTop: 1,
+        },
+        infoButton: {
+          padding: 4,
+          marginLeft: spacing.xs,
+        },
+        footer: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginTop: spacing.xs,
+        },
+        stats: {
+          flexDirection: "row",
+          alignItems: "center",
+          flex: 1,
+        },
+        statText: {
+          ...fonts.small,
+          marginRight: spacing.sm,
+        },
+        ratingContainer: {
+          flexDirection: "row",
+          alignItems: "center",
+        },
+        ratingDot: {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          marginRight: 4,
+        },
+        sourceChip: {
+          paddingVertical: 2,
+          paddingHorizontal: 6,
+        },
+      }),
+    [colors, fonts],
+  );
 
   return (
     <TouchableOpacity
@@ -108,86 +203,3 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
     </TouchableOpacity>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  imageContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bg,
-    overflow: "hidden",
-    marginRight: spacing.md,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  fallbackImage: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-  name: {
-    ...fonts.h4,
-    color: colors.text,
-    fontSize: 15,
-  },
-  brand: {
-    ...fonts.caption,
-    marginTop: 1,
-  },
-  infoButton: {
-    padding: 4,
-    marginLeft: spacing.xs,
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: spacing.xs,
-  },
-  stats: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  statText: {
-    ...fonts.small,
-    marginRight: spacing.sm,
-  },
-  ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  ratingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 4,
-  },
-  sourceChip: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-  },
-});

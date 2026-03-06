@@ -10,10 +10,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { mealApi } from "../../src/api";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
-import { colors, shadow, radius, spacing, fonts } from "../../src/utils/theme";
+import { radius, spacing } from "../../src/utils/theme";
+import {
+  useThemeColors,
+  useThemeFonts,
+  useThemeShadow,
+} from "../../src/stores/theme";
 import type { RecentFood } from "../../src/types";
 
 export function RecentFoodsRow() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+  const { shadow } = useThemeShadow();
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
   const selectedMealType = useMealSheetStore((s) => s.selectedMealType);
   const { createMeal } = useMealMutations();

@@ -10,6 +10,7 @@ import {
   Modal,
   BackHandler,
   Platform,
+  Keyboard,
 } from "react-native";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -33,8 +34,10 @@ import { useRouter } from "expo-router";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { ratingColor } from "../../src/utils/colors";
 import { maybeRequestReview } from "../../src/utils/review";
+import { useThemeColors } from "../../src/stores/theme";
 
 export default function ScanScreen() {
+  const colors = useThemeColors();
   const [barcode, setBarcode] = useState("");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -233,19 +236,21 @@ export default function ScanScreen() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: "#f8fafc" }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          tintColor="#22c55e"
+          tintColor={colors.primaryLight}
         />
       }
     >
       {/* Barcode Input */}
       <View
         style={{
-          backgroundColor: "#fff",
+          backgroundColor: colors.card,
           borderRadius: 12,
           padding: 16,
           marginBottom: 12,
@@ -255,7 +260,7 @@ export default function ScanScreen() {
           style={{
             fontSize: 14,
             fontWeight: "600",
-            color: "#334155",
+            color: colors.textSecondary,
             marginBottom: 8,
           }}
         >
@@ -267,10 +272,11 @@ export default function ScanScreen() {
             value={barcode}
             onChangeText={setBarcode}
             keyboardType="number-pad"
+            returnKeyType="search"
             style={{
               flex: 1,
               borderWidth: 1,
-              borderColor: "#e2e8f0",
+              borderColor: colors.border,
               borderRadius: 8,
               padding: 12,
               fontSize: 16,
@@ -279,7 +285,7 @@ export default function ScanScreen() {
           <TouchableOpacity
             onPress={openCamera}
             style={{
-              backgroundColor: "#22c55e",
+              backgroundColor: colors.primaryLight,
               borderRadius: 8,
               width: 48,
               alignItems: "center",
@@ -293,7 +299,7 @@ export default function ScanScreen() {
           <ActivityIndicator style={{ marginTop: 8 }} />
         )}
         {barcodeQuery.isError && (
-          <Text style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>
+          <Text style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}>
             Product not found for this barcode
           </Text>
         )}
@@ -313,7 +319,7 @@ export default function ScanScreen() {
       {/* Search */}
       <View
         style={{
-          backgroundColor: "#fff",
+          backgroundColor: colors.card,
           borderRadius: 12,
           padding: 16,
           marginBottom: 12,
@@ -323,7 +329,7 @@ export default function ScanScreen() {
           style={{
             fontSize: 14,
             fontWeight: "600",
-            color: "#334155",
+            color: colors.textSecondary,
             marginBottom: 8,
           }}
         >
@@ -333,9 +339,11 @@ export default function ScanScreen() {
           placeholder="Search by name..."
           value={searchText}
           onChangeText={setSearchText}
+          autoCapitalize="sentences"
+          returnKeyType="search"
           style={{
             borderWidth: 1,
-            borderColor: "#e2e8f0",
+            borderColor: colors.border,
             borderRadius: 8,
             padding: 12,
             fontSize: 16,
@@ -345,7 +353,7 @@ export default function ScanScreen() {
           <ActivityIndicator style={{ marginTop: 8 }} />
         )}
         {searchResults.isError && (
-          <Text style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>
+          <Text style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}>
             Search failed — try again
           </Text>
         )}
@@ -358,7 +366,13 @@ export default function ScanScreen() {
             }}
           >
             <ActivityIndicator size="small" />
-            <Text style={{ marginLeft: 8, color: "#64748b", fontSize: 13 }}>
+            <Text
+              style={{
+                marginLeft: 8,
+                color: colors.textSecondary,
+                fontSize: 13,
+              }}
+            >
               Loading product details...
             </Text>
           </View>
@@ -383,7 +397,7 @@ export default function ScanScreen() {
           style={{
             fontSize: 20,
             fontWeight: "700",
-            color: "#0f172a",
+            color: colors.text,
             marginBottom: 4,
           }}
         >
@@ -392,7 +406,7 @@ export default function ScanScreen() {
         <Text
           style={{
             fontSize: 16,
-            color: "#64748b",
+            color: colors.textSecondary,
             marginBottom: 20,
           }}
         >
@@ -404,7 +418,7 @@ export default function ScanScreen() {
             style={{
               fontSize: 14,
               fontWeight: "600",
-              color: "#334155",
+              color: colors.textSecondary,
               marginBottom: 8,
             }}
           >
@@ -451,11 +465,17 @@ export default function ScanScreen() {
               flex: 1,
               paddingVertical: 14,
               borderRadius: 12,
-              backgroundColor: "#f1f5f9",
+              backgroundColor: colors.borderLight,
               alignItems: "center",
             }}
           >
-            <Text style={{ color: "#64748b", fontWeight: "600", fontSize: 16 }}>
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontWeight: "600",
+                fontSize: 16,
+              }}
+            >
               Cancel
             </Text>
           </TouchableOpacity>
@@ -464,7 +484,7 @@ export default function ScanScreen() {
             disabled={addToMealMutation.isPending}
             style={{
               flex: 1,
-              backgroundColor: "#22c55e",
+              backgroundColor: colors.primaryLight,
               paddingVertical: 14,
               borderRadius: 12,
               alignItems: "center",
@@ -498,7 +518,7 @@ export default function ScanScreen() {
       {safetyReport.data && (
         <View
           style={{
-            backgroundColor: "#fff",
+            backgroundColor: colors.card,
             borderRadius: 12,
             padding: 16,
             marginTop: 4,
@@ -515,7 +535,7 @@ export default function ScanScreen() {
               style={{
                 fontSize: 18,
                 fontWeight: "700",
-                color: "#0f172a",
+                color: colors.text,
                 marginBottom: 4,
               }}
             >
@@ -528,7 +548,7 @@ export default function ScanScreen() {
                 <Text
                   style={{
                     fontSize: 13,
-                    color: "#3b82f6",
+                    color: colors.protein,
                     fontWeight: "600",
                   }}
                 >
@@ -552,7 +572,7 @@ export default function ScanScreen() {
                 style={{
                   fontSize: 14,
                   fontWeight: "600",
-                  color: "#334155",
+                  color: colors.textSecondary,
                   marginBottom: 8,
                 }}
               >
@@ -577,13 +597,13 @@ export default function ScanScreen() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: "600", color: "#0f172a" }}>
+                      <Text style={{ fontWeight: "600", color: colors.text }}>
                         {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
                       </Text>
                       <Text
                         style={{
                           fontSize: 12,
-                          color: "#64748b",
+                          color: colors.textSecondary,
                           marginTop: 2,
                         }}
                       >
@@ -595,7 +615,7 @@ export default function ScanScreen() {
                       <TouchableOpacity
                         onPress={() => addAlertMutation.mutate(add.id)}
                         style={{
-                          backgroundColor: "#fef2f2",
+                          backgroundColor: colors.dangerBg,
                           borderRadius: 6,
                           paddingHorizontal: 8,
                           paddingVertical: 4,
@@ -605,7 +625,7 @@ export default function ScanScreen() {
                           style={{
                             fontSize: 11,
                             fontWeight: "600",
-                            color: "#ef4444",
+                            color: colors.danger,
                           }}
                         >
                           + Alert
@@ -614,7 +634,7 @@ export default function ScanScreen() {
                     ) : (
                       <View
                         style={{
-                          backgroundColor: "#f0fdf4",
+                          backgroundColor: colors.primaryBg,
                           borderRadius: 6,
                           paddingHorizontal: 8,
                           paddingVertical: 4,
@@ -624,7 +644,7 @@ export default function ScanScreen() {
                           style={{
                             fontSize: 11,
                             fontWeight: "600",
-                            color: "#22c55e",
+                            color: colors.primaryLight,
                           }}
                         >
                           ✓ Alert
@@ -634,7 +654,11 @@ export default function ScanScreen() {
                   </View>
                   {add.healthConcerns && (
                     <Text
-                      style={{ fontSize: 12, color: "#ef4444", marginTop: 2 }}
+                      style={{
+                        fontSize: 12,
+                        color: colors.danger,
+                        marginTop: 2,
+                      }}
                     >
                       ⚠ {add.healthConcerns}
                     </Text>
@@ -649,7 +673,7 @@ export default function ScanScreen() {
             <View
               style={{
                 marginTop: 12,
-                backgroundColor: "#f8fafc",
+                backgroundColor: colors.bg,
                 borderRadius: 8,
                 padding: 12,
               }}
@@ -658,7 +682,7 @@ export default function ScanScreen() {
                 style={{
                   fontSize: 13,
                   fontWeight: "600",
-                  color: "#334155",
+                  color: colors.textSecondary,
                   marginBottom: 8,
                 }}
               >
@@ -703,7 +727,9 @@ export default function ScanScreen() {
                   }}
                   style={{ paddingHorizontal: 12, paddingVertical: 8 }}
                 >
-                  <Text style={{ color: "#64748b", fontWeight: "600" }}>
+                  <Text
+                    style={{ color: colors.textSecondary, fontWeight: "600" }}
+                  >
                     Cancel
                   </Text>
                 </TouchableOpacity>
@@ -713,7 +739,7 @@ export default function ScanScreen() {
                   }
                   disabled={addToMealMutation.isPending}
                   style={{
-                    backgroundColor: "#22c55e",
+                    backgroundColor: colors.primaryLight,
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: 8,
@@ -743,7 +769,7 @@ export default function ScanScreen() {
               }}
               style={{
                 marginTop: 12,
-                backgroundColor: "#22c55e",
+                backgroundColor: colors.primaryLight,
                 borderRadius: 8,
                 padding: 12,
                 flexDirection: "row",

@@ -1,6 +1,8 @@
 import { Platform } from "react-native";
 
-export const colors = {
+/* ── Color palettes ── */
+
+export const lightColors = {
   primary: "#16a34a",
   primaryLight: "#22c55e",
   primaryBg: "#f0fdf4",
@@ -40,6 +42,52 @@ export const colors = {
   sugar: "#f97316",
   sodium: "#06b6d4",
 };
+
+export const darkColors: typeof lightColors = {
+  primary: "#22c55e",
+  primaryLight: "#4ade80",
+  primaryBg: "#052e16",
+  primaryBorder: "#166534",
+
+  secondary: "#38bdf8",
+  secondaryBg: "#0c1929",
+
+  accent: "#a78bfa",
+  accentBg: "#1e1633",
+
+  warning: "#fbbf24",
+  warningBg: "#1c1508",
+  warningBorder: "#854d0e",
+
+  danger: "#f87171",
+  dangerBg: "#1f0a0a",
+  dangerBorder: "#991b1b",
+
+  bg: "#0f172a",
+  card: "#1e293b",
+  cardHover: "#1e293b",
+
+  text: "#f1f5f9",
+  textSecondary: "#94a3b8",
+  textMuted: "#64748b",
+  textLight: "#475569",
+
+  border: "#334155",
+  borderLight: "#1e293b",
+  divider: "#1e293b",
+
+  protein: "#60a5fa",
+  carbs: "#fbbf24",
+  fat: "#f87171",
+  fiber: "#a78bfa",
+  sugar: "#fb923c",
+  sodium: "#22d3ee",
+};
+
+/** Backward-compatible export — defaults to light. Use `useThemeColors()` for reactive dark mode. */
+export const colors = lightColors;
+
+export type ThemeColors = typeof lightColors;
 
 export const spacing = {
   xs: 4,

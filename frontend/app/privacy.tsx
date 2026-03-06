@@ -7,11 +7,15 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeScreen } from "../components/SafeScreen";
-import { colors, radius, spacing, fonts } from "../src/utils/theme";
+import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 
 const CONTACT_EMAIL = "support@workoutquestapp.com";
 
 export default function PrivacyPolicyScreen() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
+
   return (
     <SafeScreen edges={["bottom"]}>
       <ScrollView
@@ -224,6 +228,7 @@ export default function PrivacyPolicyScreen() {
 }
 
 function SectionHeading({ children }: { children: string }) {
+  const colors = useThemeColors();
   return (
     <Text
       style={{
@@ -240,6 +245,7 @@ function SectionHeading({ children }: { children: string }) {
 }
 
 function SubHeading({ children }: { children: string }) {
+  const colors = useThemeColors();
   return (
     <Text
       style={{
@@ -256,6 +262,8 @@ function SubHeading({ children }: { children: string }) {
 }
 
 function BulletList({ items }: { items: string[] }) {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
   return (
     <View style={{ marginBottom: spacing.md }}>
       {items.map((item, i) => (

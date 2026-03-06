@@ -1,5 +1,5 @@
 import { View, Text } from "react-native";
-import { colors } from "../src/utils/theme";
+import { useThemeColors } from "../src/stores/theme";
 
 interface NutritionBarProps {
   calories: number;
@@ -16,6 +16,7 @@ export function NutritionBar({
   fatG,
   subtitle,
 }: NutritionBarProps) {
+  const colors = useThemeColors();
   return (
     <View>
       <View

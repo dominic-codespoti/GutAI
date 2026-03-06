@@ -5,15 +5,12 @@ import { BottomSheet } from "../BottomSheet";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { shiftDate, formatDateLabel, today } from "../../src/utils/date";
-import {
-  colors,
-  fonts,
-  radius,
-  spacing,
-  mealTypeEmoji,
-} from "../../src/utils/theme";
+import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../../src/stores/theme";
 
 export function CopyMealSheet() {
+  const colors = useThemeColors();
+  const fonts = useThemeFonts();
   const mode = useMealSheetStore((s) => s.mode);
   const copyingMeal = useMealSheetStore((s) => s.copyingMeal);
   const close = useMealSheetStore((s) => s.close);
