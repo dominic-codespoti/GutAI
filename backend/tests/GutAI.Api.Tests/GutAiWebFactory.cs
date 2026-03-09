@@ -15,6 +15,7 @@ namespace GutAI.Api.Tests;
 
 public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public const string TestAdminKey = "test-admin-key-for-integration-tests";
     private IContainer _azurite = default!;
     private string _connectionString = default!;
 
@@ -36,6 +37,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.UseSetting("AdminKey", TestAdminKey);
         builder.ConfigureServices(services =>
         {
             var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(TableServiceClient));
@@ -69,6 +71,13 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         var token = json.GetProperty("accessToken").GetString()!;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return (client, token);
+    }
+
+    public async Task<(HttpClient Client, string Token)> CreateAdminClientAsync()
+    {
+        var (client, token) = await CreateAuthenticatedClientAsync();
+        client.DefaultRequestHeaders.Add("X-Admin-Key", TestAdminKey);
         return (client, token);
     }
 }

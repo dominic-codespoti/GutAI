@@ -64,7 +64,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task CreateFoodProduct_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var response = await client.PostAsJsonAsync("/api/food", new
         {
             name = "Test Product"
@@ -85,7 +85,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task FoodProduct_Roundtrip_PreservesData()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new
         {
             name = "Roundtrip Food",
@@ -108,7 +108,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task GetSafetyReport_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "Safety Test" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
@@ -132,7 +132,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task GetGutRisk_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "GutRisk Test" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
@@ -154,7 +154,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task GetFodmap_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "Fodmap Test" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
@@ -173,7 +173,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task GetSubstitutions_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "Sub Test" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
@@ -191,7 +191,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task GetGlycemic_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "Glycemic Test" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
@@ -211,7 +211,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task GetPersonalizedScore_ReturnsCorrectShape()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "Score Test" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
@@ -233,7 +233,7 @@ public class FoodContractTests(GutAiWebFactory factory)
     [Fact]
     public async Task DeleteFoodProduct_ReturnsNoContent()
     {
-        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var (client, _) = await factory.CreateAdminClientAsync();
         var createResp = await client.PostAsJsonAsync("/api/food", new { name = "DeleteMe" });
         var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var productId = created.GetProperty("id").GetString();
