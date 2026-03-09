@@ -121,7 +121,7 @@ app.MapGroup("/api/user").MapUserEndpoints().RequireAuthorization().RequireRateL
 app.MapGroup("/api/chat").MapChatEndpoints().RequireAuthorization().RequireRateLimiting("chat");
 
 // MCP endpoint for external AI apps
-app.MapMcp();
+app.MapMcp().RequireAuthorization();
 
 // Seed reference data (symptom types, food additives) asynchronously
 _ = Task.Run(async () =>

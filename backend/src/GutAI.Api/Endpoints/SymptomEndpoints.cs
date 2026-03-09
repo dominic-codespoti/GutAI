@@ -54,14 +54,37 @@ public static class SymptomEndpoints
         return Results.Created($"/api/symptoms/{symptom.Id}", MapToDto(symptom));
     }
 
-    static async Task<IResult> GetSymptomsByDate(DateOnly? date, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetSymptomsByDate(DateOnly? date, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
         var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var symptoms = await store.GetSymptomLogsByDateAsync(userId, targetDate);
-        foreach (var s in symptoms)
+
+        // When a timezone offset is provided, shift the UTC boundaries so
+        // "2026-03-07" means midnight-to-midnight in the user's local time.
+        // JS getTimezoneOffset() returns minutes *behind* UTC (e.g. UTC+10 → -600).
+        if (tzOffsetMinutes.HasValue)
+        {
+            var offset = TimeSpan.FromMinutes(-tzOffsetMinutes.Value);
+            var localStart = targetDate.ToDateTime(TimeOnly.MinValue);
+            var localEnd = targetDate.ToDateTime(TimeOnly.MaxValue);
+            var utcStart = localStart - offset;
+            var utcEnd = localEnd - offset;
+            var symptoms = await store.GetSymptomLogsByDateRangeAsync(
+                userId,
+                DateOnly.FromDateTime(utcStart),
+                DateOnly.FromDateTime(utcEnd),
+                default);
+            // Further filter to exact UTC boundaries
+            symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
+            foreach (var s in symptoms)
+                s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
+            return Results.Ok(symptoms.OrderBy(s => s.OccurredAt).Select(MapToDto));
+        }
+
+        var targetSymptoms = await store.GetSymptomLogsByDateAsync(userId, targetDate);
+        foreach (var s in targetSymptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
-        return Results.Ok(symptoms.OrderBy(s => s.OccurredAt).Select(MapToDto));
+        return Results.Ok(targetSymptoms.OrderBy(s => s.OccurredAt).Select(MapToDto));
     }
 
     static async Task<IResult> GetSymptomHistory(DateOnly? from, DateOnly? to, int? typeId, ClaimsPrincipal principal, ITableStore store)

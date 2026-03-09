@@ -13,7 +13,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/gutai-api
-  AZURE_RG: gutai-prod
+  AZURE_RG: rg-gutai-prod
 
 jobs:
   test:

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { TouchableOpacity, Modal, View, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useThemeColors } from "../src/stores/theme";
 
 export function InfoTooltip({ title, body }: { title: string; body: string }) {
   const [visible, setVisible] = useState(false);
+  const colors = useThemeColors();
   return (
     <>
       <TouchableOpacity
@@ -11,7 +13,11 @@ export function InfoTooltip({ title, body }: { title: string; body: string }) {
         hitSlop={8}
         style={{ marginLeft: 4 }}
       >
-        <Ionicons name="information-circle-outline" size={16} color="#94a3b8" />
+        <Ionicons
+          name="information-circle-outline"
+          size={16}
+          color={colors.textMuted}
+        />
       </TouchableOpacity>
       <Modal
         visible={visible}
@@ -23,7 +29,7 @@ export function InfoTooltip({ title, body }: { title: string; body: string }) {
           onPress={() => setVisible(false)}
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.4)",
+            backgroundColor: colors.overlay,
             justifyContent: "center",
             alignItems: "center",
             padding: 32,
@@ -32,7 +38,7 @@ export function InfoTooltip({ title, body }: { title: string; body: string }) {
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={{
-              backgroundColor: "#fff",
+              backgroundColor: colors.card,
               borderRadius: 16,
               padding: 20,
               width: "100%",
@@ -43,13 +49,19 @@ export function InfoTooltip({ title, body }: { title: string; body: string }) {
               style={{
                 fontSize: 16,
                 fontWeight: "700",
-                color: "#0f172a",
+                color: colors.text,
                 marginBottom: 8,
               }}
             >
               {title}
             </Text>
-            <Text style={{ fontSize: 14, color: "#475569", lineHeight: 20 }}>
+            <Text
+              style={{
+                fontSize: 14,
+                color: colors.textSecondary,
+                lineHeight: 20,
+              }}
+            >
               {body}
             </Text>
             <TouchableOpacity
@@ -59,11 +71,11 @@ export function InfoTooltip({ title, body }: { title: string; body: string }) {
                 alignSelf: "flex-end",
                 paddingHorizontal: 16,
                 paddingVertical: 8,
-                backgroundColor: "#f1f5f9",
+                backgroundColor: colors.borderLight,
                 borderRadius: 8,
               }}
             >
-              <Text style={{ fontWeight: "600", color: "#334155" }}>
+              <Text style={{ fontWeight: "600", color: colors.text }}>
                 Got it
               </Text>
             </TouchableOpacity>

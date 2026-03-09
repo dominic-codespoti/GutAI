@@ -56,7 +56,11 @@ export function SwipeableItemRow({ children, onSwap, onDelete }: Props) {
             transform: [{ scale }],
           }}
         >
-          <Ionicons name="swap-horizontal" size={22} color="#fff" />
+          <Ionicons
+            name="swap-horizontal"
+            size={22}
+            color={colors.textOnPrimary}
+          />
         </Animated.View>
       </TouchableOpacity>
     );
@@ -93,7 +97,11 @@ export function SwipeableItemRow({ children, onSwap, onDelete }: Props) {
             transform: [{ scale }],
           }}
         >
-          <Ionicons name="trash-outline" size={22} color="#fff" />
+          <Ionicons
+            name="trash-outline"
+            size={22}
+            color={colors.textOnPrimary}
+          />
         </Animated.View>
       </TouchableOpacity>
     );

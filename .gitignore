@@ -44,6 +44,9 @@ logs/
 # Test results
 TestResults/
 coverage/
+test-results/
+playwright-report/
+blob-report/
 
 docs/GITHUB_SETUP.md
 

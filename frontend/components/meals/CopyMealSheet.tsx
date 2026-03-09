@@ -192,11 +192,19 @@ export function CopyMealSheet() {
             }}
           >
             {copyMeal.isPending ? (
-              <ActivityIndicator color="#fff" size="small" />
+              <ActivityIndicator color={colors.textOnPrimary} size="small" />
             ) : (
               <>
-                <Ionicons name="copy-outline" size={16} color="#fff" />
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Copy</Text>
+                <Ionicons
+                  name="copy-outline"
+                  size={16}
+                  color={colors.textOnPrimary}
+                />
+                <Text
+                  style={{ color: colors.textOnPrimary, fontWeight: "700" }}
+                >
+                  Copy
+                </Text>
               </>
             )}
           </TouchableOpacity>

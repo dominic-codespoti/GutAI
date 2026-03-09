@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using GutAI.Api.Middleware;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
@@ -22,9 +23,9 @@ public static class FoodEndpoints
         group.MapGet("/{id:guid}/substitutions", GetSubstitutions);
         group.MapGet("/{id:guid}/glycemic", GetGlycemic);
         group.MapGet("/{id:guid}/personalized-score", GetPersonalizedScore);
-        group.MapPost("/", CreateFoodProduct);
-        group.MapPut("/{id:guid}", UpdateFoodProduct);
-        group.MapDelete("/{id:guid}", DeleteFoodProduct);
+        group.MapPost("/", CreateFoodProduct).AddEndpointFilter<AdminKeyFilter>();
+        group.MapPut("/{id:guid}", UpdateFoodProduct).AddEndpointFilter<AdminKeyFilter>();
+        group.MapDelete("/{id:guid}", DeleteFoodProduct).AddEndpointFilter<AdminKeyFilter>();
         return group;
     }
 
@@ -153,15 +154,23 @@ public static class FoodEndpoints
         return Results.Ok(finalResults);
     }
 
-    static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store)
+    static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IFoodApiService foodApi)
     {
         if (string.IsNullOrWhiteSpace(barcode) || barcode.Length > 50)
             return Results.BadRequest(new { error = "Barcode must be between 1 and 50 characters" });
 
         var product = await store.GetFoodProductByBarcodeAsync(barcode);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        return Results.Ok(MapToDto(product, additives));
+        if (product is not null)
+        {
+            var additives = await store.GetAllFoodAdditivesAsync();
+            return Results.Ok(MapToDto(product, additives));
+        }
+
+        // Fallback to external APIs on local cache miss
+        var externalDto = await foodApi.LookupBarcodeAsync(barcode);
+        if (externalDto is null) return Results.NotFound();
+
+        return Results.Ok(externalDto);
     }
 
     static async Task<IResult> GetFoodAdditives(ITableStore store)

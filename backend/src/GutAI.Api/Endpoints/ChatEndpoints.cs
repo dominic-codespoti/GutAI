@@ -65,6 +65,7 @@ public static class ChatEndpoints
         var messages = await chatService.GetHistoryAsync(userId, limit ?? 50, ct);
         return Results.Ok(messages.Select(m => new
         {
+            m.Id,
             m.Role,
             m.Content,
             m.CreatedAt

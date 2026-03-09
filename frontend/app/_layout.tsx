@@ -23,6 +23,14 @@ function AuthGate() {
   const router = useRouter();
   const rcConfigured = useRef(false);
 
+  const safeBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)");
+    }
+  };
+
   useEffect(() => {
     hydrate();
     api.get("/health").catch(() => {});
@@ -71,15 +79,18 @@ function AuthGate() {
     <Stack
       screenOptions={{
         headerShown: false,
+        animation: "slide_from_right",
+        animationDuration: 250,
       }}
     >
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
+      <Stack.Screen name="(auth)" options={{ animation: "fade" }} />
+      <Stack.Screen name="onboarding" options={{ animation: "fade" }} />
       <Stack.Screen
         name="food/[id]"
         options={{
           headerShown: true,
+          animation: "slide_from_right",
           title: "Food Details",
           headerBackTitle: "Back",
           headerStyle: { backgroundColor: c.bg },
@@ -88,7 +99,7 @@ function AuthGate() {
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={safeBack}
               style={{ marginRight: 8, padding: 4 }}
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
@@ -100,6 +111,7 @@ function AuthGate() {
         name="settings"
         options={{
           headerShown: true,
+          animation: "slide_from_right",
           title: "Settings",
           headerBackTitle: "Back",
           headerStyle: { backgroundColor: c.bg },
@@ -108,7 +120,7 @@ function AuthGate() {
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={safeBack}
               style={{ marginRight: 8, padding: 4 }}
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
@@ -120,6 +132,7 @@ function AuthGate() {
         name="sources"
         options={{
           headerShown: true,
+          animation: "slide_from_right",
           title: "Sources & Disclaimer",
           headerBackTitle: "Back",
           headerStyle: { backgroundColor: c.bg },
@@ -128,7 +141,7 @@ function AuthGate() {
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={safeBack}
               style={{ marginRight: 8, padding: 4 }}
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
@@ -140,6 +153,7 @@ function AuthGate() {
         name="privacy"
         options={{
           headerShown: true,
+          animation: "slide_from_right",
           title: "Privacy Policy",
           headerBackTitle: "Back",
           headerStyle: { backgroundColor: c.bg },
@@ -148,7 +162,7 @@ function AuthGate() {
           headerTitleStyle: { fontWeight: "700", fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={safeBack}
               style={{ marginRight: 8, padding: 4 }}
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />

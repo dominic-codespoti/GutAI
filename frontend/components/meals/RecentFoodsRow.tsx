@@ -11,6 +11,7 @@ import { mealApi } from "../../src/api";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { radius, spacing } from "../../src/utils/theme";
+import { buildLoggedAt } from "../../src/utils/date";
 import {
   useThemeColors,
   useThemeFonts,
@@ -36,7 +37,7 @@ export function RecentFoodsRow() {
   const handleQuickLog = (food: RecentFood) => {
     createMeal.mutate({
       mealType: selectedMealType,
-      loggedAt: selectedDate + "T" + new Date().toISOString().split("T")[1],
+      loggedAt: buildLoggedAt(selectedDate),
       items: [
         {
           foodName: food.foodName,
@@ -70,7 +71,22 @@ export function RecentFoodsRow() {
     );
   }
 
-  if (!recentFoods || recentFoods.length === 0) return null;
+  if (!recentFoods || recentFoods.length === 0) {
+    return (
+      <View
+        style={{
+          alignItems: "center",
+          paddingVertical: spacing.md,
+          marginBottom: spacing.md,
+        }}
+      >
+        <Ionicons name="time-outline" size={20} color={colors.textLight} />
+        <Text style={{ ...fonts.caption, marginTop: 4, textAlign: "center" }}>
+          Your recent foods will appear here
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ marginBottom: spacing.md }}>

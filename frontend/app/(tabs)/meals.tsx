@@ -184,14 +184,19 @@ export default function MealsScreen() {
                 paddingHorizontal: 14,
                 borderRadius: radius.full,
                 backgroundColor:
-                  filterType === null ? colors.text : colors.borderLight,
+                  filterType === null ? colors.primary : colors.borderLight,
+                borderWidth: filterType === null ? 0 : 1,
+                borderColor: colors.border,
               }}
             >
               <Text
                 style={{
                   fontSize: 12,
                   fontWeight: "600",
-                  color: filterType === null ? "#fff" : colors.textMuted,
+                  color:
+                    filterType === null
+                      ? colors.textOnPrimary
+                      : colors.textMuted,
                 }}
               >
                 All
@@ -206,14 +211,19 @@ export default function MealsScreen() {
                   paddingHorizontal: 14,
                   borderRadius: radius.full,
                   backgroundColor:
-                    filterType === t ? colors.text : colors.borderLight,
+                    filterType === t ? colors.primary : colors.borderLight,
+                  borderWidth: filterType === t ? 0 : 1,
+                  borderColor: colors.border,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 12,
                     fontWeight: "600",
-                    color: filterType === t ? "#fff" : colors.textMuted,
+                    color:
+                      filterType === t
+                        ? colors.textOnPrimary
+                        : colors.textMuted,
                   }}
                 >
                   {t}
@@ -258,7 +268,11 @@ export default function MealsScreen() {
                   borderRadius: radius.sm,
                 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                <Text
+                  style={{ color: colors.textOnPrimary, fontWeight: "600" }}
+                >
+                  Retry
+                </Text>
               </TouchableOpacity>
             </View>
           ) : grouped.length > 0 ? (
@@ -321,7 +335,7 @@ export default function MealsScreen() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.3)",
+            backgroundColor: colors.overlay,
           }}
         />
       )}
@@ -389,7 +403,11 @@ export default function MealsScreen() {
                   ...shadowMd,
                 }}
               >
-                <Ionicons name={action.icon} size={22} color="#fff" />
+                <Ionicons
+                  name={action.icon}
+                  size={22}
+                  color={colors.textOnPrimary}
+                />
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -426,7 +444,7 @@ export default function MealsScreen() {
             ],
           }}
         >
-          <Ionicons name="add" size={30} color="#fff" />
+          <Ionicons name="add" size={30} color={colors.textOnPrimary} />
         </Animated.View>
       </TouchableOpacity>
 

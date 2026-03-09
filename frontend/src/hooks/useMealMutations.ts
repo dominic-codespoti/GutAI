@@ -5,7 +5,7 @@ import { mealApi } from "../api";
 import { toast } from "../stores/toast";
 import { mealSheet } from "../stores/mealSheet";
 import { mapItemToRequest } from "../utils/mealMappers";
-import { formatDateLabel } from "../utils/date";
+import { formatDateLabel, buildLoggedAt } from "../utils/date";
 import { maybeRequestReview } from "../utils/review";
 import type {
   MealLog,
@@ -23,6 +23,11 @@ function invalidate(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["meals"] });
   qc.invalidateQueries({ queryKey: ["daily-summary"] });
   qc.invalidateQueries({ queryKey: ["recent-foods"] });
+  qc.invalidateQueries({ queryKey: ["streak"] });
+  qc.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
+  qc.invalidateQueries({ queryKey: ["diary-analysis"] });
+  qc.invalidateQueries({ queryKey: ["additive-exposure"] });
+  qc.invalidateQueries({ queryKey: ["nutrition-trends"] });
 }
 
 export function useMealMutations() {
@@ -56,6 +61,9 @@ export function useMealMutations() {
     onSuccess: () => {
       invalidate(queryClient);
       toast.success("Meal deleted");
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
     },
     onError: () => toast.error("Failed to delete meal"),
   });
@@ -64,7 +72,7 @@ export function useMealMutations() {
     mutationFn: ({ meal, targetDate }: { meal: MealLog; targetDate: string }) =>
       mealApi.create({
         mealType: meal.mealType,
-        loggedAt: targetDate + "T" + new Date().toISOString().split("T")[1],
+        loggedAt: buildLoggedAt(targetDate),
         items: meal.items.map(mapItemToRequest),
       }),
     onSuccess: (_, { targetDate }) => {

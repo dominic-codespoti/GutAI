@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { toLocalDateStr } from "../utils/date";
 import type {
   AuthResponse,
   MealLog,
@@ -48,6 +49,9 @@ interface UpdateGoalsRequest {
   dailyFiberGoalG: number;
 }
 
+/** JS getTimezoneOffset() returns minutes behind UTC. Passed to backend for local-day filtering. */
+const tz = () => new Date().getTimezoneOffset();
+
 export const authApi = {
   register: (email: string, password: string, displayName: string) =>
     api.post<AuthResponse>("/api/auth/register", {
@@ -66,7 +70,9 @@ export const authApi = {
 
 export const mealApi = {
   list: (date?: string) =>
-    api.get<MealLog[]>("/api/meals", { params: { date } }),
+    api.get<MealLog[]>("/api/meals", {
+      params: { date, tzOffsetMinutes: tz() },
+    }),
   get: (id: string) => api.get<MealLog>(`/api/meals/${id}`),
   create: (data: CreateMealRequest) => api.post<MealLog>("/api/meals", data),
   update: (id: string, data: CreateMealRequest) =>
@@ -75,7 +81,9 @@ export const mealApi = {
   parseNatural: (data: NaturalLanguageMealRequest) =>
     api.post<NaturalLanguageResponse>("/api/meals/log-natural", data),
   dailySummary: (date: string) =>
-    api.get<DailyNutritionSummary>(`/api/meals/daily-summary/${date}`),
+    api.get<DailyNutritionSummary>(`/api/meals/daily-summary/${date}`, {
+      params: { tzOffsetMinutes: tz() },
+    }),
   export: (from?: string, to?: string) =>
     api.get<DataExport>("/api/meals/export", { params: { from, to } }),
   recentFoods: (limit?: number) =>
@@ -84,8 +92,8 @@ export const mealApi = {
 };
 
 export const foodApi = {
-  search: (q: string) =>
-    api.get<FoodProduct[]>("/api/food/search", { params: { q } }),
+  search: (q: string, signal?: AbortSignal) =>
+    api.get<FoodProduct[]>("/api/food/search", { params: { q }, signal }),
   lookupBarcode: (code: string) =>
     api.get<FoodProduct>(`/api/food/barcode/${code}`),
   get: (id: string) => api.get<FoodProduct>(`/api/food/${id}`),
@@ -107,7 +115,9 @@ export const foodApi = {
 
 export const symptomApi = {
   list: (params?: { date?: string }) =>
-    api.get<SymptomLog[]>("/api/symptoms", { params }),
+    api.get<SymptomLog[]>("/api/symptoms", {
+      params: { ...params, tzOffsetMinutes: tz() },
+    }),
   history: (params?: { from?: string; to?: string; typeId?: number }) =>
     api.get<SymptomLog[]>("/api/symptoms/history", { params }),
   create: (data: CreateSymptomRequest) =>
@@ -121,46 +131,36 @@ export const symptomApi = {
 
 export const insightApi = {
   correlations: (days?: number) => {
-    const to = new Date().toISOString().split("T")[0];
-    const from = new Date(Date.now() - (days ?? 30) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const to = toLocalDateStr();
+    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
     return api.get<Correlation[]>("/api/insights/correlations", {
       params: { from, to },
     });
   },
   nutritionTrends: (days?: number) => {
-    const to = new Date().toISOString().split("T")[0];
-    const from = new Date(Date.now() - (days ?? 14) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const to = toLocalDateStr();
+    const from = toLocalDateStr(new Date(Date.now() - (days ?? 14) * 86400000));
     return api.get<NutritionTrend[]>("/api/insights/nutrition-trends", {
-      params: { from, to },
+      params: { from, to, tzOffsetMinutes: tz() },
     });
   },
   additiveExposure: (days?: number) => {
-    const to = new Date().toISOString().split("T")[0];
-    const from = new Date(Date.now() - (days ?? 30) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const to = toLocalDateStr();
+    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
     return api.get<AdditiveExposure[]>("/api/insights/additive-exposure", {
       params: { from, to },
     });
   },
   triggerFoods: (days?: number) => {
-    const to = new Date().toISOString().split("T")[0];
-    const from = new Date(Date.now() - (days ?? 30) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const to = toLocalDateStr();
+    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
     return api.get<TriggerFood[]>("/api/insights/trigger-foods", {
       params: { from, to },
     });
   },
   foodDiaryAnalysis: (days?: number) => {
-    const to = new Date().toISOString().split("T")[0];
-    const from = new Date(Date.now() - (days ?? 30) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const to = toLocalDateStr();
+    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
     return api.get<FoodDiaryAnalysis>("/api/insights/food-diary-analysis", {
       params: { from, to },
     });

@@ -221,7 +221,11 @@ export default function ChatScreen() {
           {!isUser && (
             <View style={styles.avatarRow}>
               <View style={styles.avatar}>
-                <Ionicons name="sparkles" size={14} color="#fff" />
+                <Ionicons
+                  name="sparkles"
+                  size={14}
+                  color={colors.textOnPrimary}
+                />
               </View>
               <Text style={styles.avatarLabel}>GutAI Coach</Text>
             </View>
@@ -261,7 +265,11 @@ export default function ChatScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>
-              <Ionicons name="sparkles" size={20} color="#fff" />
+              <Ionicons
+                name="sparkles"
+                size={20}
+                color={colors.textOnPrimary}
+              />
             </View>
             <View>
               <Text style={styles.headerTitle}>AI Health Coach</Text>
@@ -282,7 +290,11 @@ export default function ChatScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>
-              <Ionicons name="sparkles" size={20} color="#fff" />
+              <Ionicons
+                name="sparkles"
+                size={20}
+                color={colors.textOnPrimary}
+              />
             </View>
             <View>
               <Text style={styles.headerTitle}>AI Health Coach</Text>
@@ -307,7 +319,7 @@ export default function ChatScreen() {
             <Ionicons
               name="diamond-outline"
               size={18}
-              color="#fff"
+              color={colors.textOnPrimary}
               style={{ marginRight: 8 }}
             />
             <Text style={styles.paywallBtnText}>Subscribe to Gut Lens Pro</Text>
@@ -327,7 +339,7 @@ export default function ChatScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
           <View style={styles.headerIcon}>
-            <Ionicons name="sparkles" size={20} color="#fff" />
+            <Ionicons name="sparkles" size={20} color={colors.textOnPrimary} />
           </View>
           <View>
             <Text style={styles.headerTitle}>AI Health Coach</Text>
@@ -422,9 +434,9 @@ export default function ChatScreen() {
           ]}
         >
           {isStreaming ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={colors.textOnPrimary} />
           ) : (
-            <Ionicons name="send" size={18} color="#fff" />
+            <Ionicons name="send" size={18} color={colors.textOnPrimary} />
           )}
         </TouchableOpacity>
       </View>
@@ -594,7 +606,7 @@ const getStyles = (colors: any) =>
     },
     toolText: { fontSize: 11, color: colors.primary, fontWeight: "500" },
     msgText: { fontSize: 15, lineHeight: 22 },
-    userText: { color: "#fff" },
+    userText: { color: colors.textOnPrimary },
     aiText: { color: colors.text },
     cursorDot: {
       width: 6,
@@ -676,7 +688,7 @@ const getStyles = (colors: any) =>
       width: "100%",
     },
     paywallBtnText: {
-      color: "#fff",
+      color: colors.textOnPrimary,
       fontSize: 16,
       fontWeight: "700",
     },

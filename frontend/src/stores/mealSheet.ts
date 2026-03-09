@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { MealLog } from "../types";
 import { getMealTypeForTime, MEAL_TYPES } from "../utils/constants";
+import { toLocalDateStr } from "../utils/date";
 
 export type MealSheetMode =
   | "idle"
@@ -40,7 +41,7 @@ interface MealSheetState {
   reset: () => void;
 }
 
-const todayStr = () => new Date().toISOString().split("T")[0];
+const todayStr = () => toLocalDateStr();
 
 export const useMealSheetStore = create<MealSheetState>((set) => ({
   mode: "idle",

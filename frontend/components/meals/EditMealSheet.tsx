@@ -14,7 +14,11 @@ import { SwapSearchContent } from "./SwapSearchContent";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { mapEditItemToRequest } from "../../src/utils/mealMappers";
-import { shiftDate, formatDateLabel } from "../../src/utils/date";
+import {
+  shiftDate,
+  formatDateLabel,
+  redateLoggedAt,
+} from "../../src/utils/date";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { toast } from "../../src/stores/toast";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
@@ -106,10 +110,7 @@ export function EditMealSheet() {
       id: editingMeal.id,
       data: {
         mealType: editMealType,
-        loggedAt:
-          editMealDate +
-          "T" +
-          (editingMeal.loggedAt.split("T")[1] || "12:00:00Z"),
+        loggedAt: redateLoggedAt(editingMeal.loggedAt, editMealDate),
         items: editItems.map((it, idx) =>
           mapEditItemToRequest(it, editConfigs[idx]),
         ),
@@ -155,13 +156,15 @@ export function EditMealSheet() {
                       ? colors.primary
                       : colors.borderLight,
                     alignItems: "center",
+                    borderWidth: active ? 0 : 1,
+                    borderColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 12,
                       fontWeight: "600",
-                      color: active ? "#fff" : colors.textMuted,
+                      color: active ? colors.textOnPrimary : colors.textMuted,
                     }}
                   >
                     {mealTypeEmoji[t]} {t}
@@ -359,9 +362,13 @@ export function EditMealSheet() {
               }}
             >
               {updateMeal.isPending ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.textOnPrimary} size="small" />
               ) : (
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+                <Text
+                  style={{ color: colors.textOnPrimary, fontWeight: "600" }}
+                >
+                  Save
+                </Text>
               )}
             </TouchableOpacity>
           </View>

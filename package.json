@@ -1,1 +1,30 @@
-{"private":true}
+{
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.53.0"
+  },
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui"
+  },
+  "name": "gut-ai",
+  "version": "1.0.0",
+  "description": "> Meal logging · Calorie tracking · Gut health symptom correlation · Food safety insights",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dominic-codespoti/GutAI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/dominic-codespoti/GutAI/issues"
+  },
+  "homepage": "https://github.com/dominic-codespoti/GutAI#readme"
+}

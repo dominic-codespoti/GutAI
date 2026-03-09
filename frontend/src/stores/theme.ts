@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Appearance, Platform } from "react-native";
+import { getItem, setItem } from "../utils/storage";
 import {
   lightColors,
   darkColors,
@@ -18,8 +19,12 @@ interface ThemeState {
   preference: ColorScheme;
   /** Resolved scheme used for rendering */
   resolved: "light" | "dark";
+  /** Whether the persisted preference has been loaded */
+  _hydrated: boolean;
   setPreference: (pref: ColorScheme) => void;
 }
+
+const THEME_STORAGE_KEY = "gutlens_theme_preference";
 
 function resolve(pref: ColorScheme): "light" | "dark" {
   if (pref === "system") {
@@ -31,8 +36,31 @@ function resolve(pref: ColorScheme): "light" | "dark" {
 export const useThemeStore = create<ThemeState>((set, get) => ({
   preference: "light",
   resolved: resolve("light"),
-  setPreference: (pref) => set({ preference: pref, resolved: resolve(pref) }),
+  _hydrated: false,
+  setPreference: (pref) => {
+    set({ preference: pref, resolved: resolve(pref) });
+    // Persist to storage (fire-and-forget)
+    setItem(THEME_STORAGE_KEY, pref).catch(() => {});
+  },
 }));
+
+// Hydrate persisted preference on app start
+(async () => {
+  try {
+    const stored = await getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark" || stored === "system") {
+      useThemeStore.setState({
+        preference: stored,
+        resolved: resolve(stored),
+        _hydrated: true,
+      });
+    } else {
+      useThemeStore.setState({ _hydrated: true });
+    }
+  } catch {
+    useThemeStore.setState({ _hydrated: true });
+  }
+})();
 
 // Listen for OS color scheme changes
 Appearance.addChangeListener(({ colorScheme }) => {

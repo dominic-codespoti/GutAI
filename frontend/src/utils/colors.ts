@@ -1,51 +1,58 @@
-export const severityColor = (n: number) =>
-  n <= 3 ? "#22c55e" : n <= 6 ? "#f59e0b" : "#ef4444";
+import { getThemeColors } from "../stores/theme";
+
+export const severityColor = (n: number) => {
+  const c = getThemeColors();
+  return n <= 3 ? c.primary : n <= 6 ? c.warning : c.danger;
+};
 
 export const ratingColor = (rating: string | null | undefined) => {
+  const c = getThemeColors();
   switch (rating?.toLowerCase()) {
     case "safe":
     case "a":
-      return "#22c55e";
+      return c.primary;
     case "low concern":
     case "b":
-      return "#4ade80";
+      return c.primaryLight;
     case "caution":
     case "moderate concern":
     case "c":
-      return "#f59e0b";
+      return c.warning;
     case "warning":
     case "high concern":
     case "d":
-      return "#f97316";
+      return c.sugar;
     case "avoid":
     case "e":
-      return "#ef4444";
+      return c.danger;
     default:
-      return "#94a3b8";
+      return c.textMuted;
   }
 };
 
 export const cspiColor = (rating: string) => {
+  const c = getThemeColors();
   switch (rating) {
     case "Avoid":
-      return "#ef4444";
+      return c.danger;
     case "CutBack":
-      return "#f59e0b";
+      return c.warning;
     case "Caution":
-      return "#f97316";
+      return c.sugar;
     default:
-      return "#22c55e";
+      return c.primary;
   }
 };
 
-export const confidenceColor = (c: string) => {
-  switch (c) {
+export const confidenceColor = (conf: string) => {
+  const c = getThemeColors();
+  switch (conf) {
     case "High":
-      return "#ef4444";
+      return c.danger;
     case "Medium":
-      return "#f59e0b";
+      return c.warning;
     default:
-      return "#22c55e";
+      return c.primary;
   }
 };
 

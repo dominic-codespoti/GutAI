@@ -141,6 +141,7 @@ export default function LoginScreen() {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                maxLength={254}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -173,6 +174,7 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                maxLength={128}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -201,10 +203,14 @@ export default function LoginScreen() {
               }}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.textOnPrimary} />
               ) : (
                 <Text
-                  style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}
+                  style={{
+                    color: colors.textOnPrimary,
+                    fontSize: 16,
+                    fontWeight: "700",
+                  }}
                 >
                   Log In
                 </Text>

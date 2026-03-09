@@ -28,6 +28,7 @@ import {
   confidenceIcon,
 } from "../../src/utils/colors";
 import { radius, spacing } from "../../src/utils/theme";
+import { toLocalDateStr } from "../../src/utils/date";
 import {
   useThemeColors,
   useThemeFonts,
@@ -76,10 +77,8 @@ export default function InsightsScreen() {
     queryFn: () => insightApi.correlations(period).then((r) => r.data),
   });
 
-  const periodStart = new Date(Date.now() - period * 86400000)
-    .toISOString()
-    .split("T")[0];
-  const todayStr = new Date().toISOString().split("T")[0];
+  const periodStart = toLocalDateStr(new Date(Date.now() - period * 86400000));
+  const todayStr = toLocalDateStr();
 
   const {
     data: recentSymptoms,
@@ -211,7 +210,9 @@ export default function InsightsScreen() {
                     style={{
                       fontSize: 14,
                       fontWeight: "700",
-                      color: active ? "#fff" : colors.textSecondary,
+                      color: active
+                        ? colors.textOnPrimary
+                        : colors.textSecondary,
                     }}
                   >
                     {d}d
@@ -660,7 +661,7 @@ export default function InsightsScreen() {
                       <View
                         style={{
                           height: 6,
-                          backgroundColor: colors.borderLight,
+                          backgroundColor: colors.border,
                           borderRadius: 3,
                         }}
                       >
@@ -738,7 +739,7 @@ export default function InsightsScreen() {
           </View>
 
           {/* Additive Exposure - only show when data exists */}
-          {!loadingExposure && exposure && exposure.length > 0 && (
+          {!loadingExposure && (
             <View
               style={{
                 backgroundColor: colors.card,
@@ -761,177 +762,222 @@ export default function InsightsScreen() {
                 <Text style={fonts.h3}>Additive Exposure</Text>
               </View>
 
-              {exposure.map((item: AdditiveExposure) => (
-                <View
-                  key={item.additive}
-                  style={{
-                    backgroundColor: colors.bg,
-                    borderRadius: radius.sm,
-                    padding: spacing.md,
-                    marginBottom: 4,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontWeight: "600",
-                        color: colors.text,
-                        fontSize: 14,
-                      }}
-                    >
-                      {item.additive}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: cspiColor(item.cspiRating),
-                        fontWeight: "600",
-                      }}
-                    >
-                      {item.cspiRating}
-                    </Text>
-                  </View>
+              {exposure && exposure.length > 0 ? (
+                exposure.map((item: AdditiveExposure) => (
                   <View
+                    key={item.additive}
                     style={{
-                      backgroundColor: cspiColor(item.cspiRating) + "18",
-                      borderRadius: 6,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
+                      backgroundColor: colors.bg,
+                      borderRadius: radius.sm,
+                      padding: spacing.md,
+                      marginBottom: 4,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                     }}
                   >
-                    <Text
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontWeight: "600",
+                          color: colors.text,
+                          fontSize: 14,
+                        }}
+                      >
+                        {item.additive}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: cspiColor(item.cspiRating),
+                          fontWeight: "600",
+                        }}
+                      >
+                        {item.cspiRating}
+                      </Text>
+                    </View>
+                    <View
                       style={{
-                        fontWeight: "700",
-                        color: cspiColor(item.cspiRating),
-                        fontSize: 14,
+                        backgroundColor: cspiColor(item.cspiRating) + "18",
+                        borderRadius: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
                       }}
                     >
-                      {item.count}×
-                    </Text>
+                      <Text
+                        style={{
+                          fontWeight: "700",
+                          color: cspiColor(item.cspiRating),
+                          fontSize: 14,
+                        }}
+                      >
+                        {item.count}×
+                      </Text>
+                    </View>
                   </View>
+                ))
+              ) : (
+                <View
+                  style={{ alignItems: "center", paddingVertical: spacing.md }}
+                >
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={32}
+                    color={colors.secondary}
+                  />
+                  <Text
+                    style={{
+                      ...fonts.caption,
+                      marginTop: spacing.sm,
+                      textAlign: "center",
+                    }}
+                  >
+                    No additives detected in your recent meals — nice! 🎉
+                  </Text>
                 </View>
-              ))}
+              )}
             </View>
           )}
 
           {/* Food Diary Analysis - only timing insights & recommendations (patterns shown above) */}
-          {!loadingDiary &&
-            diaryAnalysis &&
-            (diaryAnalysis.timingInsights.length > 0 ||
-              diaryAnalysis.recommendations.length > 0) && (
+          {!loadingDiary && (
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: radius.lg,
+                padding: spacing.xl,
+                marginBottom: spacing.lg,
+                ...shadowMd,
+              }}
+            >
               <View
                 style={{
-                  backgroundColor: colors.card,
-                  borderRadius: radius.lg,
-                  padding: spacing.xl,
+                  flexDirection: "row",
+                  alignItems: "center",
                   marginBottom: spacing.lg,
-                  ...shadowMd,
                 }}
               >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    marginBottom: spacing.lg,
-                  }}
-                >
-                  <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
-                    💡
-                  </Text>
-                  <Text style={fonts.h3}>Insights & Tips</Text>
-                </View>
-
-                {diaryAnalysis.timingInsights.length > 0 && (
-                  <View style={{ marginBottom: 12 }}>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: colors.text,
-                        marginBottom: 8,
-                      }}
-                    >
-                      ⏱️ Timing Insights
-                    </Text>
-                    {diaryAnalysis.timingInsights.map((t, i) => (
-                      <View
-                        key={i}
-                        style={{
-                          backgroundColor: colors.bg,
-                          borderRadius: radius.sm,
-                          padding: 10,
-                          marginBottom: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "600",
-                            color: colors.textSecondary,
-                          }}
-                        >
-                          {t.category}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: colors.text,
-                            marginTop: 2,
-                          }}
-                        >
-                          {t.insight}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {diaryAnalysis.recommendations.length > 0 && (
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: colors.text,
-                        marginBottom: 8,
-                      }}
-                    >
-                      📋 Recommendations
-                    </Text>
-                    {diaryAnalysis.recommendations.map((rec, i) => (
-                      <View
-                        key={i}
-                        style={{
-                          flexDirection: "row",
-                          gap: 8,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <Ionicons
-                          name="chevron-forward"
-                          size={14}
-                          color={colors.primary}
-                          style={{ marginTop: 2 }}
-                        />
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: colors.text,
-                            flex: 1,
-                            lineHeight: 17,
-                          }}
-                        >
-                          {rec}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
+                <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
+                  💡
+                </Text>
+                <Text style={fonts.h3}>Insights & Tips</Text>
               </View>
-            )}
+
+              {diaryAnalysis &&
+              (diaryAnalysis.timingInsights.length > 0 ||
+                diaryAnalysis.recommendations.length > 0) ? (
+                <>
+                  {diaryAnalysis.timingInsights.length > 0 && (
+                    <View style={{ marginBottom: 12 }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "600",
+                          color: colors.text,
+                          marginBottom: 8,
+                        }}
+                      >
+                        ⏱️ Timing Insights
+                      </Text>
+                      {diaryAnalysis.timingInsights.map((t, i) => (
+                        <View
+                          key={i}
+                          style={{
+                            backgroundColor: colors.bg,
+                            borderRadius: radius.sm,
+                            padding: 10,
+                            marginBottom: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "600",
+                              color: colors.textSecondary,
+                            }}
+                          >
+                            {t.category}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.text,
+                              marginTop: 2,
+                            }}
+                          >
+                            {t.insight}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {diaryAnalysis.recommendations.length > 0 && (
+                    <View>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "600",
+                          color: colors.text,
+                          marginBottom: 8,
+                        }}
+                      >
+                        📋 Recommendations
+                      </Text>
+                      {diaryAnalysis.recommendations.map((rec, i) => (
+                        <View
+                          key={i}
+                          style={{
+                            flexDirection: "row",
+                            gap: 8,
+                            marginBottom: 6,
+                          }}
+                        >
+                          <Ionicons
+                            name="chevron-forward"
+                            size={14}
+                            color={colors.primary}
+                            style={{ marginTop: 2 }}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.text,
+                              flex: 1,
+                              lineHeight: 17,
+                            }}
+                          >
+                            {rec}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View
+                  style={{ alignItems: "center", paddingVertical: spacing.md }}
+                >
+                  <Ionicons
+                    name="bulb-outline"
+                    size={32}
+                    color={colors.accent}
+                  />
+                  <Text
+                    style={{
+                      ...fonts.caption,
+                      marginTop: spacing.sm,
+                      textAlign: "center",
+                      lineHeight: 18,
+                    }}
+                  >
+                    Log a few more meals and we'll surface personalized tips
+                    here
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Elimination Diet Status */}
           <View
@@ -970,14 +1016,14 @@ export default function InsightsScreen() {
                     style={{
                       backgroundColor:
                         elimination.phase === "Not Started"
-                          ? "#f1f5f9"
+                          ? colors.borderLight
                           : elimination.phase === "Assessment"
-                            ? "#fef3c7"
+                            ? colors.warningBg
                             : elimination.phase === "Elimination"
-                              ? "#fee2e2"
+                              ? colors.dangerBg
                               : elimination.phase === "Reintroduction"
-                                ? "#dbeafe"
-                                : "#dcfce7",
+                                ? colors.secondaryBg
+                                : colors.primaryBg,
                       borderRadius: 8,
                       paddingHorizontal: 12,
                       paddingVertical: 6,
@@ -989,14 +1035,14 @@ export default function InsightsScreen() {
                         fontWeight: "700",
                         color:
                           elimination.phase === "Not Started"
-                            ? "#64748b"
+                            ? colors.textMuted
                             : elimination.phase === "Assessment"
-                              ? "#b45309"
+                              ? colors.warning
                               : elimination.phase === "Elimination"
-                                ? "#dc2626"
+                                ? colors.danger
                                 : elimination.phase === "Reintroduction"
-                                  ? "#2563eb"
-                                  : "#16a34a",
+                                  ? colors.secondary
+                                  : colors.primary,
                       }}
                     >
                       Phase: {elimination.phase}
@@ -1022,7 +1068,7 @@ export default function InsightsScreen() {
                       style={{
                         fontSize: 13,
                         fontWeight: "600",
-                        color: "#dc2626",
+                        color: colors.danger,
                         marginBottom: 6,
                       }}
                     >
@@ -1035,7 +1081,7 @@ export default function InsightsScreen() {
                         <View
                           key={f}
                           style={{
-                            backgroundColor: "#fee2e2",
+                            backgroundColor: colors.dangerBg,
                             borderRadius: 6,
                             paddingHorizontal: 10,
                             paddingVertical: 4,
@@ -1045,7 +1091,7 @@ export default function InsightsScreen() {
                             style={{
                               fontSize: 12,
                               fontWeight: "600",
-                              color: "#dc2626",
+                              color: colors.danger,
                             }}
                           >
                             {f}
@@ -1063,7 +1109,7 @@ export default function InsightsScreen() {
                       style={{
                         fontSize: 13,
                         fontWeight: "600",
-                        color: "#2563eb",
+                        color: colors.secondary,
                         marginBottom: 6,
                       }}
                     >
@@ -1076,7 +1122,7 @@ export default function InsightsScreen() {
                         <View
                           key={f}
                           style={{
-                            backgroundColor: "#dbeafe",
+                            backgroundColor: colors.secondaryBg,
                             borderRadius: 6,
                             paddingHorizontal: 10,
                             paddingVertical: 4,
@@ -1086,7 +1132,7 @@ export default function InsightsScreen() {
                             style={{
                               fontSize: 12,
                               fontWeight: "600",
-                              color: "#2563eb",
+                              color: colors.secondary,
                             }}
                           >
                             {f}
@@ -1104,7 +1150,7 @@ export default function InsightsScreen() {
                       style={{
                         fontSize: 13,
                         fontWeight: "600",
-                        color: "#16a34a",
+                        color: colors.primary,
                         marginBottom: 6,
                       }}
                     >
@@ -1117,7 +1163,7 @@ export default function InsightsScreen() {
                         <View
                           key={f}
                           style={{
-                            backgroundColor: "#dcfce7",
+                            backgroundColor: colors.primaryBg,
                             borderRadius: 6,
                             paddingHorizontal: 10,
                             paddingVertical: 4,
@@ -1127,7 +1173,7 @@ export default function InsightsScreen() {
                             style={{
                               fontSize: 12,
                               fontWeight: "600",
-                              color: "#16a34a",
+                              color: colors.primary,
                             }}
                           >
                             {f}
@@ -1176,7 +1222,9 @@ export default function InsightsScreen() {
                         <View
                           style={{
                             backgroundColor:
-                              r.result === "Tolerated" ? "#dcfce7" : "#fee2e2",
+                              r.result === "Tolerated"
+                                ? colors.primaryBg
+                                : colors.dangerBg,
                             borderRadius: 4,
                             paddingHorizontal: 8,
                             paddingVertical: 2,
@@ -1188,8 +1236,8 @@ export default function InsightsScreen() {
                               fontWeight: "700",
                               color:
                                 r.result === "Tolerated"
-                                  ? "#16a34a"
-                                  : "#dc2626",
+                                  ? colors.primary
+                                  : colors.danger,
                             }}
                           >
                             {r.result === "Tolerated" ? "✓" : "✗"} {r.result}

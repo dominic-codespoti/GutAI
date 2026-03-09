@@ -23,7 +23,12 @@ import {
   SymptomSkeleton,
   SymptomTypesSkeleton,
 } from "../../components/SkeletonLoader";
-import { shiftDate, formatDateLabel } from "../../src/utils/date";
+import {
+  shiftDate,
+  formatDateLabel,
+  toLocalDateStr,
+  buildLoggedAt,
+} from "../../src/utils/date";
 import { severityColor } from "../../src/utils/colors";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import {
@@ -71,7 +76,7 @@ function SeverityDot({
         style={{
           fontSize: 13,
           fontWeight: "700",
-          color: selected ? "#fff" : colors.textMuted,
+          color: selected ? colors.textOnPrimary : colors.textMuted,
         }}
       >
         {n}
@@ -124,11 +129,9 @@ export default function SymptomsScreen() {
   const [editSeverity, setEditSeverity] = useState(5);
   const [editNotes, setEditNotes] = useState("");
   const [editLinkedMealId, setEditLinkedMealId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  const [selectedDate, setSelectedDate] = useState(toLocalDateStr());
   const queryClient = useQueryClient();
-  const isToday = selectedDate === new Date().toISOString().split("T")[0];
+  const isToday = selectedDate === toLocalDateStr();
 
   useEffect(() => {
     setLinkedMealId(null);
@@ -168,14 +171,10 @@ export default function SymptomsScreen() {
 
   const logMutation = useMutation({
     mutationFn: () => {
-      const [year, month, day] = selectedDate.split("-").map(Number);
-      const date = new Date();
-      date.setFullYear(year, month - 1, day);
-
       return symptomApi.create({
         symptomTypeId: selectedType!.id,
         severity,
-        occurredAt: date.toISOString(),
+        occurredAt: buildLoggedAt(selectedDate),
         notes: notes.trim() || undefined,
         relatedMealLogId: linkedMealId ?? undefined,
         duration: parseDurationToTimeSpan(duration),
@@ -184,6 +183,8 @@ export default function SymptomsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
+      queryClient.invalidateQueries({ queryKey: ["correlations"] });
+      queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
       setSelectedType(null);
       setSeverity(5);
       setNotes("");
@@ -203,6 +204,8 @@ export default function SymptomsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
+      queryClient.invalidateQueries({ queryKey: ["correlations"] });
+      queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
       setEditingSymptom(null);
       toast.success("Symptom updated");
     },
@@ -214,6 +217,8 @@ export default function SymptomsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
+      queryClient.invalidateQueries({ queryKey: ["correlations"] });
+      queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
       toast.success("Symptom deleted");
     },
   });
@@ -333,11 +338,7 @@ export default function SymptomsScreen() {
                 color={colors.textSecondary}
               />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() =>
-                setSelectedDate(new Date().toISOString().split("T")[0])
-              }
-            >
+            <TouchableOpacity onPress={() => setSelectedDate(toLocalDateStr())}>
               <Text
                 style={{
                   fontSize: 16,
@@ -434,7 +435,9 @@ export default function SymptomsScreen() {
                             style={{
                               fontSize: 13,
                               fontWeight: "600",
-                              color: active ? "#fff" : colors.text,
+                              color: active
+                                ? colors.textOnPrimary
+                                : colors.text,
                             }}
                           >
                             {type.name}
@@ -602,7 +605,9 @@ export default function SymptomsScreen() {
                           <Text
                             style={{
                               fontSize: 12,
-                              color: active ? "#fff" : colors.textSecondary,
+                              color: active
+                                ? colors.textOnPrimary
+                                : colors.textSecondary,
                             }}
                             numberOfLines={1}
                           >
@@ -629,10 +634,17 @@ export default function SymptomsScreen() {
                 }}
               >
                 {logMutation.isPending ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator
+                    color={colors.textOnPrimary}
+                    size="small"
+                  />
                 ) : (
                   <Text
-                    style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}
+                    style={{
+                      color: colors.textOnPrimary,
+                      fontWeight: "700",
+                      fontSize: 15,
+                    }}
                   >
                     Log Symptom
                   </Text>
@@ -932,7 +944,7 @@ export default function SymptomsScreen() {
                   style={{
                     backgroundColor:
                       editLinkedMealId === null
-                        ? colors.textSecondary
+                        ? colors.secondary
                         : colors.borderLight,
                     borderRadius: radius.sm,
                     paddingHorizontal: 12,
@@ -943,7 +955,9 @@ export default function SymptomsScreen() {
                     style={{
                       fontSize: 12,
                       color:
-                        editLinkedMealId === null ? "#fff" : colors.textMuted,
+                        editLinkedMealId === null
+                          ? colors.textOnPrimary
+                          : colors.textMuted,
                     }}
                   >
                     None
@@ -967,7 +981,9 @@ export default function SymptomsScreen() {
                       <Text
                         style={{
                           fontSize: 12,
-                          color: active ? "#fff" : colors.textSecondary,
+                          color: active
+                            ? colors.textOnPrimary
+                            : colors.textSecondary,
                         }}
                         numberOfLines={1}
                       >
@@ -1006,9 +1022,13 @@ export default function SymptomsScreen() {
               }}
             >
               {updateMutation.isPending ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.textOnPrimary} size="small" />
               ) : (
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+                <Text
+                  style={{ color: colors.textOnPrimary, fontWeight: "600" }}
+                >
+                  Save
+                </Text>
               )}
             </TouchableOpacity>
           </View>

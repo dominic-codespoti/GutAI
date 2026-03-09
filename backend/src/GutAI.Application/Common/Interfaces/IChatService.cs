@@ -8,4 +8,8 @@ public interface IChatService
 }
 
 public record ChatStreamEvent(string? Content = null, string? ToolCall = null, string? Status = null);
-public record ChatHistoryMessage(string Role, string Content, DateTimeOffset CreatedAt);
+public record ChatHistoryMessage(string Role, string Content, DateTimeOffset CreatedAt)
+{
+    /// <summary>Synthetic id for frontend FlatList keys: role + unix-ms timestamp.</summary>
+    public string Id => $"{Role}-{CreatedAt.ToUnixTimeMilliseconds()}";
+}

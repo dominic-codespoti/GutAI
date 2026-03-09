@@ -58,7 +58,7 @@ retry_or_die() {
 }
 
 # ── Config (hardcoded — one RG, one region) ──────────────────────────────────
-RESOURCE_GROUP="gutai-prod"
+RESOURCE_GROUP="rg-gutai-prod"
 LOCATION="australiaeast"
 GITHUB_REPO="dominic-codespoti/GutAI"
 APP_DISPLAY_NAME="gutai-github-actions"

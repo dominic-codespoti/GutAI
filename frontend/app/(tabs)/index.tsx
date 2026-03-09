@@ -1,13 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Animated,
-  Pressable,
-  StyleSheet,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "../../src/stores/auth";
@@ -31,6 +28,7 @@ import {
   useThemeShadow,
 } from "../../src/stores/theme";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
+import { toLocalDateStr } from "../../src/utils/date";
 
 const AnimatedCircle = ReanimatedObj.createAnimatedComponent(Circle);
 const AnimatedView = ReanimatedObj.createAnimatedComponent(View);
@@ -83,7 +81,7 @@ function CalorieRing({
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke={c.borderLight}
+          stroke={c.border}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -176,7 +174,7 @@ function MacroBar({
       <View
         style={{
           height: 6,
-          backgroundColor: c.borderLight,
+          backgroundColor: c.border,
           borderRadius: 3,
         }}
       >
@@ -190,12 +188,10 @@ export default function DashboardScreen() {
   const c = useThemeColors();
   const f = useThemeFonts();
   const { shadow: sh, shadowMd: shMd } = useThemeShadow();
-  const [fabOpen, setFabOpen] = useState(false);
   const [macrosExpanded, setMacrosExpanded] = useState(false);
 
-  const fabAnim = useRef(new Animated.Value(0)).current;
   const user = useAuthStore((s) => s.user);
-  const today = new Date().toISOString().split("T")[0];
+  const today = toLocalDateStr();
   const router = useRouter();
 
   const {
@@ -291,16 +287,6 @@ export default function DashboardScreen() {
     if (h < 17) return "Good afternoon";
     return "Good evening";
   })();
-
-  const toggleFab = () => {
-    const toValue = fabOpen ? 0 : 1;
-    Animated.spring(fabAnim, {
-      toValue,
-      useNativeDriver: true,
-      friction: 6,
-    }).start();
-    setFabOpen(!fabOpen);
-  };
 
   const fabActions = [
     {
@@ -548,7 +534,7 @@ export default function DashboardScreen() {
                 </Text>
                 <Text style={f.caption}>eaten</Text>
               </View>
-              <View style={{ width: 1, backgroundColor: c.borderLight }} />
+              <View style={{ width: 1, backgroundColor: c.border }} />
               <View style={{ alignItems: "center" }}>
                 <Text
                   style={{
@@ -930,119 +916,88 @@ export default function DashboardScreen() {
               </View>
             )}
           </View>
-        </View>
-      </ScrollView>
 
-      {/* FAB overlay */}
-      {fabOpen && (
-        <Pressable style={StyleSheet.absoluteFill} onPress={toggleFab}>
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: "#000",
-                opacity: fabAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 0.3],
-                }),
-              },
-            ]}
-          />
-        </Pressable>
-      )}
-
-      {/* FAB action items */}
-      {fabActions.map((action, i) => {
-        const translateY = fabAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -((i + 1) * 66)],
-        });
-        const scale = fabAnim.interpolate({
-          inputRange: [0, 0.6, 1],
-          outputRange: [0, 0, 1],
-        });
-
-        return (
-          <Animated.View
-            key={action.label}
-            pointerEvents={fabOpen ? "auto" : "none"}
+          {/* Trigger Foods */}
+          <View
             style={{
-              position: "absolute",
-              bottom: 32,
-              right: 28,
-              transform: [{ translateY }, { scale }],
-              flexDirection: "row",
-              alignItems: "center",
+              backgroundColor: c.card,
+              borderRadius: radius.lg,
+              padding: spacing.xl,
+              marginBottom: spacing.lg,
+              ...shMd,
             }}
           >
-            <View
-              style={{
-                backgroundColor: c.card,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: radius.sm,
-                marginRight: 12,
-                ...sh,
-              }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: "600", color: c.text }}>
-                {action.label}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                toggleFab();
-                router.push(action.route);
-              }}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 24,
-                backgroundColor: action.color,
-                alignItems: "center",
-                justifyContent: "center",
-                ...shMd,
-              }}
-            >
-              <Ionicons name={action.icon} size={22} color="#fff" />
-            </TouchableOpacity>
-          </Animated.View>
-        );
-      })}
-
-      {/* Main FAB button */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={toggleFab}
-        style={{
-          position: "absolute",
-          bottom: 28,
-          right: 24,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: c.primary,
-          alignItems: "center",
-          justifyContent: "center",
-          ...shMd,
-          elevation: 6,
-        }}
-      >
-        <Animated.View
-          style={{
-            transform: [
-              {
-                rotate: fabAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ["0deg", "45deg"],
-                }),
-              },
-            ],
-          }}
-        >
-          <Ionicons name="add" size={30} color="#fff" />
-        </Animated.View>
-      </TouchableOpacity>
+            <Text style={{ ...f.h4, marginBottom: spacing.md }}>
+              ⚡ Trigger Foods
+            </Text>
+            {triggerFoods && triggerFoods.length > 0 ? (
+              triggerFoods.slice(0, 5).map((tf) => (
+                <View
+                  key={tf.food}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingVertical: 8,
+                    borderTopWidth: 1,
+                    borderTopColor: c.divider,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{ fontWeight: "600", color: c.text, fontSize: 14 }}
+                    >
+                      {tf.food}
+                    </Text>
+                    <Text style={{ ...f.caption, fontSize: 11 }}>
+                      {tf.symptoms.join(", ")}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: c.dangerBg,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: radius.sm,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: c.danger,
+                        fontSize: 11,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {tf.totalOccurrences}×
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{ alignItems: "center", paddingVertical: spacing.md }}
+              >
+                <Ionicons
+                  name="sparkles-outline"
+                  size={28}
+                  color={c.secondary}
+                />
+                <Text
+                  style={{
+                    ...f.caption,
+                    marginTop: spacing.sm,
+                    textAlign: "center",
+                    lineHeight: 18,
+                  }}
+                >
+                  No trigger foods detected yet.{"\n"}Keep logging meals &
+                  symptoms!
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>
     </SafeScreen>
   );
 }

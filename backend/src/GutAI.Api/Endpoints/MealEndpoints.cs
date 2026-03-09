@@ -119,16 +119,30 @@ public static class MealEndpoints
         });
     }
 
-    static async Task<IResult> GetMealsByDate(DateOnly? date, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetMealsByDate(DateOnly? date, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
         var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-        var meals = await store.GetMealLogsByDateAsync(userId, targetDate);
-        foreach (var m in meals)
-            m.Items = await store.GetMealItemsAsync(userId, m.Id);
+        if (tzOffsetMinutes.HasValue)
+        {
+            var offset = TimeSpan.FromMinutes(-tzOffsetMinutes.Value);
+            var utcStart = targetDate.ToDateTime(TimeOnly.MinValue) - offset;
+            var utcEnd = targetDate.ToDateTime(TimeOnly.MaxValue) - offset;
+            var meals = await store.GetMealLogsByDateRangeAsync(
+                userId,
+                DateOnly.FromDateTime(utcStart),
+                DateOnly.FromDateTime(utcEnd));
+            meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
+            foreach (var m in meals)
+                m.Items = await store.GetMealItemsAsync(userId, m.Id);
+            return Results.Ok(meals.OrderBy(m => m.LoggedAt).Select(MapToDto));
+        }
 
-        return Results.Ok(meals.OrderBy(m => m.LoggedAt).Select(MapToDto));
+        var allMeals = await store.GetMealLogsByDateAsync(userId, targetDate);
+        foreach (var m in allMeals)
+            m.Items = await store.GetMealItemsAsync(userId, m.Id);
+        return Results.Ok(allMeals.OrderBy(m => m.LoggedAt).Select(MapToDto));
     }
 
     static async Task<IResult> GetMeal(Guid id, ClaimsPrincipal principal, ITableStore store)
@@ -225,11 +239,27 @@ public static class MealEndpoints
         return Results.NoContent();
     }
 
-    static async Task<IResult> GetDailySummary(DateOnly date, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetDailySummary(DateOnly date, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
         var user = await store.GetUserAsync(userId);
-        var meals = await store.GetMealLogsByDateAsync(userId, date);
+
+        List<MealLog> meals;
+        if (tzOffsetMinutes.HasValue)
+        {
+            var offset = TimeSpan.FromMinutes(-tzOffsetMinutes.Value);
+            var utcStart = date.ToDateTime(TimeOnly.MinValue) - offset;
+            var utcEnd = date.ToDateTime(TimeOnly.MaxValue) - offset;
+            meals = await store.GetMealLogsByDateRangeAsync(
+                userId,
+                DateOnly.FromDateTime(utcStart),
+                DateOnly.FromDateTime(utcEnd));
+            meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
+        }
+        else
+        {
+            meals = await store.GetMealLogsByDateAsync(userId, date);
+        }
         foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
 

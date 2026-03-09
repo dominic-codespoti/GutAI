@@ -1,6 +1,12 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { View, TouchableOpacity, Dimensions, Text } from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  Dimensions,
+  Text,
+  Animated,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { useThemeColors } from "../../src/stores/theme";
 import Svg, { Path, Defs, Filter, FeDropShadow } from "react-native-svg";
@@ -132,7 +138,7 @@ function CustomTabBar({
                   <Ionicons
                     name={isFocused ? "restaurant" : "restaurant-outline"}
                     size={24}
-                    color="#fff"
+                    color={colors.textOnPrimary}
                   />
                 </TouchableOpacity>
               </View>
@@ -151,36 +157,83 @@ function CustomTabBar({
           ];
 
           return (
-            <TouchableOpacity
+            <AnimatedTabIcon
               key={route.key}
+              iconName={isFocused ? activeIcon : inactiveIcon}
+              size={22}
+              color={color}
+              label={options.title ?? route.name}
+              isFocused={isFocused}
               onPress={onPress}
-              activeOpacity={0.7}
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons
-                name={(isFocused ? activeIcon : inactiveIcon) as any}
-                size={22}
-                color={color}
-              />
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: "600",
-                  color,
-                  marginTop: 2,
-                }}
-              >
-                {options.title ?? route.name}
-              </Text>
-            </TouchableOpacity>
+            />
           );
         })}
       </View>
     </View>
+  );
+}
+
+function AnimatedTabIcon({
+  iconName,
+  size,
+  color,
+  label,
+  isFocused,
+  onPress,
+}: {
+  iconName: string;
+  size: number;
+  color: string;
+  label: string;
+  isFocused: boolean;
+  onPress: () => void;
+}) {
+  const scale = new Animated.Value(1);
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.85,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 8,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={0.7}
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Animated.View style={{ transform: [{ scale }], alignItems: "center" }}>
+        <Ionicons name={iconName as any} size={size} color={color} />
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "600",
+            color,
+            marginTop: 2,
+          }}
+        >
+          {label}
+        </Text>
+      </Animated.View>
+    </TouchableOpacity>
   );
 }
 

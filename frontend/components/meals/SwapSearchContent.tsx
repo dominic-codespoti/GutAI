@@ -32,13 +32,14 @@ export function SwapSearchContent({
   const [debounced, setDebounced] = useState(initialSearch);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(search), 300);
+    const timer = setTimeout(() => setDebounced(search), 350);
     return () => clearTimeout(timer);
   }, [search]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["swap-food-search", debounced],
-    queryFn: () => foodApi.search(debounced).then((r) => r.data),
+    queryFn: ({ signal }) =>
+      foodApi.search(debounced, signal).then((r) => r.data),
     enabled: debounced.length >= 2,
     staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,

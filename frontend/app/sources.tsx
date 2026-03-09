@@ -100,25 +100,31 @@ export default function SourcesScreen() {
       >
         <View
           style={{
-            backgroundColor: "#fef9c3",
+            backgroundColor: colors.warningBg,
             borderRadius: radius.md,
             padding: spacing.lg,
             marginBottom: spacing.xl,
             borderWidth: 1,
-            borderColor: "#fde68a",
+            borderColor: colors.warningBorder,
           }}
         >
           <Text
             style={{
               fontSize: 15,
               fontWeight: "700",
-              color: "#92400e",
+              color: colors.warning,
               marginBottom: 6,
             }}
           >
             ⚕️ Medical Disclaimer
           </Text>
-          <Text style={{ fontSize: 13, color: "#78350f", lineHeight: 20 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              color: colors.textSecondary,
+              lineHeight: 20,
+            }}
+          >
             This app is for informational and educational purposes only. It is
             not a substitute for professional medical advice, diagnosis, or
             treatment. Always consult a qualified healthcare provider or

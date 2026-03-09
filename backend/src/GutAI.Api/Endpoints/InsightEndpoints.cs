@@ -27,7 +27,7 @@ public static class InsightEndpoints
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetNutritionTrends(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetNutritionTrends(DateOnly? from, DateOnly? to, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
         var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
@@ -35,7 +35,8 @@ public static class InsightEndpoints
         var meals = await store.GetMealLogsByDateRangeAsync(userId, fromDate, toDate);
         foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
-        var grouped = meals.GroupBy(m => m.LoggedAt.Date)
+        var offset = tzOffsetMinutes.HasValue ? TimeSpan.FromMinutes(-tzOffsetMinutes.Value) : TimeSpan.Zero;
+        var grouped = meals.GroupBy(m => (m.LoggedAt + offset).Date)
             .Select(g => new
             {
                 date = DateOnly.FromDateTime(g.Key),

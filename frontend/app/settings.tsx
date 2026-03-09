@@ -308,9 +308,14 @@ export default function SettingsScreen() {
                   }}
                 >
                   {changingPassword ? (
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator
+                      color={colors.textOnPrimary}
+                      size="small"
+                    />
                   ) : (
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                    <Text
+                      style={{ color: colors.textOnPrimary, fontWeight: "600" }}
+                    >
                       Update Password
                     </Text>
                   )}

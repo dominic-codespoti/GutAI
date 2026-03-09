@@ -23,13 +23,16 @@ export function MealTypePicker({ selected, onSelect }: MealTypePickerProps) {
             backgroundColor:
               selected === type ? colors.primaryLight : colors.borderLight,
             alignItems: "center",
+            borderWidth: selected === type ? 0 : 1,
+            borderColor: colors.border,
           }}
         >
           <Text
             style={{
               fontSize: 11,
               fontWeight: "600",
-              color: selected === type ? "#fff" : colors.textMuted,
+              color:
+                selected === type ? colors.textOnPrimary : colors.textMuted,
             }}
           >
             {type}

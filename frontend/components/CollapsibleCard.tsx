@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useThemeColors } from "../src/stores/theme";
 
 export function CollapsibleCard({
   title,
@@ -18,10 +19,11 @@ export function CollapsibleCard({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const colors = useThemeColors();
   return (
     <View
       style={{
-        backgroundColor: "#fff",
+        backgroundColor: colors.card,
         borderRadius: 12,
         padding: 16,
         marginBottom: 12,
@@ -39,7 +41,7 @@ export function CollapsibleCard({
           style={{
             fontSize: 16,
             fontWeight: "600",
-            color: "#334155",
+            color: colors.text,
             flex: 1,
           }}
         >
@@ -65,7 +67,7 @@ export function CollapsibleCard({
         <Ionicons
           name={open ? "chevron-up" : "chevron-down"}
           size={18}
-          color="#94a3b8"
+          color={colors.textMuted}
         />
       </TouchableOpacity>
       {open && <View style={{ marginTop: 12 }}>{children}</View>}

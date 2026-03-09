@@ -2,7 +2,11 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors, useThemeShadow } from "../../src/stores/theme";
-import { shiftDate, formatDateLabel } from "../../src/utils/date";
+import {
+  shiftDate,
+  formatDateLabel,
+  toLocalDateStr,
+} from "../../src/utils/date";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 
 export function MealDateNav() {
@@ -10,7 +14,7 @@ export function MealDateNav() {
   const { shadow } = useThemeShadow();
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
   const setDate = useMealSheetStore((s) => s.setDate);
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = toLocalDateStr();
   const isToday = selectedDate === todayStr;
 
   return (

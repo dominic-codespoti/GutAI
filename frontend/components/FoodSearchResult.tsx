@@ -131,6 +131,9 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
             style={styles.image}
             contentFit="contain"
             transition={200}
+            placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
+            cachePolicy="memory-disk"
+            recyclingKey={product.imageUrl}
           />
         ) : (
           <View style={styles.fallbackImage}>

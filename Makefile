@@ -58,6 +58,19 @@ test:
 	cd backend && dotnet test --verbosity minimal
 	cd frontend && npx tsc --noEmit
 
+# ── E2E Tests (requires `make up` first) ──
+e2e:
+	npx playwright test
+
+e2e\:headed:
+	npx playwright test --headed
+
+e2e\:ui:
+	npx playwright test --ui
+
+e2e\:report:
+	npx playwright show-report
+
 # ── Full CI Pipeline ──
 ci:
 	@echo "🔨 Building backend..."

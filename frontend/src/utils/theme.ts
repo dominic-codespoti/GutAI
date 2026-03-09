@@ -35,6 +35,9 @@ export const lightColors = {
   borderLight: "#f1f5f9",
   divider: "#f1f5f9",
 
+  textOnPrimary: "#ffffff",
+  overlay: "rgba(0,0,0,0.3)",
+
   protein: "#3b82f6",
   carbs: "#f59e0b",
   fat: "#ef4444",
@@ -65,7 +68,7 @@ export const darkColors: typeof lightColors = {
 
   bg: "#0f172a",
   card: "#1e293b",
-  cardHover: "#1e293b",
+  cardHover: "#253349",
 
   text: "#f1f5f9",
   textSecondary: "#94a3b8",
@@ -73,8 +76,11 @@ export const darkColors: typeof lightColors = {
   textLight: "#475569",
 
   border: "#334155",
-  borderLight: "#1e293b",
-  divider: "#1e293b",
+  borderLight: "#293548",
+  divider: "#253349",
+
+  textOnPrimary: "#ffffff",
+  overlay: "rgba(0,0,0,0.5)",
 
   protein: "#60a5fa",
   carbs: "#fbbf24",

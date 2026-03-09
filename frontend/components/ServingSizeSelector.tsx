@@ -33,7 +33,7 @@ export function ServingSizeSelector({
         style={{
           fontSize: 12,
           fontWeight: "600",
-          color: "#334155",
+          color: colors.textSecondary,
           marginBottom: 6,
         }}
       >
@@ -47,37 +47,38 @@ export function ServingSizeSelector({
           marginBottom: 8,
         }}
       >
-        {presets.map((preset) => (
-          <TouchableOpacity
-            key={preset.label}
-            onPress={() => {
-              onServingChange(preset.grams);
-              onCustomTextChange("");
-            }}
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 6,
-              backgroundColor:
-                servingG === preset.grams && customText === ""
+        {presets.map((preset) => {
+          const active = servingG === preset.grams && customText === "";
+          return (
+            <TouchableOpacity
+              key={preset.label}
+              onPress={() => {
+                onServingChange(preset.grams);
+                onCustomTextChange("");
+              }}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 6,
+                backgroundColor: active
                   ? colors.primaryLight
                   : colors.borderLight,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: "600",
-                color:
-                  servingG === preset.grams && customText === ""
-                    ? "#fff"
-                    : colors.textMuted,
+                borderWidth: active ? 0 : 1,
+                borderColor: colors.border,
               }}
             >
-              {preset.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "600",
+                  color: active ? colors.textOnPrimary : colors.textMuted,
+                }}
+              >
+                {preset.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View
@@ -88,7 +89,13 @@ export function ServingSizeSelector({
           marginBottom: 8,
         }}
       >
-        <Text style={{ fontSize: 12, fontWeight: "600", color: "#334155" }}>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: "600",
+            color: colors.textSecondary,
+          }}
+        >
           Custom (g):
         </Text>
         <TextInput
@@ -120,7 +127,7 @@ export function ServingSizeSelector({
         style={{
           fontSize: 12,
           fontWeight: "600",
-          color: "#334155",
+          color: colors.textSecondary,
           marginBottom: 6,
         }}
       >
@@ -138,13 +145,16 @@ export function ServingSizeSelector({
               backgroundColor:
                 multiplier === m ? colors.primaryLight : colors.borderLight,
               alignItems: "center",
+              borderWidth: multiplier === m ? 0 : 1,
+              borderColor: colors.border,
             }}
           >
             <Text
               style={{
                 fontSize: 12,
                 fontWeight: "600",
-                color: multiplier === m ? "#fff" : colors.textMuted,
+                color:
+                  multiplier === m ? colors.textOnPrimary : colors.textMuted,
               }}
             >
               {m}×

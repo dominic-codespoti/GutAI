@@ -302,7 +302,7 @@ The backend API deploys to **Azure Container Apps** with **Azure Table Storage**
   └──────────────┬───────────────┘
                  │ pull
 ┌────────────────▼────────────────────────┐
-│  Azure Resource Group (gutai-{env})     │
+│  Azure Resource Group (rg-gutai-{env})  │
 │                                         │
 │  ┌─────────────────────────────────┐    │
 │  │ Container Apps Environment      │    │
@@ -435,7 +435,7 @@ Once deployed, get the API URL:
 
 ```bash
 az deployment group show \
-  --resource-group gutai-prod \
+  --resource-group rg-gutai-prod \
   --name main \
   --query properties.outputs.apiUrl.value -o tsv
 ```

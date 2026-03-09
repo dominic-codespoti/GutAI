@@ -1,5 +1,6 @@
-import React, { Component, ErrorInfo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { Component, ErrorInfo } from "react";
+import { View, Text, TouchableOpacity } from "react-native";
+import { getThemeColors } from "../src/stores/theme";
 
 interface Props {
   children: React.ReactNode;
@@ -18,25 +19,62 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, info.componentStack);
+    console.error("ErrorBoundary caught:", error, info.componentStack);
   }
 
   render() {
     if (this.state.hasError) {
+      const c = getThemeColors();
       return (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', padding: 32 }}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: c.bg,
+            padding: 32,
+          }}
+        >
           <Text style={{ fontSize: 48, marginBottom: 16 }}>😵</Text>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 8, textAlign: 'center' }}>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "700",
+              color: c.text,
+              marginBottom: 8,
+              textAlign: "center",
+            }}
+          >
             Something went wrong
           </Text>
-          <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 24 }}>
-            {this.state.error?.message ?? 'An unexpected error occurred'}
+          <Text
+            style={{
+              fontSize: 14,
+              color: c.textSecondary,
+              textAlign: "center",
+              marginBottom: 24,
+            }}
+          >
+            {this.state.error?.message ?? "An unexpected error occurred"}
           </Text>
           <TouchableOpacity
             onPress={() => this.setState({ hasError: false, error: null })}
-            style={{ backgroundColor: '#22c55e', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 }}
+            style={{
+              backgroundColor: c.primary,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 10,
+            }}
           >
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Try Again</Text>
+            <Text
+              style={{
+                color: c.textOnPrimary,
+                fontWeight: "700",
+                fontSize: 16,
+              }}
+            >
+              Try Again
+            </Text>
           </TouchableOpacity>
         </View>
       );

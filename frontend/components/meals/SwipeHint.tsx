@@ -13,13 +13,21 @@ import { useThemeColors } from "../../src/stores/theme";
 
 const HINT_KEY = "meals_swipe_hint_dismissed";
 
-
 export function SwipeHint() {
   const colors = useThemeColors();
   const styles = StyleSheet.create({
     container: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
-    inner: { flexDirection: "row", alignItems: "center", backgroundColor: colors.primaryLight ?? "#dcfce7", paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.primary + "30", },
-    text: { flex: 1, fontSize: 13, color: colors.text, },
+    inner: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.primaryBg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.primaryBorder,
+    },
+    text: { flex: 1, fontSize: 13, color: colors.text },
   });
   const [show, setShow] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
@@ -70,4 +78,3 @@ export function SwipeHint() {
     </Animated.View>
   );
 }
-

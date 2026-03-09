@@ -158,6 +158,7 @@ export default function RegisterScreen() {
                 placeholderTextColor={colors.textLight}
                 value={displayName}
                 onChangeText={setDisplayName}
+                maxLength={100}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -191,6 +192,7 @@ export default function RegisterScreen() {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                maxLength={254}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -226,6 +228,7 @@ export default function RegisterScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                maxLength={128}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -265,6 +268,7 @@ export default function RegisterScreen() {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showPassword}
+                maxLength={128}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -301,10 +305,14 @@ export default function RegisterScreen() {
               }}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.textOnPrimary} />
               ) : (
                 <Text
-                  style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}
+                  style={{
+                    color: colors.textOnPrimary,
+                    fontSize: 16,
+                    fontWeight: "700",
+                  }}
                 >
                   Create Account
                 </Text>

@@ -50,7 +50,7 @@ export function MealTypeChips() {
               style={{
                 fontSize: 11,
                 fontWeight: "600",
-                color: active ? "#fff" : colors.textSecondary,
+                color: active ? colors.textOnPrimary : colors.textSecondary,
               }}
             >
               {type}

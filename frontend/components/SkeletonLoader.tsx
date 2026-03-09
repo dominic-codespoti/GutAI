@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { View, Animated } from "react-native";
+import { getThemeColors } from "../src/stores/theme";
 
 function SkeletonBlock({
   width,
@@ -11,6 +12,7 @@ function SkeletonBlock({
   style?: any;
 }) {
   const opacity = useRef(new Animated.Value(0.3)).current;
+  const colors = getThemeColors();
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -37,7 +39,7 @@ function SkeletonBlock({
         {
           width: width as any,
           height,
-          backgroundColor: "#e2e8f0",
+          backgroundColor: colors.border,
           borderRadius: 6,
           opacity,
         },
@@ -47,16 +49,28 @@ function SkeletonBlock({
   );
 }
 
-export function CardSkeleton() {
+function skeletonCard(children: React.ReactNode, style?: any) {
+  const colors = getThemeColors();
   return (
     <View
-      style={{
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 8,
-      }}
+      style={[
+        {
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 8,
+        },
+        style,
+      ]}
     >
+      {children}
+    </View>
+  );
+}
+
+export function CardSkeleton() {
+  return skeletonCard(
+    <>
       <SkeletonBlock width="60%" height={16} />
       <SkeletonBlock width="40%" height={12} style={{ marginTop: 8 }} />
       <View style={{ flexDirection: "row", marginTop: 12, gap: 8 }}>
@@ -64,20 +78,14 @@ export function CardSkeleton() {
         <SkeletonBlock width="25%" height={10} />
         <SkeletonBlock width="25%" height={10} />
       </View>
-    </View>
+    </>,
   );
 }
 
 export function MealCardSkeleton() {
-  return (
-    <View
-      style={{
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 8,
-      }}
-    >
+  const colors = getThemeColors();
+  return skeletonCard(
+    <>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <View>
           <SkeletonBlock width={80} height={16} />
@@ -89,7 +97,7 @@ export function MealCardSkeleton() {
         style={{
           marginTop: 12,
           borderTopWidth: 1,
-          borderTopColor: "#f1f5f9",
+          borderTopColor: colors.borderLight,
           paddingTop: 8,
         }}
       >
@@ -98,7 +106,7 @@ export function MealCardSkeleton() {
       <View style={{ marginTop: 8 }}>
         <SkeletonBlock width="55%" height={12} />
       </View>
-    </View>
+    </>,
   );
 }
 
@@ -107,53 +115,45 @@ export function DashboardSkeleton() {
     <View style={{ padding: 20 }}>
       <SkeletonBlock width={180} height={24} />
       <SkeletonBlock width={100} height={14} style={{ marginTop: 8 }} />
-      <View
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: 16,
-          padding: 20,
-          marginTop: 20,
-        }}
-      >
-        <SkeletonBlock width={120} height={16} />
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            marginTop: 12,
-          }}
-        >
-          <SkeletonBlock width={80} height={36} />
-          <SkeletonBlock width={60} height={20} />
-        </View>
-        <SkeletonBlock
-          width="100%"
-          height={8}
-          style={{ marginTop: 12, borderRadius: 4 }}
-        />
-      </View>
-      <View
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: 16,
-          padding: 20,
-          marginTop: 12,
-        }}
-      >
-        <SkeletonBlock width={80} height={16} />
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-around",
-            marginTop: 12,
-          }}
-        >
-          <SkeletonBlock width={40} height={40} />
-          <SkeletonBlock width={40} height={40} />
-          <SkeletonBlock width={40} height={40} />
-          <SkeletonBlock width={40} height={40} />
-        </View>
-      </View>
+      {skeletonCard(
+        <>
+          <SkeletonBlock width={120} height={16} />
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              marginTop: 12,
+            }}
+          >
+            <SkeletonBlock width={80} height={36} />
+            <SkeletonBlock width={60} height={20} />
+          </View>
+          <SkeletonBlock
+            width="100%"
+            height={8}
+            style={{ marginTop: 12, borderRadius: 4 }}
+          />
+        </>,
+        { borderRadius: 16, padding: 20, marginTop: 20, marginBottom: 0 },
+      )}
+      {skeletonCard(
+        <>
+          <SkeletonBlock width={80} height={16} />
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-around",
+              marginTop: 12,
+            }}
+          >
+            <SkeletonBlock width={40} height={40} />
+            <SkeletonBlock width={40} height={40} />
+            <SkeletonBlock width={40} height={40} />
+            <SkeletonBlock width={40} height={40} />
+          </View>
+        </>,
+        { borderRadius: 16, padding: 20, marginTop: 12, marginBottom: 0 },
+      )}
     </View>
   );
 }
@@ -187,30 +187,23 @@ export function SymptomTypesSkeleton() {
 export function SymptomSkeleton() {
   return (
     <>
-      {[1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 10,
-            padding: 14,
-            marginBottom: 6,
-            flexDirection: "row",
-            alignItems: "center",
-          }}
-        >
-          <SkeletonBlock
-            width={32}
-            height={32}
-            style={{ borderRadius: 16, marginRight: 10 }}
-          />
-          <View style={{ flex: 1 }}>
-            <SkeletonBlock width="50%" height={14} />
-            <SkeletonBlock width="30%" height={10} style={{ marginTop: 6 }} />
-          </View>
-          <SkeletonBlock width={40} height={20} style={{ borderRadius: 4 }} />
-        </View>
-      ))}
+      {[1, 2, 3].map((i) =>
+        skeletonCard(
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <SkeletonBlock
+              width={32}
+              height={32}
+              style={{ borderRadius: 16, marginRight: 10 }}
+            />
+            <View style={{ flex: 1 }}>
+              <SkeletonBlock width="50%" height={14} />
+              <SkeletonBlock width="30%" height={10} style={{ marginTop: 6 }} />
+            </View>
+            <SkeletonBlock width={40} height={20} style={{ borderRadius: 4 }} />
+          </View>,
+          { borderRadius: 10, padding: 14, marginBottom: 6 },
+        ),
+      )}
     </>
   );
 }
@@ -218,29 +211,28 @@ export function SymptomSkeleton() {
 export function InsightsSkeleton() {
   return (
     <View>
-      {[1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 8,
-            padding: 12,
-            marginBottom: 4,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              marginBottom: 6,
-            }}
-          >
-            <SkeletonBlock width={100} height={12} />
-            <SkeletonBlock width={60} height={13} />
-          </View>
-          <SkeletonBlock width="100%" height={6} style={{ borderRadius: 3 }} />
-        </View>
-      ))}
+      {[1, 2, 3].map((i) =>
+        skeletonCard(
+          <>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
+              <SkeletonBlock width={100} height={12} />
+              <SkeletonBlock width={60} height={13} />
+            </View>
+            <SkeletonBlock
+              width="100%"
+              height={6}
+              style={{ borderRadius: 3 }}
+            />
+          </>,
+          { borderRadius: 8, padding: 12, marginBottom: 4 },
+        ),
+      )}
     </View>
   );
 }
@@ -248,45 +240,150 @@ export function InsightsSkeleton() {
 export function ProfileSkeleton() {
   return (
     <View style={{ padding: 20 }}>
-      <View
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: 16,
-          padding: 20,
-          alignItems: "center",
-        }}
-      >
-        <SkeletonBlock
-          width={72}
-          height={72}
-          style={{ borderRadius: 36, marginBottom: 12 }}
-        />
-        <SkeletonBlock width={140} height={20} />
-        <SkeletonBlock width={180} height={14} style={{ marginTop: 6 }} />
-      </View>
-      <View
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: 12,
-          padding: 16,
-          marginTop: 12,
-        }}
-      >
-        <SkeletonBlock width={100} height={16} style={{ marginBottom: 12 }} />
-        {[1, 2, 3, 4, 5].map((i) => (
-          <View
-            key={i}
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 6,
-            }}
-          >
-            <SkeletonBlock width={70} height={14} />
-            <SkeletonBlock width={50} height={14} />
+      {skeletonCard(
+        <View style={{ alignItems: "center" }}>
+          <SkeletonBlock
+            width={72}
+            height={72}
+            style={{ borderRadius: 36, marginBottom: 12 }}
+          />
+          <SkeletonBlock width={140} height={20} />
+          <SkeletonBlock width={180} height={14} style={{ marginTop: 6 }} />
+        </View>,
+        { borderRadius: 16, padding: 20, marginBottom: 0 },
+      )}
+      {skeletonCard(
+        <>
+          <SkeletonBlock width={100} height={16} style={{ marginBottom: 12 }} />
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View
+              key={i}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+              }}
+            >
+              <SkeletonBlock width={70} height={14} />
+              <SkeletonBlock width={50} height={14} />
+            </View>
+          ))}
+        </>,
+        { borderRadius: 12, marginTop: 12, marginBottom: 0 },
+      )}
+    </View>
+  );
+}
+
+export function FoodDetailSkeleton() {
+  return (
+    <View style={{ padding: 20 }}>
+      {skeletonCard(
+        <>
+          <SkeletonBlock
+            width="100%"
+            height={200}
+            style={{ borderRadius: 12, marginBottom: 12 }}
+          />
+          <SkeletonBlock width="80%" height={22} />
+          <SkeletonBlock width="50%" height={14} style={{ marginTop: 8 }} />
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <SkeletonBlock
+              width={60}
+              height={24}
+              style={{ borderRadius: 12 }}
+            />
+            <SkeletonBlock
+              width={60}
+              height={24}
+              style={{ borderRadius: 12 }}
+            />
+            <SkeletonBlock
+              width={60}
+              height={24}
+              style={{ borderRadius: 12 }}
+            />
           </View>
-        ))}
-      </View>
+        </>,
+        { borderRadius: 16, padding: 20, marginBottom: 12 },
+      )}
+      {skeletonCard(
+        <>
+          <SkeletonBlock width={120} height={16} style={{ marginBottom: 12 }} />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <View
+                key={i}
+                style={{
+                  width: "48%",
+                  alignItems: "center",
+                  paddingVertical: 8,
+                }}
+              >
+                <SkeletonBlock
+                  width={40}
+                  height={40}
+                  style={{ borderRadius: 20, marginBottom: 6 }}
+                />
+                <SkeletonBlock width={50} height={12} />
+                <SkeletonBlock
+                  width={30}
+                  height={10}
+                  style={{ marginTop: 4 }}
+                />
+              </View>
+            ))}
+          </View>
+        </>,
+        { borderRadius: 16, padding: 20, marginBottom: 12 },
+      )}
+      {skeletonCard(
+        <>
+          <SkeletonBlock width={100} height={16} style={{ marginBottom: 10 }} />
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View
+              key={i}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+              }}
+            >
+              <SkeletonBlock width={80} height={12} />
+              <SkeletonBlock width={50} height={12} />
+            </View>
+          ))}
+        </>,
+        { borderRadius: 16, padding: 20, marginBottom: 12 },
+      )}
+    </View>
+  );
+}
+
+export function SearchResultSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <View style={{ marginTop: 8, gap: 8 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 8,
+          }}
+        >
+          <SkeletonBlock
+            width={48}
+            height={48}
+            style={{ borderRadius: 8, marginRight: 12 }}
+          />
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="70%" height={14} />
+            <SkeletonBlock width="45%" height={11} style={{ marginTop: 6 }} />
+          </View>
+          <SkeletonBlock width={32} height={32} style={{ borderRadius: 16 }} />
+        </View>
+      ))}
     </View>
   );
 }

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -80,6 +81,11 @@ export default function OnboardingScreen() {
       }
       if (prot < 0 || carb < 0 || fat < 0 || fib < 0) {
         toast.error("Goal values cannot be negative");
+        setSaving(false);
+        return;
+      }
+      if (prot > 1000 || carb > 2000 || fat > 1000 || fib > 500) {
+        toast.error("Macro goals seem too high — please check your values");
         setSaving(false);
         return;
       }
@@ -219,7 +225,11 @@ export default function OnboardingScreen() {
             }}
           >
             {selectedDiet === d && (
-              <Ionicons name="checkmark" size={14} color="#fff" />
+              <Ionicons
+                name="checkmark"
+                size={14}
+                color={colors.textOnPrimary}
+              />
             )}
           </View>
           <Text
@@ -277,7 +287,13 @@ export default function OnboardingScreen() {
                 marginRight: spacing.md,
               }}
             >
-              {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+              {active && (
+                <Ionicons
+                  name="checkmark"
+                  size={14}
+                  color={colors.textOnPrimary}
+                />
+              )}
             </View>
             <Text style={{ fontSize: 18, marginRight: spacing.sm }}>
               {c.emoji}
@@ -319,140 +335,165 @@ export default function OnboardingScreen() {
         label="Calories (cal)"
         value={calGoal}
         onChangeText={setCalGoal}
+        maxLength={5}
       />
       <GoalField
         label="Protein (g)"
         value={proteinGoal}
         onChangeText={setProteinGoal}
+        maxLength={4}
       />
       <GoalField
         label="Carbs (g)"
         value={carbGoal}
         onChangeText={setCarbGoal}
+        maxLength={4}
       />
-      <GoalField label="Fat (g)" value={fatGoal} onChangeText={setFatGoal} />
+      <GoalField
+        label="Fat (g)"
+        value={fatGoal}
+        onChangeText={setFatGoal}
+        maxLength={4}
+      />
       <GoalField
         label="Fiber (g)"
         value={fiberGoal}
         onChangeText={setFiberGoal}
+        maxLength={4}
       />
     </View>,
   ];
 
   return (
     <SafeScreen>
-      <ScrollView
-        style={{ flex: 1, backgroundColor: colors.bg }}
-        contentContainerStyle={{ padding: spacing.xxl, paddingBottom: 100 }}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        {/* Progress dots */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "center",
-            marginBottom: spacing.xxxl,
-            gap: spacing.sm,
-          }}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.bg }}
+          contentContainerStyle={{ padding: spacing.xxl, paddingBottom: 100 }}
         >
-          {steps.map((_, i) => (
-            <View
-              key={i}
-              style={{
-                width: i === step ? 24 : 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor:
-                  i === step
-                    ? colors.primaryLight
-                    : i < step
-                      ? colors.primaryBorder
-                      : colors.border,
-              }}
-            />
-          ))}
-        </View>
-
-        {steps[step]}
-
-        {/* Navigation */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            marginTop: spacing.xxxl,
-          }}
-        >
-          {step > 0 ? (
-            <TouchableOpacity
-              onPress={() => setStep(step - 1)}
-              style={{
-                paddingHorizontal: spacing.xxl,
-                paddingVertical: spacing.md,
-              }}
-            >
-              <Text
+          {/* Progress dots */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "center",
+              marginBottom: spacing.xxxl,
+              gap: spacing.sm,
+            }}
+          >
+            {steps.map((_, i) => (
+              <View
+                key={i}
                 style={{
-                  color: colors.textMuted,
-                  fontWeight: "600",
-                  fontSize: 16,
+                  width: i === step ? 24 : 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor:
+                    i === step
+                      ? colors.primaryLight
+                      : i < step
+                        ? colors.primaryBorder
+                        : colors.border,
+                }}
+              />
+            ))}
+          </View>
+
+          {steps[step]}
+
+          {/* Navigation */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              marginTop: spacing.xxxl,
+            }}
+          >
+            {step > 0 ? (
+              <TouchableOpacity
+                onPress={() => setStep(step - 1)}
+                style={{
+                  paddingHorizontal: spacing.xxl,
+                  paddingVertical: spacing.md,
                 }}
               >
-                Back
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <View />
-          )}
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontWeight: "600",
+                    fontSize: 16,
+                  }}
+                >
+                  Back
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View />
+            )}
 
-          {step < steps.length - 1 ? (
-            <TouchableOpacity
-              onPress={() => setStep(step + 1)}
-              style={{
-                backgroundColor: colors.primaryLight,
-                paddingHorizontal: 28,
-                paddingVertical: spacing.md,
-                borderRadius: radius.md,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                Next
-              </Text>
-            </TouchableOpacity>
-          ) : (
+            {step < steps.length - 1 ? (
+              <TouchableOpacity
+                onPress={() => setStep(step + 1)}
+                style={{
+                  backgroundColor: colors.primaryLight,
+                  paddingHorizontal: 28,
+                  paddingVertical: spacing.md,
+                  borderRadius: radius.md,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textOnPrimary,
+                    fontWeight: "700",
+                    fontSize: 16,
+                  }}
+                >
+                  Next
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={finish}
+                disabled={saving}
+                style={{
+                  backgroundColor: colors.primaryLight,
+                  paddingHorizontal: 28,
+                  paddingVertical: spacing.md,
+                  borderRadius: radius.md,
+                }}
+              >
+                {saving ? (
+                  <ActivityIndicator color={colors.textOnPrimary} />
+                ) : (
+                  <Text
+                    style={{
+                      color: colors.textOnPrimary,
+                      fontWeight: "700",
+                      fontSize: 16,
+                    }}
+                  >
+                    Get Started
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {step === 0 && (
             <TouchableOpacity
               onPress={finish}
-              disabled={saving}
-              style={{
-                backgroundColor: colors.primaryLight,
-                paddingHorizontal: 28,
-                paddingVertical: spacing.md,
-                borderRadius: radius.md,
-              }}
+              style={{ alignItems: "center", marginTop: spacing.lg }}
             >
-              {saving ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text
-                  style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}
-                >
-                  Get Started
-                </Text>
-              )}
+              <Text style={{ color: colors.textMuted, fontSize: 14 }}>
+                Skip setup →
+              </Text>
             </TouchableOpacity>
           )}
-        </View>
-
-        {step === 0 && (
-          <TouchableOpacity
-            onPress={finish}
-            style={{ alignItems: "center", marginTop: spacing.lg }}
-          >
-            <Text style={{ color: colors.textMuted, fontSize: 14 }}>
-              Skip setup →
-            </Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeScreen>
   );
 }

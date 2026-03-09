@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -21,7 +21,23 @@ import { toast } from "../../src/stores/toast";
 import { mapParsedItemToRequest } from "../../src/utils/mealMappers";
 import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
+import { buildLoggedAt } from "../../src/utils/date";
 import type { ParsedFoodItem, FoodProduct } from "../../src/types";
+
+/** Strip anything that isn't a digit (integer-only nutrition fields). */
+const sanitizeInt = (text: string): string => text.replace(/[^0-9]/g, "");
+
+/** Strip non-numeric except one decimal point (for servings). */
+const sanitizeDecimal = (text: string): string => {
+  const cleaned = text.replace(/[^0-9.]/g, "");
+  const parts = cleaned.split(".");
+  return parts.length <= 2 ? cleaned : parts[0] + "." + parts.slice(1).join("");
+};
+
+const MAX_CALORIES = 10000;
+const MAX_MACRO_G = 2000;
+const MAX_SODIUM_MG = 50000;
+const MAX_SERVINGS = 100;
 
 type Tab = "describe" | "manual";
 
@@ -94,29 +110,14 @@ export function AddMealSheet() {
         };
       });
       setParsedConfigs(newConfigs);
-
-      if (parsed.length === 1) {
-        // Single item → fill manual form
-        const item = parsed[0];
-        setActiveTab("manual");
-        setManualName(item.name);
-        setManualCalories(String(Math.round(item.calories)));
-        setManualProtein(String(Math.round(item.proteinG)));
-        setManualCarbs(String(Math.round(item.carbsG)));
-        setManualFat(String(Math.round(item.fatG)));
-        setManualFiber(String(Math.round(item.fiberG)));
-        setManualSugar(String(Math.round(item.sugarG)));
-        setManualSodium(String(Math.round(item.sodiumMg)));
-        setManualServings(String(item.servingQuantity ?? 1));
-        setManualFoodProductId(item.foodProductId ?? undefined);
-        setNaturalText("");
-        toast.success(`Filled from "${item.name}"`);
-      } else {
-        setParsedItems(parsed);
-        setNaturalText("");
-        setShowReview(true);
-        toast.success(`Found ${parsed.length} food items`);
-      }
+      setParsedItems(parsed);
+      setNaturalText("");
+      setShowReview(true);
+      toast.success(
+        parsed.length === 1
+          ? `Found "${parsed[0].name}" — review & log`
+          : `Found ${parsed.length} food items`,
+      );
     },
     onError: () =>
       toast.error("Could not parse meal. Try being more specific."),
@@ -124,15 +125,46 @@ export function AddMealSheet() {
 
   const handleLogManual = () => {
     if (!manualName.trim()) return;
+
+    const cal = Number(manualCalories) || 0;
+    const servings = Number(manualServings) || 1;
+    if (cal > MAX_CALORIES) {
+      toast.error(`Calories must be ${MAX_CALORIES.toLocaleString()} or less`);
+      return;
+    }
+    if (servings > MAX_SERVINGS || servings < 0.1) {
+      toast.error(`Servings must be between 0.1 and ${MAX_SERVINGS}`);
+      return;
+    }
+    const macroFields = [
+      { label: "Protein", val: Number(manualProtein) || 0 },
+      { label: "Carbs", val: Number(manualCarbs) || 0 },
+      { label: "Fat", val: Number(manualFat) || 0 },
+      { label: "Fiber", val: Number(manualFiber) || 0 },
+      { label: "Sugar", val: Number(manualSugar) || 0 },
+    ];
+    for (const { label, val } of macroFields) {
+      if (val > MAX_MACRO_G) {
+        toast.error(
+          `${label} must be ${MAX_MACRO_G.toLocaleString()}g or less`,
+        );
+        return;
+      }
+    }
+    if ((Number(manualSodium) || 0) > MAX_SODIUM_MG) {
+      toast.error(`Sodium must be ${MAX_SODIUM_MG.toLocaleString()}mg or less`);
+      return;
+    }
+
     createMeal.mutate({
       mealType: selectedMealType,
-      loggedAt: selectedDate + "T" + new Date().toISOString().split("T")[1],
+      loggedAt: buildLoggedAt(selectedDate),
       items: [
         {
           foodName: manualName.trim(),
-          servings: Number(manualServings) || 1,
+          servings: servings,
           servingUnit: "serving",
-          calories: Number(manualCalories) || 0,
+          calories: cal,
           proteinG: Number(manualProtein) || 0,
           carbsG: Number(manualCarbs) || 0,
           fatG: Number(manualFat) || 0,
@@ -150,7 +182,7 @@ export function AddMealSheet() {
     if (parsedItems.length === 0) return;
     createMeal.mutate({
       mealType: selectedMealType,
-      loggedAt: selectedDate + "T" + new Date().toISOString().split("T")[1],
+      loggedAt: buildLoggedAt(selectedDate),
       items: parsedItems.map((it, idx) =>
         mapParsedItemToRequest(it, parsedConfigs[idx]),
       ),
@@ -237,23 +269,11 @@ export function AddMealSheet() {
     close();
   };
 
-  // Sync tab with mode changes
-  if (
-    visible &&
-    mode === "add-describe" &&
-    activeTab !== "describe" &&
-    !showReview
-  ) {
-    setActiveTab("describe");
-  }
-  if (
-    visible &&
-    mode === "add-manual" &&
-    activeTab !== "manual" &&
-    !showReview
-  ) {
-    setActiveTab("manual");
-  }
+  // Sync tab when sheet opens with a specific mode
+  useEffect(() => {
+    if (mode === "add-describe") setActiveTab("describe");
+    if (mode === "add-manual") setActiveTab("manual");
+  }, [mode]);
 
   return (
     <BottomSheet visible={visible} onClose={handleClose} maxHeight="90%">
@@ -336,6 +356,7 @@ export function AddMealSheet() {
                 value={naturalText}
                 onChangeText={setNaturalText}
                 multiline
+                maxLength={500}
                 style={{
                   fontSize: 15,
                   minHeight: 80,
@@ -377,10 +398,17 @@ export function AddMealSheet() {
                   }}
                 >
                   {parseMutation.isPending ? (
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator
+                      color={colors.textOnPrimary}
+                      size="small"
+                    />
                   ) : (
                     <Text
-                      style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
+                      style={{
+                        color: colors.textOnPrimary,
+                        fontWeight: "600",
+                        fontSize: 14,
+                      }}
                     >
                       Parse & Log
                     </Text>
@@ -404,7 +432,9 @@ export function AddMealSheet() {
                   marginBottom: spacing.md,
                 }}
               >
-                {parsedItems.length} items found — review & edit
+                {parsedItems.length}{" "}
+                {parsedItems.length === 1 ? "item" : "items"} found — review &
+                edit
               </Text>
               {parsedItems.map((item, idx) => {
                 const cfg = parsedConfigs[idx] ?? {
@@ -557,16 +587,20 @@ export function AddMealSheet() {
                     }}
                   >
                     {createMeal.isPending ? (
-                      <ActivityIndicator color="#fff" size="small" />
+                      <ActivityIndicator
+                        color={colors.textOnPrimary}
+                        size="small"
+                      />
                     ) : (
                       <Text
                         style={{
-                          color: "#fff",
+                          color: colors.textOnPrimary,
                           fontWeight: "600",
                           fontSize: 14,
                         }}
                       >
-                        Log Meal ({parsedItems.length} items)
+                        Log Meal ({parsedItems.length}{" "}
+                        {parsedItems.length === 1 ? "item" : "items"})
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -583,6 +617,7 @@ export function AddMealSheet() {
                 placeholderTextColor={colors.textLight}
                 value={manualName}
                 onChangeText={setManualName}
+                maxLength={200}
                 style={{
                   fontWeight: "600",
                   fontSize: 15,
@@ -598,16 +633,28 @@ export function AddMealSheet() {
                   {
                     label: "Calories",
                     value: manualCalories,
-                    set: setManualCalories,
+                    set: (t: string) => setManualCalories(sanitizeInt(t)),
+                    ml: 5,
                   },
                   {
                     label: "Protein",
                     value: manualProtein,
-                    set: setManualProtein,
+                    set: (t: string) => setManualProtein(sanitizeInt(t)),
+                    ml: 4,
                   },
-                  { label: "Carbs", value: manualCarbs, set: setManualCarbs },
-                  { label: "Fat", value: manualFat, set: setManualFat },
-                ].map(({ label, value, set }) => (
+                  {
+                    label: "Carbs",
+                    value: manualCarbs,
+                    set: (t: string) => setManualCarbs(sanitizeInt(t)),
+                    ml: 4,
+                  },
+                  {
+                    label: "Fat",
+                    value: manualFat,
+                    set: (t: string) => setManualFat(sanitizeInt(t)),
+                    ml: 4,
+                  },
+                ].map(({ label, value, set, ml }) => (
                   <View key={label} style={{ flex: 1 }}>
                     <Text
                       style={{
@@ -623,6 +670,7 @@ export function AddMealSheet() {
                       value={value}
                       onChangeText={set}
                       keyboardType="numeric"
+                      maxLength={ml}
                       style={editFieldStyle}
                     />
                   </View>
@@ -630,19 +678,31 @@ export function AddMealSheet() {
               </View>
               <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
                 {[
-                  { label: "Fiber", value: manualFiber, set: setManualFiber },
-                  { label: "Sugar", value: manualSugar, set: setManualSugar },
+                  {
+                    label: "Fiber",
+                    value: manualFiber,
+                    set: (t: string) => setManualFiber(sanitizeInt(t)),
+                    ml: 4,
+                  },
+                  {
+                    label: "Sugar",
+                    value: manualSugar,
+                    set: (t: string) => setManualSugar(sanitizeInt(t)),
+                    ml: 4,
+                  },
                   {
                     label: "Na (mg)",
                     value: manualSodium,
-                    set: setManualSodium,
+                    set: (t: string) => setManualSodium(sanitizeInt(t)),
+                    ml: 5,
                   },
                   {
                     label: "Servings",
                     value: manualServings,
-                    set: setManualServings,
+                    set: (t: string) => setManualServings(sanitizeDecimal(t)),
+                    ml: 5,
                   },
-                ].map(({ label, value, set }) => (
+                ].map(({ label, value, set, ml }) => (
                   <View key={label} style={{ flex: 1 }}>
                     <Text
                       style={{
@@ -658,6 +718,7 @@ export function AddMealSheet() {
                       value={value}
                       onChangeText={set}
                       keyboardType="numeric"
+                      maxLength={ml}
                       style={editFieldStyle}
                     />
                   </View>
@@ -691,10 +752,17 @@ export function AddMealSheet() {
                   }}
                 >
                   {createMeal.isPending ? (
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator
+                      color={colors.textOnPrimary}
+                      size="small"
+                    />
                   ) : (
                     <Text
-                      style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}
+                      style={{
+                        color: colors.textOnPrimary,
+                        fontWeight: "600",
+                        fontSize: 14,
+                      }}
                     >
                       Log Meal
                     </Text>
