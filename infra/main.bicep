@@ -84,7 +84,7 @@ var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${stor
 param azureOpenAIEndpoint string = ''
 
 @description('Azure OpenAI deployment name')
-param azureOpenAIDeploymentName string = 'gpt-5-nano'
+param azureOpenAIDeploymentName string = 'gpt-4o-mini'
 
 resource api 'Microsoft.App/containerApps@2024-03-01' = {
   name: '${prefix}-api'

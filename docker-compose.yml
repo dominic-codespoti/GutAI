@@ -14,8 +14,8 @@ services:
       - Jwt__Audience=GutAI
       - Jwt__ExpiryMinutes=60
       - ExternalApis__UsdaApiKey=${USDA_API_KEY:-DEMO_KEY}
-      - AzureOpenAI__Endpoint=https://openai-us-misc.openai.azure.com/
-      - AzureOpenAI__DeploymentName=gpt-5-nano
+      - AzureOpenAI__Endpoint=https://ai-misc-proj-resource.openai.azure.com/
+      - AzureOpenAI__DeploymentName=gpt-4o-mini
       - AZURE_CONFIG_DIR=/azure-config
     volumes:
       - ${HOME}/.azure:/azure-config
