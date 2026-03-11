@@ -60,7 +60,7 @@ public static class FoodEndpoints
         var localTask = store.SearchFoodProductsAsync(query, 20, default);
         var additivesTask = store.GetAllFoodAdditivesAsync();
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         var externalTask = foodApi.SearchPersonalizedAsync(query, boostIds, cts.Token);
 
         try
@@ -150,6 +150,41 @@ public static class FoodEndpoints
             // Single Lucene ranking pass over all candidates
             using var rankIndex = new FoodSearchIndex(allCandidates);
             finalResults = rankIndex.SearchPersonalized(query, boostIds, 20);
+
+            // For simple whole-food queries (1-2 tokens, no brand), ensure the best
+            // local whole-food match appears at position #1 to prevent branded products
+            // from outranking basic whole foods (e.g. "banana" → "Banana, raw" not "Banana chocolate bar").
+            var queryTokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (queryTokens.Length <= 2 && !queryTokens.Any(t => t.Length <= 2))
+            {
+                var queryLower = query.ToLowerInvariant().Trim();
+                var queryStem = Depluralize(queryLower);
+                var bestWholeFood = allCandidates
+                    .Where(c => c.FoodKind == FoodKind.WholeFood || c.DataSource is "USDA" or "AUSNUT")
+                    .Where(c =>
+                    {
+                        var primary = ExtractPrimaryNoun(c.Name).ToLowerInvariant();
+                        var primaryStem = Depluralize(primary);
+                        return primary.StartsWith(queryLower) || primaryStem.StartsWith(queryStem)
+                            || primary.Contains(queryLower) || primaryStem.Contains(queryStem);
+                    })
+                    .OrderByDescending(c =>
+                    {
+                        var primary = ExtractPrimaryNoun(c.Name).ToLowerInvariant();
+                        if (primary == queryLower || Depluralize(primary) == queryStem) return 1000;
+                        if (primary.StartsWith(queryLower)) return 500;
+                        return 500 - c.Name.Length;
+                    })
+                    .FirstOrDefault();
+
+                if (bestWholeFood is not null && finalResults.Count > 0 && finalResults[0].Id != bestWholeFood.Id)
+                {
+                    finalResults.RemoveAll(r => r.Id == bestWholeFood.Id);
+                    finalResults.Insert(0, bestWholeFood);
+                    if (finalResults.Count > 20)
+                        finalResults.RemoveAt(finalResults.Count - 1);
+                }
+            }
         }
         else
         {
@@ -247,29 +282,7 @@ public static class FoodEndpoints
         var fodmap = fodmapService.Assess(dto);
 
         // Reconcile scores bidirectionally to prevent contradictory ratings
-        // Direction 1: bad FODMAP → cap gut score
-        if (fodmap.FodmapScore < 60 && gutRisk.GutScore > 70)
-        {
-            gutRisk = gutRisk with { GutScore = Math.Min(gutRisk.GutScore, 70) };
-            gutRisk = gutRisk with { GutRating = gutRisk.GutScore >= 80 ? "Good" : gutRisk.GutScore >= 60 ? "Fair" : gutRisk.GutScore >= 40 ? "Poor" : "Bad" };
-        }
-        else if (fodmap.FodmapScore < 80 && gutRisk.GutScore > 85)
-        {
-            gutRisk = gutRisk with { GutScore = Math.Min(gutRisk.GutScore, 85) };
-            gutRisk = gutRisk with { GutRating = gutRisk.GutScore >= 80 ? "Good" : gutRisk.GutScore >= 60 ? "Fair" : gutRisk.GutScore >= 40 ? "Poor" : "Bad" };
-        }
-
-        // Direction 2: bad gut risk → cap FODMAP score
-        if (gutRisk.GutScore < 60 && fodmap.FodmapScore > 70)
-        {
-            fodmap = fodmap with { FodmapScore = Math.Min(fodmap.FodmapScore, 70) };
-            fodmap = fodmap with { FodmapRating = fodmap.FodmapScore >= 80 ? "Low FODMAP" : fodmap.FodmapScore >= 60 ? "Moderate FODMAP" : "High FODMAP" };
-        }
-        else if (gutRisk.GutScore < 80 && fodmap.FodmapScore > 85)
-        {
-            fodmap = fodmap with { FodmapScore = Math.Min(fodmap.FodmapScore, 85) };
-            fodmap = fodmap with { FodmapRating = fodmap.FodmapScore >= 80 ? "Low FODMAP" : fodmap.FodmapScore >= 60 ? "Moderate FODMAP" : "High FODMAP" };
-        }
+        (fodmap, gutRisk) = ScoreReconciler.Reconcile(fodmap, gutRisk);
 
         return Results.Ok(new
         {
@@ -474,5 +487,24 @@ public static class FoodEndpoints
             ServingQuantity = f.ServingQuantity,
             AdditivesTags = additiveDtos.Where(a => a.ENumber != null).Select(a => $"en:{a.ENumber!.ToLowerInvariant()}").ToList(),
         };
+    }
+
+    // ── Text helpers for whole-food search pinning ──
+
+    static string ExtractPrimaryNoun(string name)
+    {
+        var commaIdx = name.IndexOf(',');
+        return commaIdx > 0 ? name[..commaIdx].Trim() : name.Trim();
+    }
+
+    static string Depluralize(string word)
+    {
+        if (word.Length <= 3) return word;
+        if (word.EndsWith("ies") && word.Length > 4) return word[..^3] + "y";
+        if (word.EndsWith("oes") && word.Length > 4) return word[..^2];
+        if (word.EndsWith("ses") && word.Length > 4) return word[..^1];
+        if (word.EndsWith("es") && word.Length > 4 && !word.EndsWith("ches") && !word.EndsWith("shes")) return word[..^1];
+        if (word.EndsWith('s') && !word.EndsWith("ss") && !word.EndsWith("us") && !word.EndsWith("is")) return word[..^1];
+        return word;
     }
 }

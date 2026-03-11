@@ -306,7 +306,14 @@ public class GlycemicIndexService : IGlycemicIndexService
         var carbs = product.Carbs100g;
         if (carbs is null or 0 or < 5) return null;
 
-        var baseGI = carbs < 10 ? 35 : 55;
+        // Whole foods with fiber tend to have much lower GI than processed foods.
+        // Use a lower base for trusted whole foods to avoid overestimating GI for vegetables.
+        bool isWholeFood = product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood ||
+            product.DataSource is "USDA" or "AUSNUT";
+        var hasFiber = (product.Fiber100g ?? 0) > 2;
+        var baseGI = carbs < 10 ? 35
+            : isWholeFood && hasFiber ? 40
+            : 55;
         var sugar = product.Sugar100g ?? 0;
         var fiber = product.Fiber100g ?? 0;
         var protein = product.Protein100g ?? 0;

@@ -1841,27 +1841,28 @@ public class GutRiskServiceTests
     [Fact]
     public void FiberBonus_WithMediumFodmap_NoBonusApplied()
     {
-        // High fiber + onion (High-FODMAP Ingredient, High risk) → 20 × 1.0 = 20 penalty
-        // score = 100 - 20 = 80
-        // Fiber bonus: medHighFodmapCount=1, onlyOneMedium=false (it's High) → bonus=5 (no FODMAP fiber, medHighCount<2)
-        // score = 80 + 5 = 85
+        // High fiber + onion (High-FODMAP Ingredient, High risk) → 20 × 1.0 = 20 penalty → score = 80
+        // Fiber bonus: hasHighRisk=true (onion is High) → baseBonus = Max(5/2, 1) = 2
+        // score = 80 + 2 = 82
         var result = _sut.Assess(MakeProduct(
             ingredients: "water, onion, salt",
             fiber100g: 8m));
 
-        result.GutScore.Should().Be(85);
+        result.GutScore.Should().Be(82);
     }
 
     [Fact]
     public void FiberBonus_NoFodmap_Full5Bonus()
     {
-        // High fiber + only additive flag → full 5-point bonus
+        // High fiber + only additive flag (E433 = Emulsifier, High risk)
+        // E433 = 20 penalty → score = 80
+        // Fiber bonus: hasHighRisk=true (E433 is High) → baseBonus = Max(5/2, 1) = 2
+        // score = 80 + 2 = 82
         var result = _sut.Assess(MakeProduct(
             additivesTags: ["en:e433"],
             fiber100g: 8m));
 
-        // E433 = 20 penalty, +5 fiber bonus = score 85
-        result.GutScore.Should().Be(85);
+        result.GutScore.Should().Be(82);
     }
 
     // ─── v1.5: Real-World IBS Trigger Scenarios ────────────────────────

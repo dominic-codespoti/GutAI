@@ -345,24 +345,26 @@ public class GutRiskService : IGutRiskService
 
         score = Math.Clamp(score, 0, 100);
 
-        // Bonus for high fiber (only when there are risks to offset)
-        if (product?.Fiber100g > 5m && score < 100)
+        // Fiber bonus — fiber genuinely benefits gut microbiome regardless of other flags.
+        // Apply unconditionally but with graduated amounts based on risk level.
+        if (product?.Fiber100g > 3m && score < 100)
         {
-            var bonus = 5;
+            var baseBonus = product.Fiber100g >= 6m ? 5 : 3;
             var hasFodmapFiber = flags.Any(f =>
                 f.Category == "Prebiotic Fiber (FODMAP)" ||
                 f.Name.Contains("Inulin", StringComparison.OrdinalIgnoreCase) ||
                 f.Name.Contains("Chicory", StringComparison.OrdinalIgnoreCase) ||
                 f.Name.Contains("FOS", StringComparison.OrdinalIgnoreCase));
+            var hasHighRisk = flags.Any(f => f.RiskLevel == "High");
             var medHighFodmapCount = flags.Count(f => f.TriggerType == "Fodmap" && f.RiskLevel is "Medium" or "High");
-            var onlyOneMedium = medHighFodmapCount == 1 && flags.All(f => f.TriggerType != "Fodmap" || f.RiskLevel != "High");
-            if (medHighFodmapCount >= 2)
-                bonus = 0;
-            else if (onlyOneMedium)
-                bonus = 2;
-            else if (hasFodmapFiber && medHighFodmapCount <= 1)
-                bonus = 2;
-            score = Math.Clamp(score + bonus, 0, 100);
+
+            // Reduce bonus when high-risk flags present, but never zero it entirely
+            if (hasHighRisk || medHighFodmapCount >= 2)
+                baseBonus = Math.Max(baseBonus / 2, 1);  // at least +1
+            else if (hasFodmapFiber || medHighFodmapCount == 1)
+                baseBonus = Math.Max(baseBonus - 1, 2);
+
+            score = Math.Clamp(score + baseBonus, 0, 100);
         }
 
         return score;
@@ -397,7 +399,12 @@ public class GutRiskService : IGutRiskService
         var hasDetailedIngredients = hasIngredients && product.Ingredients!.Contains(',') && product.Ingredients.Length > 50;
 
         if (!hasIngredients && !hasAdditives)
-            return "Low";
+        {
+            // Trusted whole foods (USDA/AUSNUT) — the name IS the ingredient; no hidden ambiguity.
+            bool isTrustedWholeFood = product.DataSource is "USDA" or "AUSNUT" ||
+                product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
+            return isTrustedWholeFood ? "Medium" : "Low";
+        }
         if (!hasDetailedIngredients)
             return "Medium";
         return "High";

@@ -41,18 +41,18 @@ public class FodmapServiceTests
     public void SingleHighTrigger_Drops25Points()
     {
         var result = _sut.Assess(MakeProduct("Garlic Sauce", "garlic, oil, salt"));
-        result.FodmapScore.Should().Be(55);
-        result.FodmapRating.Should().Be("Moderate FODMAP");
+        result.FodmapScore.Should().Be(40);
+        result.FodmapRating.Should().Be("High FODMAP");
     }
 
     [Fact]
     public void TwoHighTriggers_Drops50Points()
     {
         var result = _sut.Assess(MakeProduct("Garlic Onion Dip", "onion, garlic, cream"));
-        // onion+garlic → same Fructan subcategory, deduped to 1 High trigger (×0.55)
+        // onion+garlic → same Fructan subcategory, deduped to 1 High trigger (×0.40)
         // cream → Lactose Moderate trigger (×0.85)
-        // Total: 100 × 0.55 × 0.85 = 46.75 → 47
-        result.FodmapScore.Should().Be(47);
+        // Total: 100 × 0.40 × 0.85 = 34
+        result.FodmapScore.Should().Be(34);
         result.FodmapRating.Should().Be("High FODMAP");
     }
 
@@ -60,11 +60,11 @@ public class FodmapServiceTests
     public void ManyHighTriggers_ClampedAt0()
     {
         var result = _sut.Assess(MakeProduct("Everything Bagel", "wheat flour, onion, garlic, honey, apple, inulin"));
-        // wheat/onion/garlic/inulin → 1 Fructan trigger (High ×0.55)
-        // honey → 1 Excess Fructose trigger (High ×0.55)
-        // apple → 1 "Excess Fructose + Sorbitol" trigger (High ×0.55)
-        // Total: 100 × 0.55 × 0.55 × 0.55 = 16.6 → 17
-        result.FodmapScore.Should().Be(17);
+        // wheat/onion/garlic/inulin → 1 Fructan trigger (High ×0.40)
+        // honey → 1 Excess Fructose trigger (High ×0.40)
+        // apple → 1 "Excess Fructose + Sorbitol" trigger (High ×0.40)
+        // Total: 100 × 0.40 × 0.40 × 0.40 = 6.4 → 6
+        result.FodmapScore.Should().Be(6);
         result.FodmapRating.Should().Be("Very High FODMAP");
     }
 
@@ -356,7 +356,7 @@ public class FodmapServiceTests
         // onion, garlic, wheat flour all share Fructan/Oligosaccharide — deduped to 1 trigger
         result.Triggers.Should().Contain(t => t.SubCategory == "Fructan");
         result.TriggerCount.Should().Be(1);
-        result.FodmapScore.Should().Be(55);
+        result.FodmapScore.Should().Be(40);
     }
 
     [Fact]
@@ -590,20 +590,20 @@ public class FodmapServiceTests
     [Fact]
     public void Score40To64_IsHighFodmap()
     {
-        // garlic → 1 High trigger (×0.55), score = 55 ≥55 → "Moderate FODMAP"
+        // garlic → 1 High trigger (×0.40), score = 40 ≥30 → "High FODMAP"
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, salt"));
-        result.FodmapScore.Should().Be(55);
-        result.FodmapRating.Should().Be("Moderate FODMAP");
+        result.FodmapScore.Should().Be(40);
+        result.FodmapRating.Should().Be("High FODMAP");
     }
 
     [Fact]
     public void ScoreBelow40_IsVeryHighFodmap()
     {
-        // garlic=High(×0.55) + cream=Moderate(×0.85) + avocado=Moderate(×0.85) → 3 distinct categories
-        // 100 × 0.55 × 0.85 × 0.85 × 0.92^(3-2) = 36.56 → 37
+        // garlic=High(×0.40) + cream=Moderate(×0.85) + avocado=Moderate(×0.85) → 3 distinct categories
+        // 100 × 0.40 × 0.85 × 0.85 × 0.92^(3-2) = 26.6 → 27
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, cream, avocado"));
-        result.FodmapScore.Should().Be(37);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.FodmapScore.Should().Be(27);
+        result.FodmapRating.Should().Be("Very High FODMAP");
     }
 
     // ─── Rye Detection ──────────────────────────────────────────────────
@@ -780,5 +780,19 @@ public class FodmapServiceTests
             trigger.Should().NotBeNull($"'{dairy}' should be detected as a lactose trigger");
             trigger!.Severity.Should().Be("Moderate", $"'{dairy}' should have Moderate severity per SharedFodmapSeverities");
         }
+    }
+
+    // ─── Clinical Classification Verification ──────────────────────────
+
+    [Fact]
+    public void SingleHighTrigger_ProducesHighFodmapRating()
+    {
+        // A single High FODMAP trigger (e.g. garlic → fructan) should produce "High FODMAP"
+        // not "Moderate FODMAP", aligning with Monash clinical classification.
+        // Score: 100 × 0.40 = 40, rating threshold: >= 30 → "High FODMAP"
+        var result = _sut.Assess(MakeProduct("Onion Rings", "onion, flour, oil"));
+        result.FodmapScore.Should().BeLessThan(60);
+        result.FodmapRating.Should().Be("High FODMAP");
+        result.Triggers.Should().Contain(t => t.Severity == "High");
     }
 }

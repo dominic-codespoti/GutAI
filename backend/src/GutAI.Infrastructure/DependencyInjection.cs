@@ -41,14 +41,14 @@ public static class DependencyInjection
         services.AddHttpClient<OpenFoodFactsClient>(client =>
         {
             client.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0 (contact@gutai.app)");
-            client.Timeout = TimeSpan.FromSeconds(10);
+            client.Timeout = TimeSpan.FromSeconds(12);
         })
         .AddStandardResilienceHandler(options =>
         {
             options.Retry.MaxRetryAttempts = 2;
             options.Retry.Delay = TimeSpan.FromMilliseconds(500);
-            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
-            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(8);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(20);
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
         });
 

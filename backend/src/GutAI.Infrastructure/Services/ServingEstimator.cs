@@ -93,10 +93,10 @@ internal static class ServingEstimator
     internal static decimal EstimateCupWeightG(string foodName)
     {
         var lower = foodName.ToLowerInvariant();
-        if (lower.Contains("rice") || lower.Contains("pasta") || lower.Contains("oat") || lower.Contains("quinoa") || lower.Contains("couscous")) return 185m;
+        if (lower.Contains("rice") || lower.Contains("pasta") || lower.Contains("oat") || lower.Contains("quinoa") || lower.Contains("couscous") || lower.Contains("biryani")) return 185m;
         if (lower.Contains("flour") || lower.Contains("sugar") || lower.Contains("cocoa")) return 125m;
         if (lower.Contains("milk") || lower.Contains("water") || lower.Contains("juice") || lower.Contains("broth") || lower.Contains("stock")) return 240m;
-        if (lower.Contains("yogurt") || lower.Contains("yoghurt") || lower.Contains("kefir")) return 245m;
+        if (lower.Contains("yogurt") || lower.Contains("yoghurt") || lower.Contains("kefir") || lower.Contains("lassi")) return 245m;
         if (lower.Contains("berr") || lower.Contains("fruit") || lower.Contains("grape") || lower.Contains("cherry") || lower.Contains("blueberr")) return 150m;
         if (lower.Contains("vegetable") || lower.Contains("spinach") || lower.Contains("lettuce") || lower.Contains("kale") || lower.Contains("arugula")) return 60m;
         if (lower.Contains("bean") || lower.Contains("lentil") || lower.Contains("chickpea")) return 180m;
@@ -106,7 +106,7 @@ internal static class ServingEstimator
         if (lower.Contains("oil") || lower.Contains("butter")) return 220m;
         if (lower.Contains("cottage cheese") || lower.Contains("ricotta")) return 225m;
         if (lower.Contains("ice cream") || lower.Contains("gelato") || lower.Contains("sorbet")) return 140m;
-        if (lower.Contains("soup") || lower.Contains("stew") || lower.Contains("chili") || lower.Contains("chilli")) return 240m;
+        if (lower.Contains("soup") || lower.Contains("stew") || lower.Contains("chili") || lower.Contains("chilli") || lower.Contains("pho") || lower.Contains("ramen") || lower.Contains("congee") || lower.Contains("dal") || lower.Contains("curry")) return 240m;
         return 150m;
     }
 

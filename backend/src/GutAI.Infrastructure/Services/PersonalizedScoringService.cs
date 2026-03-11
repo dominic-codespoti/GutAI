@@ -23,7 +23,14 @@ public class PersonalizedScoringService
         var warnings = new List<string>();
 
         // 1. FODMAP component (30%)
-        var fodmapScore = _fodmap.Assess(product).FodmapScore;
+        var fodmapAssessment = _fodmap.Assess(product);
+        // 2. Additive Risk component (15%)
+        var gutRiskAssessment = _gutRisk.Assess(product);
+
+        // Reconcile FODMAP and GutRisk before compositing to prevent contradictory scores
+        (fodmapAssessment, gutRiskAssessment) = ScoreReconciler.Reconcile(fodmapAssessment, gutRiskAssessment);
+
+        var fodmapScore = fodmapAssessment.FodmapScore;
         explanations.Add(new ScoreExplanationDto
         {
             Component = "FODMAP Risk",
@@ -39,8 +46,7 @@ public class PersonalizedScoringService
                         : "Very high FODMAP content — may be particularly challenging for individuals sensitive to FODMAPs.",
         });
 
-        // 2. Additive Risk component (15%)
-        var additiveScore = _gutRisk.Assess(product).GutScore;
+        var additiveScore = gutRiskAssessment.GutScore;
         explanations.Add(new ScoreExplanationDto
         {
             Component = "Additive Risk",
@@ -201,7 +207,7 @@ public class PersonalizedScoringService
             foreach (var symptom in symptomLogs)
             {
                 var windowStart = symptom.OccurredAt.AddHours(-6);
-                var windowEnd = symptom.OccurredAt.AddHours(-2);
+                var windowEnd = symptom.OccurredAt.AddHours(-1);
 
                 foreach (var meal in candidateMeals)
                 {

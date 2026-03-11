@@ -132,7 +132,7 @@ public class FodmapService : IFodmapService
         var rating = score switch
         {
             >= 75 => "Low FODMAP",
-            >= 55 => "Moderate FODMAP",
+            >= 60 => "Moderate FODMAP",
             >= 30 => "High FODMAP",
             _ => "Very High FODMAP",
         };
@@ -178,7 +178,7 @@ public class FodmapService : IFodmapService
         var rating = score switch
         {
             >= 75 => "Low FODMAP",
-            >= 55 => "Moderate FODMAP",
+            >= 60 => "Moderate FODMAP",
             >= 30 => "High FODMAP",
             _ => "Very High FODMAP",
         };
@@ -211,7 +211,7 @@ public class FodmapService : IFodmapService
         {
             multiplier *= t.Severity switch
             {
-                "High" => 0.55,
+                "High" => 0.40,
                 "Moderate" => 0.85,
                 "Low" => 0.95,
                 _ => 1.0,
@@ -259,7 +259,12 @@ public class FodmapService : IFodmapService
         var hasDetailedIngredients = hasIngredients && product.Ingredients!.Contains(',') && product.Ingredients.Length > 50;
 
         if (!hasIngredients)
-            return "Low";
+        {
+            // Trusted whole foods (USDA/AUSNUT) — the name IS the ingredient; no hidden ambiguity.
+            bool isTrustedWholeFood = product.DataSource is "USDA" or "AUSNUT" ||
+                product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
+            return isTrustedWholeFood ? "Medium" : "Low";
+        }
         if (!hasDetailedIngredients)
             return "Medium";
         return "High";

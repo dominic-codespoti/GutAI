@@ -50,17 +50,54 @@ public class OpenFoodFactsClient : IFoodApiService
         try
         {
             var fields = "product_name,brands,code,nutriments,serving_size,serving_quantity,nova_group,nutriscore_grade,allergens_tags,additives_tags,ingredients_text,image_url";
-            var url = $"https://world.openfoodfacts.net/cgi/search.pl?search_terms={Uri.EscapeDataString(query)}&search_simple=1&action=process&json=1&page_size=10&fields={fields}";
+            var escapedQuery = Uri.EscapeDataString(query);
+
+            // Use the v2 API with both a text search and a brand-targeted search in parallel.
+            // The CGI search.pl endpoint is extremely slow (~25s) for niche brand queries,
+            // while the v2 API responds in ~2-3s.
+            var textUrl = $"https://world.openfoodfacts.net/api/v2/search?search_terms={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
+            var brandUrl = $"https://world.openfoodfacts.net/api/v2/search?brands_tags={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
+
+            var textTask = SafeFetch(textUrl, query, ct);
+            var brandTask = SafeFetch(brandUrl, query, ct);
+
+            await Task.WhenAll(textTask, brandTask);
+
+            var textResults = textTask.Result;
+            var brandResults = brandTask.Result;
+
+            // Merge: brand results first (higher confidence for brand queries), then text results
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var merged = new List<FoodProductDto>();
+
+            foreach (var dto in brandResults.Concat(textResults))
+            {
+                if (seen.Add(dto.Barcode ?? dto.Name))
+                    merged.Add(dto);
+            }
+
+            _logger.LogInformation("OpenFoodFacts search for '{Query}' returned {Count} products (text={TextCount}, brand={BrandCount})",
+                query, merged.Count, textResults.Count, brandResults.Count);
+            return merged;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to search OpenFoodFacts for '{Query}'", query);
+            return [];
+        }
+    }
+
+    private async Task<List<FoodProductDto>> SafeFetch(string url, string query, CancellationToken ct)
+    {
+        try
+        {
             var json = await _http.GetStringAsync(url, ct);
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             if (!root.TryGetProperty("products", out var productsArray))
-            {
-                _logger.LogWarning("OpenFoodFacts search response missing 'products' array for query '{Query}'", query);
                 return [];
-            }
 
             var results = new List<FoodProductDto>();
             foreach (var element in productsArray.EnumerateArray())
@@ -79,13 +116,11 @@ public class OpenFoodFactsClient : IFoodApiService
                     _logger.LogDebug(ex, "Skipping product that failed to deserialize in search for '{Query}'", query);
                 }
             }
-
-            _logger.LogInformation("OpenFoodFacts search for '{Query}' returned {Count} products", query, results.Count);
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to search OpenFoodFacts for '{Query}'", query);
+            _logger.LogDebug(ex, "OpenFoodFacts fetch failed for URL segment of query '{Query}'", query);
             return [];
         }
     }
