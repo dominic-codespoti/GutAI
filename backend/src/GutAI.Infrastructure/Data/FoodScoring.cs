@@ -51,8 +51,15 @@ internal static class FoodScoring
             return word[..^3] + "y";
         if (word.EndsWith("ers") && word.Length > 4)
             return word[..^1];
+        // -oes → strip "es" (tomatoes→tomato, potatoes→potato, mangoes→mango)
+        if (word.EndsWith("oes") && word.Length > 4)
+            return word[..^2];
+        // -ses → strip trailing "s" only (sauces→sauce, cheeses→cheese)
+        if (word.EndsWith("ses") && word.Length > 4)
+            return word[..^1];
+        // -ches, -shes → strip trailing "s" only (sandwiches→sandwich not needed, matches→matche is wrong, keep as-is)
         if (word.EndsWith("es") && word.Length > 4 &&
-            !word.EndsWith("oes") && !word.EndsWith("ses") && !word.EndsWith("ches") && !word.EndsWith("shes"))
+            !word.EndsWith("ches") && !word.EndsWith("shes"))
             return word[..^1];
         if (word.EndsWith('s') && !word.EndsWith("ss") && !word.EndsWith("us") && !word.EndsWith("is"))
             return word[..^1];
@@ -71,9 +78,14 @@ internal static class FoodScoring
         // Source trust
         if (dto.DataSource is "USDA" or "AUSNUT") q += 0.4f;
 
-        // Richness boost: images and ingredients make for much better user experience
-        if (!string.IsNullOrEmpty(dto.ImageUrl)) q += 0.4f;
-        if (!string.IsNullOrEmpty(dto.Ingredients)) q += 0.2f;
+        // Richness boost: images and ingredients improve UX, but only for non-whole-foods.
+        // USDA whole foods never have images — don't let metadata bias crush them.
+        bool isTrustedWholeFood = dto.DataSource is "USDA" or "AUSNUT" ||
+            dto.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
+        if (!string.IsNullOrEmpty(dto.ImageUrl))
+            q += isTrustedWholeFood ? 0.1f : 0.25f;
+        if (!string.IsNullOrEmpty(dto.Ingredients))
+            q += isTrustedWholeFood ? 0.05f : 0.15f;
 
         // Nutrition completeness
         if (dto.Calories100g.HasValue) q += 0.06f;
@@ -218,11 +230,17 @@ internal static class FoodScoring
             foreach (var term in FoodScoringTerms.PlainTerms)
                 if (nameLower.Contains(term)) score += 5f;
 
+            // Penalize processed forms only when the user didn't ask for them.
+            // Check against both exact query and depluralized query tokens to avoid
+            // false penalties (e.g. "tomato sauce" should not penalize "sauce" results)
+            var queryTokenSet = new HashSet<string>(queryTokens, StringComparer.OrdinalIgnoreCase);
+            var queryDepluralized = queryTokens.Select(Depluralize).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var term in FoodScoringTerms.ProcessedTerms)
             {
-                if (nameLower.Contains(term) && !queryLower.Contains(term))
+                if (nameLower.Contains(term) && !queryLower.Contains(term)
+                    && !queryTokenSet.Contains(term) && !queryDepluralized.Contains(term))
                 {
-                    score -= queryTokens.Length == 1 ? 15f : 8f;
+                    score -= queryTokens.Length == 1 ? 12f : 6f;
                     break;
                 }
             }

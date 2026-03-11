@@ -78,9 +78,11 @@ public sealed class FoodSearchIndex : IDisposable
                 var doc = new Document
                 {
                     new StringField("idx", idx.ToString(), Field.Store.YES),
+                    new StringField("food_id", food.Id.ToString(), Field.Store.NO),
                     new TextField("name", food.Name, Field.Store.NO),
                     new TextField("primary", primaryNoun, Field.Store.NO),
                     new StringField("name_exact", food.Name.ToLowerInvariant(), Field.Store.NO),
+                    new StringField("primary_exact", primaryNoun.ToLowerInvariant(), Field.Store.NO),
                     new TextField("brand", food.Brand ?? "", Field.Store.NO),
                     new StringField("source", food.DataSource ?? "", Field.Store.NO),
                     new SingleDocValuesField("quality", quality),
@@ -137,8 +139,7 @@ public sealed class FoodSearchIndex : IDisposable
 
         var expandedTokens = FoodQueryBuilder.ExpandMultiWordSynonyms(queryLower, analyzedTokens);
 
-        var brandTokens = BuildBrandTokens(_foods);
-        bool queryHasBrand = rawTokens.Any(t => brandTokens.Contains(t));
+        bool queryHasBrand = DetectQueryHasBrand(rawTokens, _foods);
 
         var boolQuery = FoodQueryBuilder.Build(queryLower, rawTokens, analyzedTokens, expandedTokens, boostIds);
 
@@ -180,6 +181,33 @@ public sealed class FoodSearchIndex : IDisposable
 
     private static HashSet<string> _knownBrands = new(StringComparer.OrdinalIgnoreCase);
     private static DateTime _lastBrandUpdate = DateTime.MinValue;
+
+    /// <summary>
+    /// Detects whether a query likely contains a brand name.
+    /// Uses both a cached global brand set AND checks the current index's foods
+    /// to avoid stale-cache misses for newly-seen brands.
+    /// </summary>
+    internal static bool DetectQueryHasBrand(string[] rawTokens, IEnumerable<FoodProductDto> foods)
+    {
+        var globalBrands = BuildBrandTokens(foods);
+        if (rawTokens.Any(t => globalBrands.Contains(t)))
+            return true;
+
+        // Also do a direct check against brands in the current food set
+        // to handle newly-arrived brands not yet in the 5-min cache
+        foreach (var f in foods)
+        {
+            if (string.IsNullOrEmpty(f.Brand)) continue;
+            var brandTokens = f.Brand.Split([' ', ',', '-'], StringSplitOptions.RemoveEmptyEntries);
+            foreach (var bt in brandTokens)
+            {
+                if (bt.Length > 2 && rawTokens.Any(qt => qt.Equals(bt, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
 
     private static HashSet<string> BuildBrandTokens(IEnumerable<FoodProductDto> foods)
     {

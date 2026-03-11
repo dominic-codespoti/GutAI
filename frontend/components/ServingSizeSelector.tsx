@@ -1,6 +1,7 @@
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
 import { useThemeColors } from "../src/stores/theme";
 import { buildServingPresets } from "../src/utils/nutrition";
+import type { ParsedServing } from "../src/utils/nutrition";
 import type { FoodProduct } from "../src/types";
 
 interface ServingSizeSelectorProps {
@@ -11,6 +12,7 @@ interface ServingSizeSelectorProps {
   multiplier: number;
   onMultiplierChange: (m: number) => void;
   product?: Pick<FoodProduct, "servingQuantity" | "servingSize"> | null;
+  parsedServing?: ParsedServing | null;
   summaryText?: string;
 }
 
@@ -22,10 +24,11 @@ export function ServingSizeSelector({
   multiplier,
   onMultiplierChange,
   product,
+  parsedServing,
   summaryText,
 }: ServingSizeSelectorProps) {
   const colors = useThemeColors();
-  const presets = buildServingPresets(product);
+  const presets = buildServingPresets(product, parsedServing);
 
   return (
     <View>

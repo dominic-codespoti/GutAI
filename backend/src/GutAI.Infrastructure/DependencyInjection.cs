@@ -80,9 +80,12 @@ public static class DependencyInjection
 
         services.AddScoped<NaturalLanguageFallbackService>();
         services.AddSingleton<GutRiskService>();
+        services.AddSingleton<IGutRiskService>(sp => sp.GetRequiredService<GutRiskService>());
         services.AddSingleton<FodmapService>();
+        services.AddSingleton<IFodmapService>(sp => sp.GetRequiredService<FodmapService>());
         services.AddSingleton<SubstitutionService>();
         services.AddSingleton<GlycemicIndexService>();
+        services.AddSingleton<IGlycemicIndexService>(sp => sp.GetRequiredService<GlycemicIndexService>());
         services.AddScoped<PersonalizedScoringService>();
         services.AddScoped<IFoodDiaryAnalysisService, FoodDiaryAnalysisService>();
 

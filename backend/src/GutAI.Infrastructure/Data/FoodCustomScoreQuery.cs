@@ -25,7 +25,8 @@ internal sealed class FoodScoreProvider : CustomScoreProvider
     {
         // subQueryScore = Lucene BooleanQuery relevance
         // valSrcScore   = pre-computed static quality (from SingleDocValuesField)
-        // Quality acts as tiebreaker/booster on top of relevance
-        return subQueryScore + valSrcScore * 15f;
+        // Quality acts as a moderate booster — reduced from 15f to 8f to prevent
+        // metadata-rich OpenFoodFacts products from overwhelming USDA whole foods
+        return subQueryScore + valSrcScore * 8f;
     }
 }

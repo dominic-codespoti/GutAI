@@ -128,6 +128,7 @@ public record FodmapAssessmentDto
     public List<string> Categories { get; init; } = [];
     public List<FodmapTriggerDto> Triggers { get; init; } = [];
     public string Summary { get; init; } = "";
+    public string? Confidence { get; init; }
 }
 
 public record FodmapTriggerDto
@@ -167,6 +168,7 @@ public record GlycemicAssessmentDto
     public List<GlycemicMatchDto> Matches { get; init; } = [];
     public string GutImpactSummary { get; init; } = "";
     public List<string> Recommendations { get; init; } = [];
+    public string Confidence { get; init; } = "Unknown";
 }
 
 public record GlycemicMatchDto

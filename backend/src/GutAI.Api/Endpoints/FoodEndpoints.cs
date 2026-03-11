@@ -128,12 +128,18 @@ public static class FoodEndpoints
             .Select(f => MapToDto(f, additives))
             .ToList();
 
-        // Combine local + external into Lucene for unified ranking
+        // Merge local + external, deduplicating by name.
+        // Use a single Lucene pass instead of re-ranking already-ranked external results.
+        // External results were already ranked by CompositeFoodApiService — we just need
+        // to incorporate local DB results into the same ranking space.
         var allCandidates = new List<FoodProductDto>(localDtos.Count + externalResults.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Local DB results go first (they include USDA whole foods)
         foreach (var dto in localDtos)
             if (seen.Add(dto.Name))
                 allCandidates.Add(dto);
+        // External results that aren't already in local
         foreach (var dto in externalResults)
             if (seen.Add(dto.Name))
                 allCandidates.Add(dto);
@@ -141,15 +147,21 @@ public static class FoodEndpoints
         List<FoodProductDto> finalResults;
         if (allCandidates.Count > 1)
         {
+            // Single Lucene ranking pass over all candidates
             using var rankIndex = new FoodSearchIndex(allCandidates);
-            finalResults = rankIndex.Search(query, 20);
+            finalResults = rankIndex.SearchPersonalized(query, boostIds, 20);
         }
         else
         {
             finalResults = allCandidates.Take(20).ToList();
         }
 
-        await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromMinutes(10));
+        // Only cache results that appear meaningful (at least 2 results or non-empty)
+        // to avoid locking in degraded results from API timeouts
+        if (finalResults.Count >= 2)
+            await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromMinutes(3));
+        else if (finalResults.Count > 0)
+            await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromSeconds(30));
 
         return Results.Ok(finalResults);
     }

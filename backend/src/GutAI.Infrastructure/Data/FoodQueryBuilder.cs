@@ -23,6 +23,31 @@ internal static class FoodQueryBuilder
         ["corn tortilla"] = ["tortilla", "corn"],
         ["rice cake"] = ["rice", "cake", "puffed"],
         ["rice cakes"] = ["rice", "cake", "puffed"],
+        // New multi-word expansions
+        ["tomato sauce"] = ["tomato", "sauce", "marinara", "pasta"],
+        ["protein shake"] = ["protein", "shake", "beverage", "supplement", "whey"],
+        ["protein bar"] = ["protein", "bar", "energy"],
+        ["hot dog"] = ["frankfurter", "sausage", "beef"],
+        ["mac and cheese"] = ["macaroni", "cheese"],
+        ["peanut butter"] = ["peanut", "butter", "spread"],
+        ["almond milk"] = ["almond", "milk", "beverage"],
+        ["oat milk"] = ["oat", "milk", "beverage"],
+        ["coconut milk"] = ["coconut", "milk"],
+        ["soy milk"] = ["soy", "milk", "soymilk", "beverage"],
+        ["cream cheese"] = ["cream", "cheese"],
+        ["sour cream"] = ["sour", "cream"],
+        ["ice cream"] = ["ice", "cream", "frozen", "dessert"],
+        ["green tea"] = ["tea", "green"],
+        ["black tea"] = ["tea", "black"],
+        ["fried rice"] = ["rice", "fried"],
+        ["fish fingers"] = ["fish", "sticks", "breaded"],
+        ["fish sticks"] = ["fish", "sticks", "breaded"],
+        ["chicken thigh"] = ["chicken", "thigh", "meat"],
+        ["chicken wing"] = ["chicken", "wing"],
+        ["lamb chop"] = ["lamb", "chop", "loin"],
+        ["bell pepper"] = ["peppers", "sweet", "bell"],
+        ["spring onion"] = ["onions", "spring", "scallion"],
+        ["green onion"] = ["onions", "spring", "scallion"],
     };
 
     public static string[] ExpandMultiWordSynonyms(string queryLower, string[] analyzedTokens)
@@ -54,7 +79,7 @@ internal static class FoodQueryBuilder
         // 0) PERSONALIZATION BOOST (JIT)
         foreach (var id in boostIds)
         {
-            var termQuery = new TermQuery(new Term("Id", id.ToString()));
+            var termQuery = new TermQuery(new Term("food_id", id.ToString()));
             termQuery.Boost = 50.0f;
             boolQuery.Add(termQuery, Occur.SHOULD);
         }
@@ -114,6 +139,17 @@ internal static class FoodQueryBuilder
 
         // 6) Exact full match on lowered name
         boolQuery.Add(new TermQuery(new Term("name_exact", queryLower)) { Boost = 50f }, Occur.SHOULD);
+
+        // 6b) Exact match on primary noun (e.g. "eggs" matches USDA "Egg" primary noun)
+        // Also try depluralized form so "eggs" matches "egg" and "tomatoes" matches "tomato"
+        var queryPrimary = queryLower.Trim();
+        boolQuery.Add(new TermQuery(new Term("primary_exact", queryPrimary)) { Boost = 35f }, Occur.SHOULD);
+        var queryDepluralized = FoodScoring.Depluralize(queryPrimary);
+        if (queryDepluralized != queryPrimary)
+            boolQuery.Add(new TermQuery(new Term("primary_exact", queryDepluralized)) { Boost = 30f }, Occur.SHOULD);
+        // Also try singular→plural: "egg" should match primary "eggs"
+        if (!queryPrimary.EndsWith('s'))
+            boolQuery.Add(new TermQuery(new Term("primary_exact", queryPrimary + "s")) { Boost = 28f }, Occur.SHOULD);
 
         // 7) Multi-word: require at least one token to appear
         if (rawTokens.Length > 1)

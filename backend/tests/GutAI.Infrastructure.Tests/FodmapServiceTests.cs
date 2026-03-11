@@ -42,17 +42,17 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct("Garlic Sauce", "garlic, oil, salt"));
         result.FodmapScore.Should().Be(55);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.FodmapRating.Should().Be("Moderate FODMAP");
     }
 
     [Fact]
     public void TwoHighTriggers_Drops50Points()
     {
         var result = _sut.Assess(MakeProduct("Garlic Onion Dip", "onion, garlic, cream"));
-        // onion=High(45), garlic=High(45) — both Fructan, deduped to 1 trigger (-45)
-        // cream → Lactose Moderate trigger (-15)
-        // Total: 100 - 45 - 15 = 40
-        result.FodmapScore.Should().Be(40);
+        // onion+garlic → same Fructan subcategory, deduped to 1 High trigger (×0.55)
+        // cream → Lactose Moderate trigger (×0.85)
+        // Total: 100 × 0.55 × 0.85 = 46.75 → 47
+        result.FodmapScore.Should().Be(47);
         result.FodmapRating.Should().Be("High FODMAP");
     }
 
@@ -60,11 +60,11 @@ public class FodmapServiceTests
     public void ManyHighTriggers_ClampedAt0()
     {
         var result = _sut.Assess(MakeProduct("Everything Bagel", "wheat flour, onion, garlic, honey, apple, inulin"));
-        // wheat/onion/garlic/inulin → 1 Fructan trigger (-45)
-        // honey → 1 Excess Fructose trigger (-45)
-        // apple → 1 "Excess Fructose + Sorbitol" trigger (-45) — different SubCategory from honey
-        // Total: 3 unique triggers → score = 100 - 135 = clamped at 0
-        result.FodmapScore.Should().Be(0);
+        // wheat/onion/garlic/inulin → 1 Fructan trigger (High ×0.55)
+        // honey → 1 Excess Fructose trigger (High ×0.55)
+        // apple → 1 "Excess Fructose + Sorbitol" trigger (High ×0.55)
+        // Total: 100 × 0.55 × 0.55 × 0.55 = 16.6 → 17
+        result.FodmapScore.Should().Be(17);
         result.FodmapRating.Should().Be("Very High FODMAP");
     }
 
@@ -572,38 +572,38 @@ public class FodmapServiceTests
     [Fact]
     public void Score80_IsLowFodmap()
     {
-        // 1 moderate(15) + 1 low(5) = 20, score = 80 → Low FODMAP
+        // asparagus=Moderate(×0.85) + erythritol=Low(×0.95) → 100 × 0.85 × 0.95 = 80.75 → 81
         var result = _sut.Assess(MakeProduct(ingredients: "asparagus, erythritol"));
-        result.FodmapScore.Should().Be(80);
+        result.FodmapScore.Should().Be(81);
         result.FodmapRating.Should().Be("Low FODMAP");
     }
 
     [Fact]
     public void Score65To79_IsModerateFodmap()
     {
-        // 2 moderate triggers (15+15=30), score = 70 → Moderate FODMAP
+        // asparagus=Moderate(×0.85) + cream=Moderate(×0.85) → 100 × 0.85 × 0.85 = 72.25 → 72
         var result = _sut.Assess(MakeProduct(ingredients: "asparagus, cream"));
-        result.FodmapScore.Should().Be(70);
+        result.FodmapScore.Should().Be(72);
         result.FodmapRating.Should().Be("Moderate FODMAP");
     }
 
     [Fact]
     public void Score40To64_IsHighFodmap()
     {
-        // 1 high trigger (45), score = 55 → High FODMAP
+        // garlic → 1 High trigger (×0.55), score = 55 ≥55 → "Moderate FODMAP"
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, salt"));
         result.FodmapScore.Should().Be(55);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.FodmapRating.Should().Be("Moderate FODMAP");
     }
 
     [Fact]
     public void ScoreBelow40_IsVeryHighFodmap()
     {
-        // 1 high (45) + 1 moderate (15) = 60 → still High FODMAP range.
-        // 1 high (45) + 2 moderates (15+15=30) = 75 penalty, score = 25 → "Very High FODMAP" (<40)
+        // garlic=High(×0.55) + cream=Moderate(×0.85) + avocado=Moderate(×0.85) → 3 distinct categories
+        // 100 × 0.55 × 0.85 × 0.85 × 0.92^(3-2) = 36.56 → 37
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, cream, avocado"));
-        result.FodmapScore.Should().Be(25);
-        result.FodmapRating.Should().Be("Very High FODMAP");
+        result.FodmapScore.Should().Be(37);
+        result.FodmapRating.Should().Be("High FODMAP");
     }
 
     // ─── Rye Detection ──────────────────────────────────────────────────

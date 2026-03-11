@@ -1,43 +1,45 @@
+using System.Text.RegularExpressions;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Interfaces;
 
 namespace GutAI.Infrastructure.Services;
 
-public class GlycemicIndexService
+public class GlycemicIndexService : IGlycemicIndexService
 {
+    static readonly Regex ServingSizeGramsRegex = new(@"(\d+(?:\.\d+)?)\s*g\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public GlycemicAssessmentDto Assess(FoodProductDto product)
     {
+        // Skip GI assessment for very-low-carb products
+        if (product.Carbs100g is null or < 5m)
+        {
+            return new GlycemicAssessmentDto
+            {
+                EstimatedGI = null,
+                GiCategory = "Not Applicable",
+                EstimatedGL = null,
+                GlCategory = "Not Applicable",
+                MatchCount = 0,
+                Matches = [],
+                GutImpactSummary = "Glycemic index is not meaningful for very-low-carb products (less than 5g carbohydrates per 100g).",
+                Recommendations = ["This product has minimal carbohydrate content, so blood sugar impact is likely negligible."],
+                Confidence = "High",
+            };
+        }
+
         var matches = new List<GlycemicMatchDto>();
         var lower = (product.Ingredients ?? "").ToLowerInvariant();
         var name = (product.Name ?? "").ToLowerInvariant();
-        var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients);
+        var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients) && product.Ingredients.Contains(',');
         var matchedPatterns = new List<string>();
 
-        // Match ingredients against GI database (sorted longest-first for specificity)
-        foreach (var (pattern, entry) in GiDatabase.OrderByDescending(x => x.Pattern.Length))
-        {
-            bool matched = hasIngredients
-                ? lower.Contains(pattern)
-                : name.Contains(pattern);
+        MatchPatterns(hasIngredients ? lower : name, name, hasIngredients, matches, matchedPatterns);
 
-            if (matched)
-            {
-                // Skip if a more specific pattern already covers this one
-                if (matchedPatterns.Any(mp => mp.Contains(pattern)))
-                    continue;
-
-                if (!matches.Any(m => m.Food.Equals(entry.Food, StringComparison.OrdinalIgnoreCase)))
-                {
-                    matches.Add(entry);
-                    matchedPatterns.Add(pattern);
-                }
-            }
-        }
-
-        // If no ingredient matches, try product-level estimation
+        // Fallback to nutrition-based estimation
         if (matches.Count == 0)
         {
             var estimated = EstimateFromNutrition(product);
-            if (estimated is not null)
+            if (estimated != null)
                 matches.Add(estimated);
         }
 
@@ -45,120 +47,186 @@ public class GlycemicIndexService
         {
             return new GlycemicAssessmentDto
             {
-                EstimatedGI = null,
                 GiCategory = "Unknown",
-                EstimatedGL = null,
                 GlCategory = "Unknown",
-                MatchCount = 0,
-                Matches = [],
-                GutImpactSummary = "Insufficient data to estimate glycemic impact.",
-                Recommendations = [],
+                GutImpactSummary = "Unable to estimate glycemic index for this product.",
+                Confidence = "Low",
             };
         }
 
-        // Weighted average GI based on matched ingredients
-        var avgGI = (int)Math.Round(matches.Average(m => m.GI));
+        // Position-weighted GI calculation
+        var avgGI = ComputeWeightedGI(matches, hasIngredients);
+        var carbs = product.Carbs100g ?? 0m;
 
-        // Estimate GL using product carbs if available
-        decimal? estimatedGL = null;
-        if (product.Carbs100g is > 0)
-        {
-            // GL = (GI × available carbs per serving) / 100
-            // Use 100g as reference serving
-            estimatedGL = Math.Round(avgGI * product.Carbs100g.Value / 100m, 1);
-        }
+        // Serving-size-aware GL calculation
+        var servingGrams = ParseServingGrams(product.ServingSize);
+        decimal carbsForGL;
+        if (servingGrams > 0)
+            carbsForGL = carbs * servingGrams / 100m;
+        else
+            carbsForGL = carbs; // fallback to per-100g
+
+        var gl = Math.Round(avgGI * carbsForGL / 100m, 1);
 
         var giCategory = ClassifyGI(avgGI);
-        var glCategory = estimatedGL.HasValue ? ClassifyGL(estimatedGL.Value) : "Unknown";
+        var glCategory = ClassifyGL(gl);
+        var confidence = matches.Any(m => m.Source == "Estimated") ? "Medium" : "High";
+
+        var recommendations = GenerateRecommendations(avgGI, gl, product, giCategory);
+
+        return new GlycemicAssessmentDto
+        {
+            EstimatedGI = avgGI,
+            GiCategory = giCategory,
+            EstimatedGL = gl,
+            GlCategory = glCategory,
+            MatchCount = matches.Count,
+            Matches = matches,
+            GutImpactSummary = BuildGutImpactSummary(avgGI, gl, giCategory, glCategory),
+            Recommendations = recommendations,
+            Confidence = confidence,
+        };
+    }
+
+    public GlycemicAssessmentDto AssessText(string text)
+    {
+        var lower = text.ToLowerInvariant();
+        var matches = new List<GlycemicMatchDto>();
+        var matchedPatterns = new List<string>();
+
+        MatchPatterns(lower, lower, false, matches, matchedPatterns);
+
+        if (matches.Count == 0)
+        {
+            return new GlycemicAssessmentDto
+            {
+                GiCategory = "Unknown",
+                GlCategory = "Unknown",
+                GutImpactSummary = "Unable to estimate glycemic index from the provided text.",
+                Confidence = "Low",
+            };
+        }
+
+        var avgGI = ComputeWeightedGI(matches, false);
+        var giCategory = ClassifyGI(avgGI);
 
         var recommendations = new List<string>();
         if (avgGI >= 70)
         {
-            recommendations.Add("Pairing with protein or healthy fat may help moderate glucose absorption.");
-            recommendations.Add("A lower-GI alternative could potentially help moderate blood sugar response.");
-        }
-        else if (avgGI >= 56)
-        {
-            recommendations.Add("Moderate GI — fiber-rich foods alongside may help moderate blood sugar response.");
-        }
-
-        if (estimatedGL >= 20)
-        {
-            recommendations.Add("High glycemic load — portion size can influence blood sugar response.");
-        }
-
-        if (product.Fiber100g is > 3)
-        {
-            recommendations.Add("Good fiber content may help moderate glucose absorption and support gut bacteria diversity.");
-        }
-        else if (product.Fiber100g is < 1 && product.Carbs100g is > 30)
-        {
-            recommendations.Add("Low fiber with high carbs — adding a fiber source to this meal is one option to explore.");
+            recommendations.Add("This is a high-GI food — consider pairing with protein, healthy fats, or fiber to moderate blood sugar response.");
+            recommendations.Add("Look for lower-GI alternatives where possible.");
         }
 
         return new GlycemicAssessmentDto
         {
             EstimatedGI = avgGI,
             GiCategory = giCategory,
-            EstimatedGL = estimatedGL,
-            GlCategory = glCategory,
-            MatchCount = matches.Count,
-            Matches = matches,
-            GutImpactSummary = BuildGutImpactSummary(avgGI, estimatedGL, product),
-            Recommendations = recommendations,
-        };
-    }
-
-    public GlycemicAssessmentDto AssessText(string text)
-    {
-        var matches = new List<GlycemicMatchDto>();
-        var lower = text.ToLowerInvariant();
-        var matchedPatterns = new List<string>();
-
-        foreach (var (pattern, entry) in GiDatabase.OrderByDescending(x => x.Pattern.Length))
-        {
-            if (lower.Contains(pattern))
-            {
-                if (matchedPatterns.Any(mp => mp.Contains(pattern)))
-                    continue;
-
-                if (!matches.Any(m => m.Food.Equals(entry.Food, StringComparison.OrdinalIgnoreCase)))
-                {
-                    matches.Add(entry);
-                    matchedPatterns.Add(pattern);
-                }
-            }
-        }
-
-        if (matches.Count == 0)
-            return new GlycemicAssessmentDto
-            {
-                EstimatedGI = null,
-                GiCategory = "Unknown",
-                EstimatedGL = null,
-                GlCategory = "Unknown",
-                MatchCount = 0,
-                Matches = [],
-                GutImpactSummary = "No foods with known glycemic index found in the text.",
-                Recommendations = [],
-            };
-
-        var avgGI = (int)Math.Round(matches.Average(m => m.GI));
-
-        return new GlycemicAssessmentDto
-        {
-            EstimatedGI = avgGI,
-            GiCategory = ClassifyGI(avgGI),
             EstimatedGL = null,
             GlCategory = "Unknown",
             MatchCount = matches.Count,
             Matches = matches,
-            GutImpactSummary = BuildGutImpactSummary(avgGI, null, null),
-            Recommendations = avgGI >= 70
-                ? ["Pairing with protein or healthy fat may help moderate glucose absorption."]
-                : [],
+            GutImpactSummary = BuildGutImpactSummary(avgGI, 0m, giCategory, "Unknown"),
+            Recommendations = recommendations,
+            Confidence = matches.Count > 0 ? "High" : "Low",
         };
     }
+
+    // ─── Shared matching logic ──────────────────────────────────────────
+
+    static void MatchPatterns(string searchText, string nameText, bool hasIngredients,
+        List<GlycemicMatchDto> matches, List<string> matchedPatterns)
+    {
+        foreach (var entry in GlycemicData.GiDatabase)
+        {
+            // Use pre-compiled regex with word boundaries
+            if (!entry.Regex.IsMatch(searchText))
+                continue;
+
+            // Check exclusions
+            if (entry.Exclusions != null)
+            {
+                var excluded = false;
+                foreach (var excl in entry.Exclusions)
+                {
+                    if (searchText.Contains(excl, StringComparison.OrdinalIgnoreCase))
+                    {
+                        excluded = true;
+                        break;
+                    }
+                }
+                if (excluded) continue;
+            }
+
+            // Skip if a longer pattern already covers this
+            if (matchedPatterns.Any(mp => mp.Contains(entry.Pattern, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            // Deduplicate by food name
+            if (matches.Any(m => m.Food.Equals(entry.Pattern, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            matchedPatterns.Add(entry.Pattern);
+            matches.Add(new GlycemicMatchDto
+            {
+                Food = entry.Pattern,
+                GI = entry.GI,
+                GiCategory = ClassifyGI(entry.GI),
+                Source = entry.Source,
+                Notes = entry.Notes,
+            });
+        }
+    }
+
+    static int ComputeWeightedGI(List<GlycemicMatchDto> matches, bool hasIngredients)
+    {
+        if (matches.Count == 1)
+            return matches[0].GI;
+
+        if (!hasIngredients)
+        {
+            // No ingredients list — use simple average (we can't determine position)
+            return (int)Math.Round(matches.Average(m => m.GI));
+        }
+
+        // Position-weighted: 1st=60%, 2nd=25%, 3rd=10%, rest share 5%
+        double[] weights = matches.Count switch
+        {
+            2 => [0.65, 0.35],
+            3 => [0.60, 0.25, 0.15],
+            _ => ComputePositionWeights(matches.Count),
+        };
+
+        var weightedSum = 0.0;
+        for (var i = 0; i < matches.Count; i++)
+            weightedSum += matches[i].GI * weights[i];
+
+        return (int)Math.Round(weightedSum);
+    }
+
+    static double[] ComputePositionWeights(int count)
+    {
+        var weights = new double[count];
+        weights[0] = 0.60;
+        if (count > 1) weights[1] = 0.25;
+        if (count > 2) weights[2] = 0.10;
+        var remaining = 0.05;
+        if (count > 3)
+        {
+            var share = remaining / (count - 3);
+            for (var i = 3; i < count; i++)
+                weights[i] = share;
+        }
+        return weights;
+    }
+
+    static decimal ParseServingGrams(string? servingSize)
+    {
+        if (string.IsNullOrWhiteSpace(servingSize)) return 0;
+        var match = ServingSizeGramsRegex.Match(servingSize);
+        return match.Success && decimal.TryParse(match.Groups[1].Value, out var grams) ? grams : 0;
+    }
+
+    // ─── Classification ─────────────────────────────────────────────────
 
     static string ClassifyGI(int gi) => gi switch
     {
@@ -169,207 +237,119 @@ public class GlycemicIndexService
 
     static string ClassifyGL(decimal gl) => gl switch
     {
-        <= 10 => "Low",
-        <= 19 => "Medium",
+        <= 10m => "Low",
+        <= 19m => "Medium",
         _ => "High",
     };
 
-    static string BuildGutImpactSummary(int gi, decimal? gl, FoodProductDto? product)
+    // ─── Recommendations ────────────────────────────────────────────────
+
+    static List<string> GenerateRecommendations(int gi, decimal gl, FoodProductDto product, string giCategory)
     {
+        var recs = new List<string>();
+
+        if (gi >= 70)
+        {
+            if ((product.Protein100g ?? 0) <= 10)
+                recs.Add("Consider pairing with a protein source to help moderate blood sugar response.");
+            if ((product.Fat100g ?? 0) <= 5)
+                recs.Add("Adding healthy fats can slow glucose absorption.");
+            recs.Add("Look for lower-GI alternatives in the same category.");
+        }
+        else if (gi >= 56)
+        {
+            if ((product.Fiber100g ?? 0) <= 3)
+                recs.Add("Choose fiber-rich foods alongside to further moderate blood sugar response.");
+        }
+
+        if (gl >= 20)
+            recs.Add("Consider smaller portion sizes — this product has a high glycemic load per serving.");
+
+        if ((product.Fiber100g ?? 0) > 3)
+            recs.Add("Good fiber content helps moderate blood sugar response.");
+
+        if ((product.Fiber100g ?? 0) < 1 && (product.Carbs100g ?? 0) > 30)
+            recs.Add("This is a high-carb, low-fiber product — consider adding a fiber source to your meal.");
+
+        if ((product.NovaGroup ?? 0) >= 4 && gi >= 60)
+            recs.Add("Ultra-processed high-GI foods may cause sharper blood sugar spikes than whole food equivalents.");
+
+        return recs;
+    }
+
+    // ─── Gut Impact Summary ─────────────────────────────────────────────
+
+    static string BuildGutImpactSummary(int gi, decimal gl, string giCategory, string glCategory)
+    {
+        if (giCategory == "Not Applicable")
+            return "Very low carbohydrate content — minimal glycemic impact expected.";
+
         var parts = new List<string>();
 
         if (gi >= 70)
-            parts.Add("High GI foods are associated with faster blood sugar rises, which some research links to inflammation and changes in gut bacteria composition.");
+            parts.Add($"This is a high-GI food (estimated GI: {gi}), which may cause rapid blood sugar spikes. In the gut, rapid glucose absorption can affect motility and may contribute to reactive hypoglycemia symptoms.");
         else if (gi >= 56)
-            parts.Add("Medium GI — moderate blood sugar impact. Often paired with fiber or protein for a more balanced response.");
+            parts.Add($"This is a medium-GI food (estimated GI: {gi}), with moderate blood sugar impact. Generally well-tolerated from a gut perspective.");
         else
-            parts.Add("Low GI — associated with more gradual glucose release, which some research links to better blood sugar stability and microbiome diversity.");
+            parts.Add($"This is a low-GI food (estimated GI: {gi}), which promotes gradual glucose release. Low-GI foods tend to be gentler on the digestive system.");
 
-        if (gl is >= 20)
-            parts.Add("The high glycemic load suggests a higher glucose delivery per serving — smaller portions or pairing with fat/protein are options some people explore.");
-
-        if (product?.Fiber100g is > 5)
-            parts.Add("High fiber content provides prebiotic benefits and helps moderate the glycemic response.");
+        if (gl >= 20)
+            parts.Add("The glycemic load is high, meaning a typical serving delivers a significant glucose dose.");
 
         return string.Join(" ", parts);
     }
 
+    // ─── Nutrition-Based Estimation ─────────────────────────────────────
+
     static GlycemicMatchDto? EstimateFromNutrition(FoodProductDto product)
     {
-        // Rough estimation when no specific food match found
-        if (product.Carbs100g is null or 0) return null;
+        var carbs = product.Carbs100g;
+        if (carbs is null or 0 or < 5) return null;
 
-        var carbs = product.Carbs100g.Value;
-
-        // Very low carb foods shouldn't get a GI estimate — GI is meaningless
-        if (carbs < 5) return null;
-
-        var fiber = product.Fiber100g ?? 0;
+        var baseGI = carbs < 10 ? 35 : 55;
         var sugar = product.Sugar100g ?? 0;
+        var fiber = product.Fiber100g ?? 0;
         var protein = product.Protein100g ?? 0;
         var fat = product.Fat100g ?? 0;
+        var name = (product.Name ?? "").ToLowerInvariant();
 
-        // Higher sugar ratio → higher GI estimate
-        // Higher fiber, protein, fat → lower GI estimate
-        var sugarRatio = carbs > 0 ? sugar / carbs : 0;
-        var baseGI = carbs < 10 ? 35m : 55m; // Low-carb foods get a lower starting point
-
-        // Adjust up for high sugar
+        // Sugar ratio adjustment
+        var sugarRatio = carbs > 0 ? sugar / carbs.Value : 0;
         if (sugarRatio > 0.6m) baseGI += 15;
         else if (sugarRatio > 0.3m) baseGI += 8;
 
-        // Adjust down for fiber
+        // Fiber adjustment
         if (fiber > 5) baseGI -= 6;
         else if (fiber > 2) baseGI -= 3;
 
-        // Adjust down for protein and fat (slow gastric emptying)
+        // Protein adjustment
         if (protein > 10) baseGI -= 4;
         else if (protein > 5) baseGI -= 2;
 
+        // Fat adjustment
         if (fat > 10) baseGI -= 6;
         else if (fat > 5) baseGI -= 3;
 
-        var gi = (int)Math.Clamp(baseGI, 20, 95);
+        // Processing level awareness
+        if ((product.NovaGroup ?? 0) >= 4) baseGI += 8;
+
+        // Name-based heuristics
+        if (name.Contains("whole grain") || name.Contains("whole wheat") || name.Contains("wholemeal"))
+            baseGI -= 8;
+        if (name.Contains("instant") || name.Contains("quick"))
+            baseGI += 10;
+        if (name.Contains("raw") || name.Contains("uncooked"))
+            baseGI -= 5;
+
+        baseGI = Math.Clamp(baseGI, 20, 95);
 
         return new GlycemicMatchDto
         {
-            Food = product.Name,
-            GI = gi,
-            GiCategory = ClassifyGI(gi),
+            Food = product.Name ?? "Unknown",
+            GI = baseGI,
+            GiCategory = ClassifyGI(baseGI),
             Source = "Estimated",
-            Notes = "Estimated from nutritional composition. Actual GI may vary.",
+            Notes = "No direct database match found. GI estimated from macronutrient profile and product characteristics.",
         };
     }
-
-    // ─── Glycemic Index Database ───────────────────────────────────────
-    // Based on International Tables of Glycemic Index (University of Sydney)
-    // GI values use glucose = 100 as reference
-
-    static readonly (string Pattern, GlycemicMatchDto Entry)[] GiDatabase =
-    [
-        // ── Breads & Bakery ──
-            ("baguette", new() { Food = "Baguette", GI = 75, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Rapid starch digestion" }),
-            ("brioche", new() { Food = "Brioche", GI = 70, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Rich but still high GI" }),
-        ("white bread", new() { Food = "White bread", GI = 75, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Refined wheat, rapid digestion" }),
-        ("whole wheat bread", new() { Food = "Whole wheat bread", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Despite whole grain, still high GI" }),
-        ("wholemeal bread", new() { Food = "Wholemeal bread", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Similar to whole wheat" }),
-        ("sourdough", new() { Food = "Sourdough bread", GI = 54, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Fermentation lowers GI + reduces fructans" }),
-        ("rye bread", new() { Food = "Rye bread", GI = 58, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Dense structure slows digestion" }),
-        ("pumpernickel", new() { Food = "Pumpernickel", GI = 46, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very dense, slow release" }),
-        ("multigrain", new() { Food = "Multigrain bread", GI = 62, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("pita bread", new() { Food = "Pita bread", GI = 68, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("bagel", new() { Food = "Bagel", GI = 72, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Dense refined wheat" }),
-        ("croissant", new() { Food = "Croissant", GI = 67, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Fat content lowers GI somewhat" }),
-
-        // ── Rice & Grains ──
-        ("white rice", new() { Food = "White rice", GI = 73, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Rapid starch digestion" }),
-        ("brown rice", new() { Food = "Brown rice", GI = 68, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Fiber slows digestion slightly" }),
-        ("basmati", new() { Food = "Basmati rice", GI = 58, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Amylose structure resists digestion" }),
-        ("jasmine rice", new() { Food = "Jasmine rice", GI = 89, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Very high amylopectin content" }),
-        ("quinoa", new() { Food = "Quinoa", GI = 53, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "High protein + fiber" }),
-        ("oats", new() { Food = "Oats (rolled)", GI = 55, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Beta-glucan slows digestion" }),
-        ("oatmeal", new() { Food = "Oatmeal", GI = 55, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Soluble fiber rich" }),
-        ("instant oat", new() { Food = "Instant oats", GI = 79, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Processing increases GI significantly" }),
-        ("couscous", new() { Food = "Couscous", GI = 65, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Essentially tiny pasta" }),
-        ("bulgur", new() { Food = "Bulgur wheat", GI = 48, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Parboiled, retains structure" }),
-        ("millet", new() { Food = "Millet", GI = 71, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-        ("buckwheat", new() { Food = "Buckwheat", GI = 49, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Not actually wheat, gluten-free" }),
-        ("corn flake", new() { Food = "Corn flakes", GI = 81, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Highly processed" }),
-
-        // ── Pasta ──
-        ("spaghetti", new() { Food = "Spaghetti (white)", GI = 49, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Compact structure slows digestion" }),
-        ("pasta", new() { Food = "Pasta (white)", GI = 49, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Dense gluten matrix" }),
-        ("noodle", new() { Food = "Noodles", GI = 47, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Egg and wheat noodles" }),
-        ("rice noodle", new() { Food = "Rice noodles", GI = 53, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("macaroni", new() { Food = "Macaroni", GI = 47, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-
-        // ── Potatoes & Tubers ──
-        ("baked potato", new() { Food = "Baked potato", GI = 85, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Gelatinized starch, very high" }),
-        ("boiled potato", new() { Food = "Boiled potato", GI = 78, GiCategory = "High", Source = "Sydney GI Tables", Notes = "High but less than baked" }),
-        ("mashed potato", new() { Food = "Mashed potato", GI = 87, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Processing increases surface area" }),
-        ("french fries", new() { Food = "French fries", GI = 63, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Fat lowers GI vs plain potato" }),
-        ("sweet potato", new() { Food = "Sweet potato", GI = 63, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Lower than white potato" }),
-        ("potato", new() { Food = "Potato", GI = 78, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Varies by preparation" }),
-        ("yam", new() { Food = "Yam", GI = 37, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "True yam, not sweet potato" }),
-        ("taro", new() { Food = "Taro", GI = 53, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-
-        // ── Fruits ──
-        ("apple", new() { Food = "Apple", GI = 36, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Fructose + fiber" }),
-        ("banana", new() { Food = "Banana", GI = 51, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Ripe banana has higher GI" }),
-        ("orange", new() { Food = "Orange", GI = 43, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("grape", new() { Food = "Grapes", GI = 46, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("mango", new() { Food = "Mango", GI = 51, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("pineapple", new() { Food = "Pineapple", GI = 59, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("watermelon", new() { Food = "Watermelon", GI = 76, GiCategory = "High", Source = "Sydney GI Tables", Notes = "High GI but low GL due to low carb density" }),
-        ("strawberr", new() { Food = "Strawberry", GI = 40, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("blueberr", new() { Food = "Blueberry", GI = 53, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("cherry", new() { Food = "Cherry", GI = 22, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI" }),
-        ("cherries", new() { Food = "Cherries", GI = 22, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI" }),
-        ("pear", new() { Food = "Pear", GI = 38, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("peach", new() { Food = "Peach", GI = 42, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("plum", new() { Food = "Plum", GI = 39, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("kiwi", new() { Food = "Kiwi", GI = 53, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("date", new() { Food = "Dates", GI = 42, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Low GI but very high GL per portion" }),
-        ("raisin", new() { Food = "Raisins", GI = 64, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Concentrated sugar" }),
-
-        // ── Fruit Juices ──
-        ("apple juice", new() { Food = "Apple juice", GI = 41, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "No fiber to slow absorption" }),
-        ("orange juice", new() { Food = "Orange juice", GI = 50, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-
-        // ── Legumes ──
-        ("lentil", new() { Food = "Lentils", GI = 32, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Excellent low-GI protein source" }),
-        ("chickpea", new() { Food = "Chickpeas", GI = 28, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI" }),
-        ("kidney bean", new() { Food = "Kidney beans", GI = 24, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("black bean", new() { Food = "Black beans", GI = 30, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("baked bean", new() { Food = "Baked beans", GI = 48, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Sauce adds some sugar" }),
-
-        // ── Sugars & Sweeteners ──
-        ("glucose", new() { Food = "Glucose", GI = 100, GiCategory = "High", Source = "Reference", Notes = "Reference standard" }),
-        ("sucrose", new() { Food = "Sucrose (table sugar)", GI = 65, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "50% glucose, 50% fructose" }),
-        ("fructose", new() { Food = "Fructose", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Low GI but FODMAP concern" }),
-        ("honey", new() { Food = "Honey", GI = 61, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Varies by type" }),
-        ("maple syrup", new() { Food = "Maple syrup", GI = 54, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("agave", new() { Food = "Agave syrup", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Low GI but very high fructose (FODMAP)" }),
-
-        // ── Dairy & Alternatives ──
-        ("milk", new() { Food = "Whole milk", GI = 27, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Fat + protein lower GI" }),
-        ("skim milk", new() { Food = "Skim milk", GI = 32, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "" }),
-        ("yogurt", new() { Food = "Yogurt (plain)", GI = 36, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Fermentation lowers GI" }),
-        ("ice cream", new() { Food = "Ice cream", GI = 51, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Fat content lowers GI" }),
-
-        // ── Snacks & Processed ──
-        ("chocolate", new() { Food = "Chocolate", GI = 40, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Fat lowers GI; dark better than milk" }),
-        ("popcorn", new() { Food = "Popcorn", GI = 65, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("rice cake", new() { Food = "Rice cakes", GI = 82, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Puffed rice, very rapid digestion" }),
-        ("pretzel", new() { Food = "Pretzels", GI = 83, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Refined wheat" }),
-        ("cracker", new() { Food = "Crackers", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-        ("donut", new() { Food = "Donut", GI = 76, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-        ("doughnut", new() { Food = "Doughnut", GI = 76, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-        ("cake", new() { Food = "Cake", GI = 67, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Fat and eggs moderate GI" }),
-        ("muffin", new() { Food = "Muffin", GI = 69, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("cookie", new() { Food = "Cookie", GI = 62, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Fat content lowers GI" }),
-
-        // ── Beverages ──
-        ("coca cola", new() { Food = "Coca-Cola", GI = 63, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "HFCS-sweetened" }),
-        ("cola", new() { Food = "Cola", GI = 63, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("sports drink", new() { Food = "Sports drink", GI = 78, GiCategory = "High", Source = "Sydney GI Tables", Notes = "Designed for rapid absorption" }),
-        ("energy drink", new() { Food = "Energy drink", GI = 70, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-
-        // ── Breakfast Cereals ──
-        ("muesli", new() { Food = "Muesli", GI = 57, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Untoasted, with nuts" }),
-        ("granola", new() { Food = "Granola", GI = 56, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "Nuts and fat lower GI" }),
-        ("bran flake", new() { Food = "Bran flakes", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-        ("weetabix", new() { Food = "Weetabix", GI = 69, GiCategory = "Medium", Source = "Sydney GI Tables", Notes = "" }),
-        ("cheerios", new() { Food = "Cheerios", GI = 74, GiCategory = "High", Source = "Sydney GI Tables", Notes = "" }),
-
-        // ── Vegetables ──
-        ("carrot", new() { Food = "Carrot", GI = 16, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low GI when raw; cooked is higher (~41)" }),
-        ("celery", new() { Food = "Celery", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-        ("broccoli", new() { Food = "Broccoli", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-        ("spinach", new() { Food = "Spinach", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-        ("cabbage", new() { Food = "Cabbage", GI = 10, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-        ("tomato", new() { Food = "Tomato", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-        ("lettuce", new() { Food = "Lettuce", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-        ("cucumber", new() { Food = "Cucumber", GI = 15, GiCategory = "Low", Source = "Sydney GI Tables", Notes = "Very low carb, negligible glycemic impact" }),
-    ];
 }

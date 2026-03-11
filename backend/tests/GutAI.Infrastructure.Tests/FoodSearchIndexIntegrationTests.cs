@@ -77,7 +77,19 @@ public sealed class FoodSearchIndexIntegrationTests : IDisposable
     [InlineData("pork")]
     public void SingleWord_ReturnsResults(string query)
     {
-        Search(query).Should().NotBeEmpty();
+        var results = Search(query);
+        results.Should().NotBeEmpty();
+
+        // A1 strengthen: #1 result primary noun must contain the query term
+        var topName = results[0].Name;
+        var commaIdx = topName.IndexOf(',');
+        var primaryNoun = (commaIdx > 0 ? topName[..commaIdx] : topName).Trim().ToLower();
+        primaryNoun.Should().Contain(query.ToLower(),
+            $"top result for '{query}' should have '{query}' in its primary noun, got '{topName}'");
+
+        // At least 3 results for any common single-word food
+        results.Should().HaveCountGreaterThanOrEqualTo(3,
+            $"'{query}' is a common food — should return at least 3 results");
     }
 
     // ════════════════════════════════════════════════════════════════

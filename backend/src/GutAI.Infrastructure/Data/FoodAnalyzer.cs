@@ -44,13 +44,48 @@ internal sealed class FoodAnalyzer : Analyzer
     {
         var builder = new SynonymMap.Builder(dedup: true);
 
+        // Cooking forms
         AddSynonym(builder, "toast", "bread", "toasted");
         AddSynonym(builder, "steak", "beef", "loin");
         AddSynonym(builder, "oatmeal", "oats", "cereal");
+        AddSynonym(builder, "porridge", "oats", "cereal");
         AddSynonym(builder, "fries", "potatoes", "french", "fried");
         AddSynonym(builder, "chips", "potato", "chips");
         AddSynonym(builder, "soda", "carbonated", "beverage");
         AddSynonym(builder, "pop", "carbonated", "beverage");
+
+        // Regional AU/UK → US equivalents
+        AddSynonym(builder, "capsicum", "peppers", "sweet");
+        AddSynonym(builder, "prawns", "shrimp");
+        AddSynonym(builder, "prawn", "shrimp");
+        AddSynonym(builder, "mince", "ground", "beef");
+        AddSynonym(builder, "rocket", "arugula");
+        AddSynonym(builder, "coriander", "cilantro");
+        AddSynonym(builder, "aubergine", "eggplant");
+        AddSynonym(builder, "courgette", "zucchini");
+        AddSynonym(builder, "beetroot", "beets");
+        AddSynonym(builder, "sultana", "raisins", "golden");
+        AddSynonym(builder, "sultanas", "raisins", "golden");
+        AddSynonym(builder, "crisps", "potato", "chips");
+        AddSynonym(builder, "biscuit", "cookie");
+        AddSynonym(builder, "biscuits", "cookies");
+        AddSynonym(builder, "lolly", "candy");
+        AddSynonym(builder, "lollies", "candy");
+        AddSynonym(builder, "muesli", "granola", "cereal");
+        AddSynonym(builder, "skim", "nonfat");
+        AddSynonym(builder, "skimmed", "nonfat");
+        AddSynonym(builder, "wholemeal", "whole", "wheat");
+        AddSynonym(builder, "minced", "ground");
+        AddSynonym(builder, "tinned", "canned");
+
+        // Common colloquial terms
+        AddSynonym(builder, "hotdog", "frankfurter", "sausage");
+        AddSynonym(builder, "jam", "preserves", "jelly");
+        AddSynonym(builder, "ketchup", "catsup", "tomato", "sauce");
+        AddSynonym(builder, "mayo", "mayonnaise");
+        AddSynonym(builder, "vegemite", "yeast", "extract", "spread");
+        AddSynonym(builder, "marmite", "yeast", "extract", "spread");
+        AddSynonym(builder, "yoghurt", "yogurt");
 
         return builder.Build();
     }

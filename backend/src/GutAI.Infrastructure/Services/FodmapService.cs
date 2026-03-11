@@ -1,9 +1,10 @@
 using System.Text.RegularExpressions;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Interfaces;
 
 namespace GutAI.Infrastructure.Services;
 
-public class FodmapService
+public class FodmapService : IFodmapService
 {
     static bool HasTrigger(List<FodmapTriggerDto> triggers, FodmapTriggerDto info)
     {
@@ -12,6 +13,14 @@ public class FodmapService
         return triggers.Any(t =>
             t.Name.Equals(info.Name, StringComparison.OrdinalIgnoreCase) ||
             (!string.IsNullOrEmpty(t.SubCategory) && t.SubCategory.Equals(info.SubCategory, StringComparison.OrdinalIgnoreCase) && t.Category.Equals(info.Category, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> _wholeFoodRegexCache = new();
+    static bool WholeFoodRegexMatch(string text, string pattern)
+    {
+        var regex = _wholeFoodRegexCache.GetOrAdd(pattern, p =>
+            new Regex(@"\b" + Regex.Escape(p) + @"\b", RegexOptions.Compiled | RegexOptions.IgnoreCase));
+        return regex.IsMatch(text);
     }
 
     public FodmapAssessmentDto Assess(FoodProductDto product)
@@ -25,6 +34,7 @@ public class FodmapService
             var combined = lower + " " + (product.Name ?? "").ToLowerInvariant();
             var isLactoseFree = MatchUtils.IsLactoseFree(combined);
             var isDairyFree = MatchUtils.IsDairyFree(combined);
+            var isGlutenFree = MatchUtils.IsGlutenFree(combined);
 
             foreach (var (pattern, regex, info) in IngredientTriggers)
             {
@@ -32,6 +42,10 @@ public class FodmapService
                 if (matched && !HasTrigger(triggers, info))
                 {
                     if ((isLactoseFree || isDairyFree) && info.SubCategory == "Lactose")
+                        continue;
+                    if (isGlutenFree && (info.SubCategory == "Fructan") &&
+                        (pattern == "wheat" || pattern == "wheat flour" || pattern == "whole wheat" ||
+                         pattern == "wheat starch" || pattern == "barley" || pattern == "rye"))
                         continue;
                     triggers.Add(info);
                 }
@@ -86,7 +100,7 @@ public class FodmapService
         var hasRealIngredients = !string.IsNullOrWhiteSpace(product.Ingredients) && product.Ingredients.Contains(',');
         foreach (var (pattern, info) in WholeFood_Triggers)
         {
-            if (Regex.IsMatch(productName, $@"\b{Regex.Escape(pattern)}\b", RegexOptions.IgnoreCase) && !HasTrigger(triggers, info))
+            if (WholeFoodRegexMatch(productName, pattern) && !HasTrigger(triggers, info))
             {
                 if (hasRealIngredients && GenericWholeFoodPatterns.Any(g => pattern.Contains(g, StringComparison.OrdinalIgnoreCase)))
                     continue;
@@ -117,13 +131,15 @@ public class FodmapService
         var score = CalculateFodmapScore(triggers);
         var rating = score switch
         {
-            >= 80 => "Low FODMAP",
-            >= 65 => "Moderate FODMAP",
-            >= 40 => "High FODMAP",
+            >= 75 => "Low FODMAP",
+            >= 55 => "Moderate FODMAP",
+            >= 30 => "High FODMAP",
             _ => "Very High FODMAP",
         };
 
         var categories = triggers.Select(t => t.Category).Distinct().OrderBy(c => c).ToList();
+
+        var confidence = ComputeFodmapConfidence(product, triggers);
 
         return new FodmapAssessmentDto
         {
@@ -136,6 +152,7 @@ public class FodmapService
             Categories = categories,
             Triggers = triggers.OrderByDescending(t => SeverityWeight(t.Severity)).ToList(),
             Summary = GenerateSummary(triggers, rating, categories),
+            Confidence = confidence,
         };
     }
 
@@ -160,13 +177,15 @@ public class FodmapService
         var score = CalculateFodmapScore(triggers);
         var rating = score switch
         {
-            >= 80 => "Low FODMAP",
-            >= 65 => "Moderate FODMAP",
-            >= 40 => "High FODMAP",
+            >= 75 => "Low FODMAP",
+            >= 55 => "Moderate FODMAP",
+            >= 30 => "High FODMAP",
             _ => "Very High FODMAP",
         };
 
         var categories = triggers.Select(t => t.Category).Distinct().OrderBy(c => c).ToList();
+
+        var confidence = "Medium"; // Text-only assessment always medium confidence
 
         return new FodmapAssessmentDto
         {
@@ -179,23 +198,35 @@ public class FodmapService
             Categories = categories,
             Triggers = triggers.OrderByDescending(t => SeverityWeight(t.Severity)).ToList(),
             Summary = GenerateSummary(triggers, rating, categories),
+            Confidence = confidence,
         };
     }
 
     static int CalculateFodmapScore(List<FodmapTriggerDto> triggers)
     {
-        var score = 100;
+        if (triggers.Count == 0) return 100;
+
+        var multiplier = 1.0;
         foreach (var t in triggers)
         {
-            score -= t.Severity switch
+            multiplier *= t.Severity switch
             {
-                "High" => 45,
-                "Moderate" => 15,
-                "Low" => 5,
-                _ => 0,
+                "High" => 0.55,
+                "Moderate" => 0.85,
+                "Low" => 0.95,
+                _ => 1.0,
             };
         }
-        return Math.Clamp(score, 0, 100);
+
+        // Category stacking penalty — if 3+ distinct FODMAP categories, apply extra penalty
+        var distinctCategories = triggers.Select(t => t.SubCategory?.Split('+', ' ').FirstOrDefault() ?? t.Category)
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        if (distinctCategories >= 3)
+            multiplier *= Math.Pow(0.92, distinctCategories - 2);
+
+        return Math.Clamp((int)Math.Round(100 * multiplier), 0, 100);
     }
 
     static int SeverityWeight(string s) => s switch
@@ -220,6 +251,18 @@ public class FodmapService
         }
 
         return $"Contains {triggers.Count} FODMAP concern(s) in {string.Join(", ", categories)}. May be better tolerated in smaller portions — personal experience can vary.";
+    }
+
+    static string ComputeFodmapConfidence(FoodProductDto product, List<FodmapTriggerDto> triggers)
+    {
+        var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients);
+        var hasDetailedIngredients = hasIngredients && product.Ingredients!.Contains(',') && product.Ingredients.Length > 50;
+
+        if (!hasIngredients)
+            return "Low";
+        if (!hasDetailedIngredients)
+            return "Medium";
+        return "High";
     }
 
     // ─── FODMAP Trigger Database ────────────────────────────────────────────
@@ -247,15 +290,15 @@ public class FodmapService
             Explanation = "Whole wheat contains even more fructans than refined wheat flour." }),
         ("wheat", MatchUtils.WordBoundary("wheat"), new() { Name = "Wheat (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Wheat contains fructans — a key FODMAP trigger. A common source of bloating, gas, and abdominal discomfort in FODMAP-sensitive individuals." }),
-        ("barley", null, new() { Name = "Barley (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
+        ("barley", MatchUtils.WordBoundary("barley"), new() { Name = "Barley (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Barley contains significant fructans. Often limited during a FODMAP elimination phase." }),
-        ("rye", null, new() { Name = "Rye (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
+        ("rye", MatchUtils.WordBoundary("rye"), new() { Name = "Rye (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Rye is high in fructans. One of the higher FODMAP grains." }),
         ("spelt", null, new() { Name = "Spelt (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "Moderate",
             Explanation = "Spelt contains fructans but at lower levels than modern wheat." }),
-        ("onion", null, new() { Name = "Onion (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
+        ("onion", MatchUtils.WordBoundary("onion"), new() { Name = "Onion (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Onions are one of the highest dietary sources of fructans. Even small amounts may trigger symptoms in FODMAP-sensitive individuals." }),
-        ("garlic", null, new() { Name = "Garlic (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
+        ("garlic", MatchUtils.WordBoundary("garlic"), new() { Name = "Garlic (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Garlic is extremely high in fructans. One of the more commonly reported food sensitivities among FODMAP-sensitive individuals. Garlic-infused oil (fructans not oil-soluble) may be tolerated." }),
         ("shallot", null, new() { Name = "Shallot (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Shallots are high in fructans, similar to onions." }),
@@ -627,7 +670,7 @@ public class FodmapService
             Explanation = "Tamarillo contains high excess fructose." }),
         ("boysenberry", null, new() { Name = "Boysenberry (Excess Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "High",
             Explanation = "Boysenberries contain high excess fructose." }),
-        ("fig", null, new() { Name = "Fig (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Moderate",
+        ("fig", MatchUtils.WordBoundary("fig"), new() { Name = "Fig (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Moderate",
             Explanation = "Fresh figs have moderate excess fructose. Dried figs are higher." }),
         ("guava", null, new() { Name = "Guava (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Moderate",
             Explanation = "Guava has moderate excess fructose content." }),
@@ -755,7 +798,7 @@ public class FodmapService
             Explanation = "Chai latte is usually made with milk — moderate lactose. Chai tea bags alone are low FODMAP." }),
         ("coconut water", null, new() { Name = "Coconut Water (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Moderate",
             Explanation = "Coconut water has moderate fructose — may trigger symptoms in large amounts (>200ml)." }),
-        ("rum", null, new() { Name = "Rum (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Low",
+        ("rum", MatchUtils.WordBoundary("rum"), new() { Name = "Rum (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Low",
             Explanation = "Rum is generally low FODMAP in standard serves. Mixers are the usual issue." }),
         ("dessert wine", null, new() { Name = "Dessert Wine (Fructose)", Category = "Monosaccharide", SubCategory = "Excess Fructose", Severity = "Moderate",
             Explanation = "Dessert wines have residual sugars including fructose." }),
@@ -938,7 +981,7 @@ public class FodmapService
         ("wheat starch", new() { Name = "Wheat Starch", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "Moderate",
             Explanation = "Wheat starch retains some fructans though less than wheat flour." }),
         ("rye", new() { Name = "Rye (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
-            Explanation = "Rye is high in fructans. One of the highest FODMAP grains." }),
+            Explanation = "Rye is high in fructans. One of the higher FODMAP grains." }),
         ("barley", new() { Name = "Barley (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
             Explanation = "Barley contains significant fructans. Avoid during elimination phase." }),
         ("spelt", new() { Name = "Spelt (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "Moderate",

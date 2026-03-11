@@ -23,6 +23,7 @@ import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
 import { buildLoggedAt } from "../../src/utils/date";
 import type { ParsedFoodItem, FoodProduct } from "../../src/types";
+import type { ParsedServing } from "../../src/utils/nutrition";
 
 /** Strip anything that isn't a digit (integer-only nutrition fields). */
 const sanitizeInt = (text: string): string => text.replace(/[^0-9]/g, "");
@@ -527,6 +528,7 @@ export function AddMealSheet() {
                           item.servingWeightG || item.servingQuantity || 1,
                         servingSize: item.servingSize || "serving",
                       }}
+                      parsedServing={extractParsedServing(item)}
                       summaryText={`${totalG}g total · ${Math.round(
                         item.calories * scale,
                       )} cal · ${
@@ -775,4 +777,15 @@ export function AddMealSheet() {
       )}
     </BottomSheet>
   );
+}
+
+/** Extract per-unit serving from NLP parsed item (e.g. "2 cup" + 370g → unit="cup", grams=185). */
+function extractParsedServing(item: ParsedFoodItem): ParsedServing | null {
+  if (!item.servingSize || !item.servingWeightG) return null;
+  const match = item.servingSize.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+  if (!match) return null;
+  const qty = parseFloat(match[1]);
+  const unit = match[2].trim();
+  if (!qty || !unit || unit === "serving") return null;
+  return { unit, grams: Math.round(item.servingWeightG / qty) };
 }

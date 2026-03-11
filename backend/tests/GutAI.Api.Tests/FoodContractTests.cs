@@ -143,10 +143,12 @@ public class FoodContractTests(GutAiWebFactory factory)
 
         json.AssertHasNumberProperty("gutScore");
         json.AssertHasStringProperty("gutRating");
+        json.AssertHasStringProperty("confidence");
         json.AssertHasNumberProperty("flagCount");
         json.AssertHasNumberProperty("highRiskCount");
         json.AssertHasNumberProperty("mediumRiskCount");
         json.AssertHasNumberProperty("lowRiskCount");
+        json.AssertHasNumberProperty("doseSensitiveFlagsCount");
         json.AssertHasProperty("flags", JsonValueKind.Array);
         json.AssertHasStringProperty("summary");
     }
@@ -165,7 +167,12 @@ public class FoodContractTests(GutAiWebFactory factory)
 
         json.AssertHasNumberProperty("fodmapScore");
         json.AssertHasStringProperty("fodmapRating");
+        json.AssertHasStringProperty("confidence");
         json.AssertHasNumberProperty("triggerCount");
+        json.AssertHasNumberProperty("highCount");
+        json.AssertHasNumberProperty("moderateCount");
+        json.AssertHasNumberProperty("lowCount");
+        json.AssertHasProperty("categories", JsonValueKind.Array);
         json.AssertHasProperty("triggers", JsonValueKind.Array);
         json.AssertHasStringProperty("summary");
     }
@@ -206,6 +213,7 @@ public class FoodContractTests(GutAiWebFactory factory)
         json.AssertHasProperty("matches", JsonValueKind.Array);
         json.AssertHasStringProperty("gutImpactSummary");
         json.AssertHasProperty("recommendations", JsonValueKind.Array);
+        json.AssertHasStringProperty("confidence");
     }
 
     [Fact]

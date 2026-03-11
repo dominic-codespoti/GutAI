@@ -39,15 +39,32 @@ export function nutritionSummaryText(n: ScaledNutrition, grams: number) {
   return `${grams}g total · ${n.calories} cal · ${n.proteinG}g P · ${n.carbsG}g C · ${n.fatG}g F`;
 }
 
+export interface ParsedServing {
+  unit: string;
+  grams: number;
+}
+
 export function buildServingPresets(
   product?: Pick<FoodProduct, "servingQuantity" | "servingSize"> | null,
+  parsedServing?: ParsedServing | null,
 ): { label: string; grams: number }[] {
   const presets: { label: string; grams: number }[] = [];
+
+  // If NLP parsed a recognizable serving unit, show it as the first chip
+  if (parsedServing?.unit && parsedServing.grams > 0) {
+    const g = Math.round(parsedServing.grams);
+    presets.push({ label: `1 ${parsedServing.unit} (${g}g)`, grams: g });
+  }
+
   if (product?.servingQuantity && product.servingSize) {
-    presets.push({
-      label: `1 serving (${product.servingSize})`,
-      grams: Math.round(product.servingQuantity),
-    });
+    const g = Math.round(product.servingQuantity);
+    // Skip if the parsed serving already covers this gram weight
+    if (!presets.some((p) => p.grams === g)) {
+      presets.push({
+        label: `1 serving (${product.servingSize})`,
+        grams: g,
+      });
+    }
   }
   [50, 100, 150, 200, 250].forEach((g) =>
     presets.push({ label: `${g}g`, grams: g }),

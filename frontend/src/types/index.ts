@@ -105,6 +105,7 @@ export interface ParsedFoodItem {
   cholesterolMg: number;
   saturatedFatG: number;
   potassiumMg: number;
+  matchConfidence: number;
 }
 
 export interface NaturalLanguageResponse {
@@ -141,6 +142,7 @@ export interface FoodProduct {
   sourceUrl: string | null;
   externalId: string | null;
   additives: FoodAdditive[];
+  matchConfidence: number;
 }
 
 export interface FoodAdditive {
@@ -265,10 +267,12 @@ export interface SafetyReport {
 export interface GutRiskAssessment {
   gutScore: number;
   gutRating: string;
+  confidence: string;
   flagCount: number;
   highRiskCount: number;
   mediumRiskCount: number;
   lowRiskCount: number;
+  doseSensitiveFlagsCount: number;
   flags: GutRiskFlag[];
   summary: string;
 }
@@ -280,11 +284,15 @@ export interface GutRiskFlag {
   category: string;
   riskLevel: string;
   explanation: string;
+  triggerType: string;
+  fodmapClass: string | null;
+  doseSensitivity: string | null;
 }
 
 export interface FodmapAssessment {
   fodmapScore: number;
   fodmapRating: string;
+  confidence: string;
   triggerCount: number;
   highCount: number;
   moderateCount: number;
@@ -327,6 +335,7 @@ export interface GlycemicAssessment {
   matches: GlycemicMatch[];
   gutImpactSummary: string;
   recommendations: string[];
+  confidence: string;
 }
 
 export interface GlycemicMatch {

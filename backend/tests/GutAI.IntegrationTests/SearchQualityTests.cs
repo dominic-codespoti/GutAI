@@ -210,6 +210,14 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
             $"at least one of the top {withinTopN} results for \"{query}\" should contain " +
             $"one of [{string.Join(", ", expectedKeywords)}]. " +
             $"Got: [{string.Join(", ", topN.Select(r => r.Name))}]");
+
+        // A2 strengthen: the #1 result must contain at least one keyword
+        var topResult = results[0];
+        var top1Match = expectedKeywords.Any(kw =>
+            topResult.Name.Contains(kw, StringComparison.OrdinalIgnoreCase));
+        top1Match.Should().BeTrue(
+            $"the #1 result for \"{query}\" should contain one of " +
+            $"[{string.Join(", ", expectedKeywords)}], got \"{topResult.Name}\"");
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -234,8 +242,15 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
         foreach (var r in top5)
             output.WriteLine($"  {r.Name}: cal={r.Calories100g}, prot={r.Protein100g}, carb={r.Carbs100g}, fat={r.Fat100g}");
 
-        top5.Any(r => r.Calories100g is > 0).Should().BeTrue(
-            $"at least one top-5 result for \"{query}\" should have calorie data");
+        // A3 strengthen: majority of top-5 should have calorie data, not just "any"
+        var withCalories = top5.Count(r => r.Calories100g is > 0);
+        withCalories.Should().BeGreaterThanOrEqualTo(3,
+            $"at least 3 of the top 5 results for \"{query}\" should have calorie data, " +
+            $"but only {withCalories} did");
+
+        // The #1 result specifically must have nutrition data for common foods
+        top5[0].Calories100g.Should().BeGreaterThan(0,
+            $"the #1 result '{top5[0].Name}' for \"{query}\" should have calorie data");
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -279,11 +294,11 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
         // Test the real guard logic used in the endpoint
         var query = "a";
         var sanitized = query.Length < 2; // Simulated guard
-        
+
         var results = await RunSearchPipeline(query);
-        
+
         // If query < 2, the pipeline should ideally return empty if it matches endpoint behavior
-        // Currently the pipeline doesn't have the guard, but the search quality test should 
+        // Currently the pipeline doesn't have the guard, but the search quality test should
         // reflect what the user actually experiences via the API.
         results.Should().BeEmpty("queries shorter than 2 characters should return no results");
     }
@@ -317,21 +332,26 @@ public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
     // ───────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("peanut butter", "peanut")]
-    [InlineData("orange juice", "orange")]
-    [InlineData("fried egg", "egg")]
-    [InlineData("chicken breast", "chicken")]
-    public async Task Search_MultiWordQuery_TopResultContainsBothTerms(string query, string requiredTerm)
+    [InlineData("peanut butter", "peanut", "butter")]
+    [InlineData("orange juice", "orange", "juice")]
+    [InlineData("fried egg", "egg", "fried")]
+    [InlineData("chicken breast", "chicken", "breast")]
+    public async Task Search_MultiWordQuery_TopResultContainsBothTerms(string query, string term1, string term2)
     {
         var results = await RunSearchPipeline(query);
         PrintResults(query, results);
         results.Should().NotBeEmpty();
 
-        // At least one of the top 3 results should contain the required term
+        // A4 strengthen: #1 result should contain BOTH terms, not just one
+        var topName = results[0].Name;
+        topName.Should().ContainEquivalentOf(term1,
+            $"#1 result for \"{query}\" should contain '{term1}', got \"{topName}\"");
+
+        // At least one of top 3 should contain the secondary term too
         var top3 = results.Take(3).ToList();
-        top3.Any(r => r.Name.Contains(requiredTerm, StringComparison.OrdinalIgnoreCase))
+        top3.Any(r => r.Name.Contains(term2, StringComparison.OrdinalIgnoreCase))
             .Should().BeTrue(
-                $"top 3 results for \"{query}\" should include \"{requiredTerm}\". " +
+                $"top 3 results for \"{query}\" should include \"{term2}\". " +
                 $"Got: [{string.Join(", ", top3.Select(r => r.Name))}]");
     }
 
