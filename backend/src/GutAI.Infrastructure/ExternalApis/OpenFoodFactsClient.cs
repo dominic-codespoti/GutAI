@@ -20,6 +20,11 @@ public class OpenFoodFactsClient : IFoodApiService
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
 
+    // OpenFoodFacts production base URL (.org).
+    // The .net domain is the staging environment which requires HTTP Basic Auth
+    // and is frequently unreliable. See: https://openfoodfacts.github.io/openfoodfacts-server/api/
+    private const string BaseUrl = "https://world.openfoodfacts.org";
+
     public OpenFoodFactsClient(HttpClient http, ILogger<OpenFoodFactsClient> logger)
     {
         _http = http;
@@ -31,7 +36,7 @@ public class OpenFoodFactsClient : IFoodApiService
         try
         {
             var response = await _http.GetFromJsonAsync<OpenFoodFactsResponse>(
-                $"https://world.openfoodfacts.net/api/v2/product/{barcode}", JsonOptions, ct);
+                $"{BaseUrl}/api/v2/product/{barcode}", JsonOptions, ct);
 
             if (response?.Product is null || response.Status != 1)
                 return null;
@@ -55,8 +60,9 @@ public class OpenFoodFactsClient : IFoodApiService
             // Use the v2 API with both a text search and a brand-targeted search in parallel.
             // The CGI search.pl endpoint is extremely slow (~25s) for niche brand queries,
             // while the v2 API responds in ~2-3s.
-            var textUrl = $"https://world.openfoodfacts.net/api/v2/search?search_terms={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
-            var brandUrl = $"https://world.openfoodfacts.net/api/v2/search?brands_tags={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
+            // Rate limit: 10 req/min for search queries (enforced per IP by OFF).
+            var textUrl = $"{BaseUrl}/api/v2/search?search_terms={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
+            var brandUrl = $"{BaseUrl}/api/v2/search?brands_tags={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
 
             var textTask = SafeFetch(textUrl, query, ct);
             var brandTask = SafeFetch(brandUrl, query, ct);

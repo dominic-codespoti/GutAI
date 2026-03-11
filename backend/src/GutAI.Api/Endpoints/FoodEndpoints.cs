@@ -60,7 +60,10 @@ public static class FoodEndpoints
         var localTask = store.SearchFoodProductsAsync(query, 20, default);
         var additivesTask = store.GetAllFoodAdditivesAsync();
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        // OpenFoodFacts search can take 15-25s for niche brand queries.
+        // Allow enough time for a single attempt to complete; the resilience
+        // handler's TotalRequestTimeout is the real backstop (25s).
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(22));
         var externalTask = foodApi.SearchPersonalizedAsync(query, boostIds, cts.Token);
 
         try
