@@ -380,4 +380,63 @@ public class GlycemicIndexServiceTests
         var result = _sut.Assess(MakeProduct(name, ingredients, carbs: 30));
         result.EstimatedGI.Should().Be(expectedGI);
     }
+
+    // ─── New Entries: Non-Starchy Vegetables ────────────────────────────
+
+    [Theory]
+    [InlineData("Broccoli", "broccoli", 10)]
+    [InlineData("Spinach", "spinach", 15)]
+    [InlineData("Cauliflower", "cauliflower", 10)]
+    [InlineData("Zucchini", "zucchini", 15)]
+    [InlineData("Capsicum", "capsicum", 15)]
+    [InlineData("Asparagus", "asparagus", 15)]
+    [InlineData("Mushroom", "mushroom", 15)]
+    [InlineData("Brussels Sprout", "brussels sprout", 15)]
+    [InlineData("Eggplant", "eggplant", 15)]
+    public void Vegetables_LowGI(string name, string ingredients, int expectedGI)
+    {
+        var result = _sut.Assess(MakeProduct(name, ingredients, carbs: 5));
+        result.EstimatedGI.Should().Be(expectedGI);
+        result.GiCategory.Should().Be("Low");
+    }
+
+    // ─── New Entries: Nuts & Seeds ──────────────────────────────────────
+
+    [Theory]
+    [InlineData("Almond", "almond", 15)]
+    [InlineData("Walnut", "walnut", 15)]
+    [InlineData("Cashew", "cashew", 22)]
+    [InlineData("Peanut", "peanut", 14)]
+    [InlineData("Chia Seed", "chia seed", 1)]
+    [InlineData("Pumpkin Seed", "pumpkin seed", 25)]
+    [InlineData("Tahini", "tahini", 35)]
+    public void NutsSeeds_LowGI(string name, string ingredients, int expectedGI)
+    {
+        var result = _sut.Assess(MakeProduct(name, ingredients, carbs: 10));
+        result.EstimatedGI.Should().Be(expectedGI);
+        result.GiCategory.Should().Be("Low");
+    }
+
+    // ─── New Entries: Proteins ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Egg", "egg")]
+    [InlineData("Chicken Breast", "chicken breast")]
+    [InlineData("Salmon", "salmon")]
+    public void PureProteins_NegligibleCarbs_NullGI(string name, string ingredients)
+    {
+        var result = _sut.Assess(MakeProduct(name, ingredients, carbs: 1));
+        result.EstimatedGI.Should().BeNull("pure proteins have negligible carbs");
+        result.GiCategory.Should().Be("Not Applicable");
+    }
+
+    [Theory]
+    [InlineData("Tofu", "tofu", 15)]
+    [InlineData("Tempeh", "tempeh", 15)]
+    public void PlantProteins_LowGI(string name, string ingredients, int expectedGI)
+    {
+        var result = _sut.Assess(MakeProduct(name, ingredients, carbs: 8));
+        result.EstimatedGI.Should().Be(expectedGI);
+        result.GiCategory.Should().Be("Low");
+    }
 }

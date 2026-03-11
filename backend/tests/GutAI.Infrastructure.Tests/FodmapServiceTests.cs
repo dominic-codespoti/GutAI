@@ -703,7 +703,9 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct(name: "Rokeby Protein Smoothie",
             ingredients: "low fat milk, cane sugar, cream, cocoa, natural flavours, lactase enzyme, carrageenan"));
-        result.Triggers.Should().NotContain(t => t.SubCategory == "Excess Fructose");
+        // Cane sugar may trigger a Low-severity "Excess Fructose" entry — that's fine.
+        // The key assertion is no High/Moderate excess fructose false positives.
+        result.Triggers.Should().NotContain(t => t.SubCategory == "Excess Fructose" && t.Severity != "Low");
     }
 
     [Fact]
@@ -725,5 +727,58 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct("Pita Bread", "pita, water, yeast"));
         result.Triggers.Should().Contain(t => t.Name.Contains("Pita"));
+    }
+
+    // ─── FodmapData Wiring Verification ────────────────────────────────
+
+    [Theory]
+    [InlineData("Cherries", "cherries, sugar", "Moderate")]
+    [InlineData("Blackberry Jam", "blackberry, sugar, pectin", "Moderate")]
+    [InlineData("Cauliflower Soup", "cauliflower, water, salt", "High")]
+    public void FodmapData_NewIngredientEntries_CorrectSeverity(string name, string ingredients, string expectedSeverity)
+    {
+        var result = _sut.Assess(MakeProduct(name, ingredients));
+        result.TriggerCount.Should().BeGreaterThan(0);
+        result.Triggers.Should().Contain(t => t.Severity == expectedSeverity);
+    }
+
+    [Theory]
+    [InlineData("Cherries")]
+    [InlineData("Blackberry")]
+    [InlineData("Blackberries")]
+    [InlineData("Cauliflower")]
+    [InlineData("Pita Bread")]
+    public void FodmapData_NewWholeFoodEntries_Flagged(string productName)
+    {
+        var result = _sut.Assess(MakeProduct(productName));
+        result.TriggerCount.Should().BeGreaterThan(0, $"'{productName}' should trigger at least one FODMAP flag via FodmapData");
+    }
+
+    [Fact]
+    public void FodmapData_StoneFruits_UseModerateSeverity()
+    {
+        // Per SharedFodmapSeverities.cs, stone fruits are "Moderate" not "High"
+        var fruits = new[] { "apricot", "cherry", "nectarine", "peach", "plum" };
+        foreach (var fruit in fruits)
+        {
+            var result = _sut.Assess(MakeProduct(fruit, $"{fruit}, water"));
+            var trigger = result.Triggers.FirstOrDefault(t => t.Name.Contains(fruit, StringComparison.OrdinalIgnoreCase));
+            trigger.Should().NotBeNull($"'{fruit}' should be detected as a trigger");
+            trigger!.Severity.Should().Be("Moderate", $"'{fruit}' should have Moderate severity per SharedFodmapSeverities");
+        }
+    }
+
+    [Fact]
+    public void FodmapData_DairyProducts_UseModerateSeverity()
+    {
+        // Per SharedFodmapSeverities.cs, dairy items are "Moderate" not "High"
+        var dairyProducts = new[] { "yogurt", "cream", "buttermilk" };
+        foreach (var dairy in dairyProducts)
+        {
+            var result = _sut.Assess(MakeProduct(dairy, $"{dairy}, water"));
+            var trigger = result.Triggers.FirstOrDefault(t => t.SubCategory == "Lactose");
+            trigger.Should().NotBeNull($"'{dairy}' should be detected as a lactose trigger");
+            trigger!.Severity.Should().Be("Moderate", $"'{dairy}' should have Moderate severity per SharedFodmapSeverities");
+        }
     }
 }

@@ -2840,4 +2840,72 @@ public class GutRiskServiceTests
 
         withLactase.GutScore.Should().BeGreaterThan(withoutLactase.GutScore);
     }
+
+    // ─── New WholeFoodRiskPatterns: Composed Meals ─────────────────────
+
+    [Theory]
+    [InlineData("Pizza Margherita")]
+    [InlineData("Chicken Lasagna")]
+    [InlineData("Beef Burrito")]
+    [InlineData("Tonkotsu Ramen")]
+    [InlineData("Pad Thai")]
+    [InlineData("Sushi Roll")]
+    [InlineData("Green Curry")]
+    [InlineData("Chicken Stir Fry")]
+    [InlineData("Fried Rice")]
+    [InlineData("Spaghetti Bolognese")]
+    [InlineData("Pork Dumpling")]
+    [InlineData("Chicken Gyoza")]
+    [InlineData("Beef Samosa")]
+    [InlineData("Chicken Biryani")]
+    public void ComposedMeal_WholeFoodName_IsFlagged(string productName)
+    {
+        var result = _sut.Assess(new FoodProductDto
+        {
+            Id = Guid.NewGuid(),
+            Name = productName,
+            AdditivesTags = [],
+            Additives = [],
+        });
+
+        result.Flags.Should().NotBeEmpty($"'{productName}' should trigger at least one whole-food risk flag");
+    }
+
+    [Theory]
+    [InlineData("Sourdough Bread")]
+    [InlineData("Naan Bread")]
+    [InlineData("Pita Bread")]
+    [InlineData("Croissant")]
+    [InlineData("Bagel")]
+    public void Bread_WholeFoodName_IsFlagged(string productName)
+    {
+        var result = _sut.Assess(new FoodProductDto
+        {
+            Id = Guid.NewGuid(),
+            Name = productName,
+            AdditivesTags = [],
+            Additives = [],
+        });
+
+        result.Flags.Should().NotBeEmpty($"'{productName}' should trigger a bread risk flag");
+    }
+
+    [Theory]
+    [InlineData("BBQ Sauce")]
+    [InlineData("Soy Sauce")]
+    [InlineData("Tomato Sauce")]
+    [InlineData("Ketchup")]
+    [InlineData("Pesto")]
+    public void Condiment_WholeFoodName_IsFlagged(string productName)
+    {
+        var result = _sut.Assess(new FoodProductDto
+        {
+            Id = Guid.NewGuid(),
+            Name = productName,
+            AdditivesTags = [],
+            Additives = [],
+        });
+
+        result.Flags.Should().NotBeEmpty($"'{productName}' should trigger a condiment risk flag");
+    }
 }

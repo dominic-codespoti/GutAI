@@ -197,6 +197,8 @@ internal static class FodmapData
                 Explanation = "Watermelon contains excess fructose, mannitol, and fructans — contains three FODMAP categories." }),
             new("cherry", new Regex(@"\bcherr(y|ies)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), new() { Name = "Cherry (Fructose + Sorbitol)", Category = "Monosaccharide + Polyol", SubCategory = "Excess Fructose + Sorbitol", Severity = "Moderate",
                 Explanation = "Cherries contain moderate sorbitol and excess fructose." }),
+            new("cherries", new Regex(@"\bcherr(y|ies)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), new() { Name = "Cherries (Fructose + Sorbitol)", Category = "Monosaccharide + Polyol", SubCategory = "Excess Fructose + Sorbitol", Severity = "Moderate",
+                Explanation = "Cherries contain moderate sorbitol and excess fructose." }),
             new("apricot", MatchUtils.WordBoundary("apricot"), new() { Name = "Apricot (Sorbitol)", Category = "Polyol", SubCategory = "Sorbitol", Severity = "Moderate",
                 Explanation = "Apricots contain moderate sorbitol. Small fresh portions may be tolerated; dried apricots are higher." }),
             new("peach", MatchUtils.WordBoundary("peach"), new() { Name = "Peach (Sorbitol + Fructose)", Category = "Polyol", SubCategory = "Sorbitol", Severity = "Moderate",
@@ -1269,6 +1271,8 @@ internal static class FodmapData
                 Explanation = "Watermelon contains excess fructose, mannitol, and fructans — contains three FODMAP categories." }),
             new("cherry", new() { Name = "Cherry (Fructose + Sorbitol)", Category = "Monosaccharide + Polyol", SubCategory = "Excess Fructose + Sorbitol", Severity = "Moderate",
                 Explanation = "Cherries contain moderate sorbitol and excess fructose." }),
+            new("cherries", new() { Name = "Cherries (Fructose + Sorbitol)", Category = "Monosaccharide + Polyol", SubCategory = "Excess Fructose + Sorbitol", Severity = "Moderate",
+                Explanation = "Cherries contain moderate sorbitol and excess fructose." }),
             new("apricot", new() { Name = "Apricot (Sorbitol)", Category = "Polyol", SubCategory = "Sorbitol", Severity = "Moderate",
                 Explanation = "Apricots contain moderate sorbitol. Small fresh portions may be tolerated; dried apricots are higher." }),
             new("peach", new() { Name = "Peach (Sorbitol + Fructose)", Category = "Polyol", SubCategory = "Sorbitol", Severity = "Moderate",
@@ -1295,6 +1299,12 @@ internal static class FodmapData
                 Explanation = "Truffles are very high in mannitol." }),
             new("chanterelle", new() { Name = "Chanterelle (Mannitol)", Category = "Polyol", SubCategory = "Mannitol", Severity = "Moderate",
                 Explanation = "Chanterelles have moderate mannitol content." }),
+            new("cauliflower", new() { Name = "Cauliflower (Mannitol)", Category = "Polyol", SubCategory = "Mannitol", Severity = "High",
+                Explanation = "Cauliflower contains significant mannitol — high FODMAP at typical servings." }),
+            new("blackberry", new() { Name = "Blackberry (Fructose + Polyol)", Category = "Monosaccharide + Polyol", SubCategory = "Excess Fructose + Sorbitol", Severity = "Moderate",
+                Explanation = "Blackberries contain moderate excess fructose and polyols." }),
+            new("blackberries", new() { Name = "Blackberries (Fructose + Polyol)", Category = "Monosaccharide + Polyol", SubCategory = "Excess Fructose + Sorbitol", Severity = "Moderate",
+                Explanation = "Blackberries contain moderate excess fructose and polyols." }),
             new("pistachio", new() { Name = "Pistachio (Fructan+GOS)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
                 Explanation = "Pistachios contain both fructans and GOS." }),
 
@@ -1307,6 +1317,8 @@ internal static class FodmapData
             // Bread (standalone match for generic bread products)
             new("bread", new() { Name = "Bread (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
                 Explanation = "Most bread is wheat-based and high in fructans. Consider sourdough or gluten-free alternatives." }),
+            new("pita", new() { Name = "Pita Bread (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "High",
+                Explanation = "Pita is wheat bread — high in fructans." }),
 
             // ── Expanded P1 WholeFoodTriggers — Dishes & Meals ──
             new("hot dog", new() { Name = "Hot Dog (Fructan)", Category = "Oligosaccharide", SubCategory = "Fructan", Severity = "Moderate",
