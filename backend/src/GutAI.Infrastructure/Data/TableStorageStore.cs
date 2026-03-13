@@ -930,6 +930,53 @@ public class TableStorageStore : ITableStore
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  FavoriteFoodProducts
+    // ═══════════════════════════════════════════════════════════
+
+    public async Task<List<FavoriteFoodProduct>> GetUserFavoriteFoodsAsync(Guid userId, CancellationToken ct)
+    {
+        var pk = userId.ToString();
+        var filter = $"PartitionKey eq '{pk}' and RowKey ge 'FAV|' and RowKey lt 'FAV|~'";
+        var entities = await QueryAsync(filter, ct);
+        return entities.Select(MapToFavoriteFoodProduct).ToList();
+    }
+
+    public async Task<FavoriteFoodProduct?> GetUserFavoriteFoodAsync(Guid userId, Guid foodProductId, CancellationToken ct)
+    {
+        var e = await GetEntityOrNullAsync(userId.ToString(), $"FAV|{foodProductId}", ct);
+        return e == null ? null : MapToFavoriteFoodProduct(e);
+    }
+
+    public async Task UpsertFavoriteFoodAsync(FavoriteFoodProduct favorite, CancellationToken ct)
+    {
+        var e = new TableEntity(favorite.UserId.ToString(), $"FAV|{favorite.FoodProductId}")
+        {
+            { "Id", favorite.Id.ToString() },
+            { "FoodProductId", favorite.FoodProductId.ToString() },
+            { "CreatedAt", favorite.CreatedAt }
+        };
+        await UpsertAsync(e, ct);
+    }
+
+    public async Task DeleteFavoriteFoodAsync(Guid userId, Guid foodProductId, CancellationToken ct)
+    {
+        await DeleteAsync(userId.ToString(), $"FAV|{foodProductId}", ct);
+    }
+
+    private static FavoriteFoodProduct MapToFavoriteFoodProduct(TableEntity e)
+    {
+        var foodProductIdStr = e.RowKey.Substring("FAV|".Length);
+        var idStr = e.GetString("Id");
+        return new FavoriteFoodProduct
+        {
+            Id = string.IsNullOrEmpty(idStr) ? Guid.NewGuid() : Guid.Parse(idStr),
+            UserId = Guid.Parse(e.PartitionKey),
+            FoodProductId = Guid.Parse(foodProductIdStr),
+            CreatedAt = e.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  InsightReports
     // ═══════════════════════════════════════════════════════════
 

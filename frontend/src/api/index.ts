@@ -31,6 +31,8 @@ import type {
   ChatMessage,
   RecentFood,
   Streak,
+  MealTypeNutrition,
+  FavoriteFood,
 } from "../types";
 
 interface UpdateProfileRequest {
@@ -93,7 +95,10 @@ export const mealApi = {
 
 export const foodApi = {
   search: (q: string, signal?: AbortSignal) =>
-    api.get<FoodProduct[]>("/api/food/search", { params: { q }, signal }),
+    api.get<FoodProduct[]>("/api/food/search", {
+      params: { q },
+      signal,
+    }),
   lookupBarcode: (code: string) =>
     api.get<FoodProduct>(`/api/food/barcode/${code}`),
   get: (id: string) => api.get<FoodProduct>(`/api/food/${id}`),
@@ -111,6 +116,9 @@ export const foodApi = {
   listAdditives: () => api.get<FoodAdditive[]>("/api/food/additives"),
   getAdditive: (id: number) =>
     api.get<FoodAdditive>(`/api/food/additives/${id}`),
+  favorites: () => api.get<FavoriteFood[]>("/api/food/favorites"),
+  addFavorite: (id: string) => api.post(`/api/food/${id}/favorite`),
+  removeFavorite: (id: string) => api.delete(`/api/food/${id}/favorite`),
 };
 
 export const symptomApi = {
@@ -164,6 +172,16 @@ export const insightApi = {
     return api.get<FoodDiaryAnalysis>("/api/insights/food-diary-analysis", {
       params: { from, to },
     });
+  },
+  nutritionByMealType: (days?: number) => {
+    const to = toLocalDateStr();
+    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
+    return api.get<MealTypeNutrition[]>(
+      "/api/insights/nutrition-by-meal-type",
+      {
+        params: { from, to },
+      },
+    );
   },
   eliminationDietStatus: () =>
     api.get<EliminationDietStatus>("/api/insights/elimination-diet/status"),

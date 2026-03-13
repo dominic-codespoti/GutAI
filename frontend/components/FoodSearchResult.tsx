@@ -11,6 +11,7 @@ import {
 } from "../src/stores/theme";
 import { SourceChip } from "./SourceChip";
 import { ratingColor } from "../src/utils/colors";
+import { useFavorites } from "../src/hooks/useFavorites";
 
 interface FoodSearchResultProps {
   product: FoodProduct;
@@ -30,6 +31,8 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
   const { shadow } = useThemeShadow();
   const calories = product.calories100g ?? 0;
   const rating = product.safetyRating;
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const favorited = isFavorite(product.id);
 
   const styles = React.useMemo(
     () =>
@@ -158,6 +161,20 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
               </Text>
             )}
           </View>
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              toggleFavorite(product.id);
+            }}
+            style={styles.infoButton}
+            hitSlop={8}
+          >
+            <Ionicons
+              name={favorited ? "heart" : "heart-outline"}
+              size={20}
+              color={favorited ? colors.danger : colors.textMuted}
+            />
+          </TouchableOpacity>
           {onDetailPress && (
             <TouchableOpacity
               onPress={(e) => {

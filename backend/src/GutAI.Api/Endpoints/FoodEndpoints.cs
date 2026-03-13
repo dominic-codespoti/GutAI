@@ -16,6 +16,9 @@ public static class FoodEndpoints
         group.MapGet("/barcode/{barcode}", GetFoodProductByBarcode);
         group.MapGet("/additives", GetFoodAdditives);
         group.MapGet("/additives/{id:int}", GetFoodAdditive);
+        group.MapGet("/favorites", GetFavoriteFoods);
+        group.MapPost("/{id:guid}/favorite", AddFavoriteFood);
+        group.MapDelete("/{id:guid}/favorite", RemoveFavoriteFood);
         group.MapGet("/{id:guid}", GetFoodProduct);
         group.MapGet("/{id:guid}/safety-report", GetSafetyReport);
         group.MapGet("/{id:guid}/gut-risk", GetGutRisk);
@@ -60,10 +63,9 @@ public static class FoodEndpoints
         var localTask = store.SearchFoodProductsAsync(query, 20, default);
         var additivesTask = store.GetAllFoodAdditivesAsync();
 
-        // OpenFoodFacts search can take 15-25s for niche brand queries.
-        // Allow enough time for a single attempt to complete; the resilience
-        // handler's TotalRequestTimeout is the real backstop (25s).
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(22));
+        // Search-a-licious responds in 2-3s; USDA in 1-5s.
+        // 10s gives plenty of headroom for degraded conditions.
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var externalTask = foodApi.SearchPersonalizedAsync(query, boostIds, cts.Token);
 
         try
@@ -163,7 +165,8 @@ public static class FoodEndpoints
                 var queryLower = query.ToLowerInvariant().Trim();
                 var queryStem = Depluralize(queryLower);
                 var bestWholeFood = allCandidates
-                    .Where(c => c.FoodKind == FoodKind.WholeFood || c.DataSource is "USDA" or "AUSNUT")
+                    .Where(c => c.FoodKind == FoodKind.WholeFood ||
+                                (c.DataSource is "USDA" or "AUSNUT" && c.FoodKind != FoodKind.Branded))
                     .Where(c =>
                     {
                         var primary = ExtractPrimaryNoun(c.Name).ToLowerInvariant();
@@ -509,5 +512,62 @@ public static class FoodEndpoints
         if (word.EndsWith("es") && word.Length > 4 && !word.EndsWith("ches") && !word.EndsWith("shes")) return word[..^1];
         if (word.EndsWith('s') && !word.EndsWith("ss") && !word.EndsWith("us") && !word.EndsWith("is")) return word[..^1];
         return word;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Favorite Foods
+    // ═══════════════════════════════════════════════════════════
+
+    static async Task<IResult> GetFavoriteFoods(ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = Guid.Parse(principal.FindFirstValue("sub")!);
+        var favorites = await store.GetUserFavoriteFoodsAsync(userId);
+        var results = new List<object>();
+        foreach (var fav in favorites.OrderByDescending(f => f.CreatedAt))
+        {
+            var product = await store.GetFoodProductAsync(fav.FoodProductId);
+            if (product is null || product.IsDeleted) continue;
+            results.Add(new
+            {
+                foodProductId = product.Id,
+                foodName = product.Name,
+                brand = product.Brand,
+                calories100g = product.Calories100g,
+                protein100g = product.Protein100g,
+                carbs100g = product.Carbs100g,
+                fat100g = product.Fat100g,
+                servingSize = product.ServingSize,
+                servingQuantity = product.ServingQuantity,
+                servingWeightG = product.ServingQuantity,
+                imageUrl = product.ImageUrl,
+                createdAt = fav.CreatedAt
+            });
+        }
+        return Results.Ok(results);
+    }
+
+    static async Task<IResult> AddFavoriteFood(Guid id, ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = Guid.Parse(principal.FindFirstValue("sub")!);
+        var product = await store.GetFoodProductAsync(id);
+        if (product is null) return Results.NotFound();
+        var existing = await store.GetUserFavoriteFoodAsync(userId, id);
+        if (existing is not null) return Results.Ok(new { message = "Already favorited" });
+        var favorite = new FavoriteFoodProduct
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            FoodProductId = id,
+            CreatedAt = DateTime.UtcNow
+        };
+        await store.UpsertFavoriteFoodAsync(favorite);
+        return Results.Created($"/api/food/{id}/favorite", new { message = "Food favorited" });
+    }
+
+    static async Task<IResult> RemoveFavoriteFood(Guid id, ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = Guid.Parse(principal.FindFirstValue("sub")!);
+        await store.DeleteFavoriteFoodAsync(userId, id);
+        return Results.NoContent();
     }
 }

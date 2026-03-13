@@ -26,14 +26,14 @@ import { MealCardSkeleton } from "../../components/SkeletonLoader";
 import { MealDateNav } from "../../components/meals/MealDateNav";
 import { MealTypeChips } from "../../components/meals/MealTypeChips";
 import { DailySummary } from "../../components/meals/DailySummary";
-import { RecentFoodsRow } from "../../components/meals/RecentFoodsRow";
-import { MealGroup } from "../../components/meals/MealGroup";
+import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { SwipeHint } from "../../components/meals/SwipeHint";
 import { AddMealSheet } from "../../components/meals/AddMealSheet";
 import { EditMealSheet } from "../../components/meals/EditMealSheet";
 import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
 import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
 import type { MealLog } from "../../src/types";
+import { MealGroup } from "../../components/meals/MealGroup";
 
 export default function MealsScreen() {
   const colors = useThemeColors();
@@ -170,8 +170,8 @@ export default function MealsScreen() {
           {/* Daily Summary */}
           {dailySummary && <DailySummary summary={dailySummary} />}
 
-          {/* Recent foods quick-add row */}
-          <RecentFoodsRow />
+          {/* Quick Add: favorites first, then recent foods */}
+          <QuickAddRow />
 
           {/* Filter chips */}
           <View

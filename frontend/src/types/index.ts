@@ -464,6 +464,30 @@ export interface Streak {
   totalDaysLogged: number;
 }
 
+export interface MealTypeNutrition {
+  mealType: string;
+  totalCalories: number;
+  totalProteinG: number;
+  totalCarbsG: number;
+  totalFatG: number;
+  mealCount: number;
+}
+
+export interface FavoriteFood {
+  foodProductId: string;
+  foodName: string;
+  brand: string | null;
+  calories100g: number | null;
+  protein100g: number | null;
+  carbs100g: number | null;
+  fat100g: number | null;
+  servingSize: string | null;
+  servingQuantity: number | null;
+  servingWeightG: number | null;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
 export interface MealFood {
   id: string;
   name: string;

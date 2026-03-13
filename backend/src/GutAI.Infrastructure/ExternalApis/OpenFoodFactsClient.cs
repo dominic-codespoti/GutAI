@@ -20,10 +20,17 @@ public class OpenFoodFactsClient : IFoodApiService
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
 
-    // OpenFoodFacts production base URL (.org).
-    // The .net domain is the staging environment which requires HTTP Basic Auth
-    // and is frequently unreliable. See: https://openfoodfacts.github.io/openfoodfacts-server/api/
+    // OpenFoodFacts production base URL for barcode lookups (v2 product endpoint).
     private const string BaseUrl = "https://world.openfoodfacts.org";
+
+    // Search-a-licious is the Elasticsearch-backed search service.
+    // The legacy v2 /api/v2/search endpoint is a Perl database scan that takes 15-55s.
+    // Search-a-licious returns results in 2-3s consistently.
+    private const string SearchUrl = "https://search.openfoodfacts.org/search";
+
+    // Only request the fields we actually use — keeps response small and fast.
+    private const string BarcodeFields = "product_name,brands,code,nutriments,serving_size,serving_quantity,nova_group,nutriscore_grade,allergens_tags,additives_tags,ingredients_text,image_url";
+    private const string SearchFields = "product_name,brands,code,nutriments,nova_group,nutriscore_grade,allergens_tags,image_url,ingredients_tags";
 
     public OpenFoodFactsClient(HttpClient http, ILogger<OpenFoodFactsClient> logger)
     {
@@ -36,7 +43,7 @@ public class OpenFoodFactsClient : IFoodApiService
         try
         {
             var response = await _http.GetFromJsonAsync<OpenFoodFactsResponse>(
-                $"{BaseUrl}/api/v2/product/{barcode}", JsonOptions, ct);
+                $"{BaseUrl}/api/v2/product/{barcode}?fields={BarcodeFields}", JsonOptions, ct);
 
             if (response?.Product is null || response.Status != 1)
                 return null;
@@ -54,63 +61,23 @@ public class OpenFoodFactsClient : IFoodApiService
     {
         try
         {
-            var fields = "product_name,brands,code,nutriments,serving_size,serving_quantity,nova_group,nutriscore_grade,allergens_tags,additives_tags,ingredients_text,image_url";
             var escapedQuery = Uri.EscapeDataString(query);
+            var url = $"{SearchUrl}?q={escapedQuery}&page_size=10&langs=en&fields={SearchFields}";
 
-            // Use the v2 API with both a text search and a brand-targeted search in parallel.
-            // The CGI search.pl endpoint is extremely slow (~25s) for niche brand queries,
-            // while the v2 API responds in ~2-3s.
-            // Rate limit: 10 req/min for search queries (enforced per IP by OFF).
-            var textUrl = $"{BaseUrl}/api/v2/search?search_terms={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
-            var brandUrl = $"{BaseUrl}/api/v2/search?brands_tags={escapedQuery}&fields={fields}&page_size=10&sort_by=unique_scans_n";
-
-            var textTask = SafeFetch(textUrl, query, ct);
-            var brandTask = SafeFetch(brandUrl, query, ct);
-
-            await Task.WhenAll(textTask, brandTask);
-
-            var textResults = textTask.Result;
-            var brandResults = brandTask.Result;
-
-            // Merge: brand results first (higher confidence for brand queries), then text results
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var merged = new List<FoodProductDto>();
-
-            foreach (var dto in brandResults.Concat(textResults))
-            {
-                if (seen.Add(dto.Barcode ?? dto.Name))
-                    merged.Add(dto);
-            }
-
-            _logger.LogInformation("OpenFoodFacts search for '{Query}' returned {Count} products (text={TextCount}, brand={BrandCount})",
-                query, merged.Count, textResults.Count, brandResults.Count);
-            return merged;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to search OpenFoodFacts for '{Query}'", query);
-            return [];
-        }
-    }
-
-    private async Task<List<FoodProductDto>> SafeFetch(string url, string query, CancellationToken ct)
-    {
-        try
-        {
             var json = await _http.GetStringAsync(url, ct);
-
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("products", out var productsArray))
+            // Search-a-licious returns results in a "hits" array (not "products")
+            if (!root.TryGetProperty("hits", out var hitsArray))
                 return [];
 
             var results = new List<FoodProductDto>();
-            foreach (var element in productsArray.EnumerateArray())
+            foreach (var element in hitsArray.EnumerateArray())
             {
                 try
                 {
-                    var product = JsonSerializer.Deserialize<OffProduct>(element.GetRawText(), JsonOptions);
+                    var product = DeserializeSearchHit(element);
                     if (product is null) continue;
 
                     var dto = MapProduct(product, product.Code);
@@ -122,13 +89,65 @@ public class OpenFoodFactsClient : IFoodApiService
                     _logger.LogDebug(ex, "Skipping product that failed to deserialize in search for '{Query}'", query);
                 }
             }
+
+            _logger.LogInformation("OpenFoodFacts search for '{Query}' returned {Count} products",
+                query, results.Count);
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "OpenFoodFacts fetch failed for URL segment of query '{Query}'", query);
+            _logger.LogWarning(ex, "Failed to search OpenFoodFacts for '{Query}'", query);
             return [];
         }
+    }
+
+    /// <summary>
+    /// Deserialize a search-a-licious hit, handling format differences from v2:
+    /// - "brands" is an array of strings (v2 returns a comma-separated string)
+    /// </summary>
+    private static OffProduct? DeserializeSearchHit(JsonElement element)
+    {
+        var raw = element.GetRawText();
+        var product = JsonSerializer.Deserialize<OffProduct>(raw, JsonOptions);
+        if (product is null) return null;
+
+        // Search-a-licious returns brands as a JSON array; join into comma-separated string
+        if (string.IsNullOrEmpty(product.Brands) &&
+            element.TryGetProperty("brands", out var brandsEl) &&
+            brandsEl.ValueKind == JsonValueKind.Array)
+        {
+            var brandList = new List<string>();
+            foreach (var b in brandsEl.EnumerateArray())
+            {
+                var val = b.GetString();
+                if (!string.IsNullOrWhiteSpace(val))
+                    brandList.Add(val);
+            }
+            if (brandList.Count > 0)
+                product = product with { Brands = string.Join(", ", brandList) };
+        }
+
+        // Search-a-licious has ingredients_tags (e.g. "en:palm-oil") but not ingredients_text.
+        // Convert tags into a readable string so the DTO has ingredient info before barcode lookup.
+        if (string.IsNullOrEmpty(product.IngredientsText) &&
+            element.TryGetProperty("ingredients_tags", out var tagsEl) &&
+            tagsEl.ValueKind == JsonValueKind.Array)
+        {
+            var ingredients = new List<string>();
+            foreach (var tag in tagsEl.EnumerateArray())
+            {
+                var val = tag.GetString();
+                if (string.IsNullOrWhiteSpace(val)) continue;
+                // Strip language prefix (e.g. "en:palm-oil" → "palm-oil"), then humanise
+                var name = val.Contains(':') ? val[(val.IndexOf(':') + 1)..] : val;
+                name = name.Replace('-', ' ');
+                ingredients.Add(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(name));
+            }
+            if (ingredients.Count > 0)
+                product = product with { IngredientsText = string.Join(", ", ingredients) };
+        }
+
+        return product;
     }
 
     private static FoodProductDto? MapProduct(OffProduct p, string? barcode)

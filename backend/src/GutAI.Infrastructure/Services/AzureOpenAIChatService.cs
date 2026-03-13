@@ -487,8 +487,11 @@ public class AzureOpenAIChatService : IChatService
 
     private async Task<string> ExecuteGetTodaysMeals(Guid userId, CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var meals = await _store.GetMealLogsByDateAsync(userId, today, ct);
+        var user = await _store.GetUserAsync(userId, ct);
+        var (rangeStart, rangeEnd) = GetUserTodayUtcRange(user);
+        var meals = await _store.GetMealLogsByDateRangeAsync(userId,
+            DateOnly.FromDateTime(rangeStart), DateOnly.FromDateTime(rangeEnd), ct);
+        meals = meals.Where(m => m.LoggedAt >= rangeStart && m.LoggedAt <= rangeEnd).ToList();
         foreach (var m in meals) m.Items = await _store.GetMealItemsAsync(userId, m.Id, ct);
 
         var summary = meals.Select(m => new
@@ -499,7 +502,7 @@ public class AzureOpenAIChatService : IChatService
             totalProteinG = m.TotalProteinG,
             totalCarbsG = m.TotalCarbsG,
             totalFatG = m.TotalFatG,
-            items = m.Items.Select(i => new { i.FoodName, i.Calories })
+            items = m.Items.Select(i => new { i.FoodName, i.Calories, i.ProteinG, i.CarbsG, i.FatG, i.FiberG })
         });
         return JsonSerializer.Serialize(summary, JsonOpts);
     }
@@ -553,9 +556,11 @@ public class AzureOpenAIChatService : IChatService
 
     private async Task<string> ExecuteGetNutritionSummary(Guid userId, CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var user = await _store.GetUserAsync(userId, ct);
-        var meals = await _store.GetMealLogsByDateAsync(userId, today, ct);
+        var (rangeStart, rangeEnd) = GetUserTodayUtcRange(user);
+        var meals = await _store.GetMealLogsByDateRangeAsync(userId,
+            DateOnly.FromDateTime(rangeStart), DateOnly.FromDateTime(rangeEnd), ct);
+        meals = meals.Where(m => m.LoggedAt >= rangeStart && m.LoggedAt <= rangeEnd).ToList();
         foreach (var m in meals) m.Items = await _store.GetMealItemsAsync(userId, m.Id, ct);
 
         return JsonSerializer.Serialize(new
@@ -588,6 +593,32 @@ public class AzureOpenAIChatService : IChatService
             result.Recommendations,
             result.Summary
         }, JsonOpts);
+    }
+
+    private static (DateTime UtcStart, DateTime UtcEnd) GetUserTodayUtcRange(User? user)
+    {
+        TimeZoneInfo tz;
+        try
+        {
+            tz = !string.IsNullOrEmpty(user?.TimezoneId)
+                ? TimeZoneInfo.FindSystemTimeZoneById(user.TimezoneId)
+                : TimeZoneInfo.Utc;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            tz = TimeZoneInfo.Utc;
+        }
+
+        var nowInUserTz = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        var localToday = nowInUserTz.Date; // midnight local
+        var localTomorrow = localToday.AddDays(1);
+
+        // Convert local day boundaries back to UTC
+        var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localToday, DateTimeKind.Unspecified), tz);
+        var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localTomorrow, DateTimeKind.Unspecified), tz)
+            .AddTicks(-1);
+
+        return (utcStart, utcEnd);
     }
 
     private async Task<FoodProductDto> BuildFoodProductDto(FoodProduct product, CancellationToken ct)

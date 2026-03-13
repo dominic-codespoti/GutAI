@@ -273,6 +273,50 @@ public sealed class FoodScoringUnitTests
     }
 
     // ════════════════════════════════════════════════════════════════
+    //  REGRESSION: Mars Chocolate "Eggs" should not outrank real eggs
+    // ════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void StaticQuality_BrandedUSDA_NotTreatedAsWholeFood()
+    {
+        var marsEggs = MakeDto("Eggs", dataSource: "USDA", foodKind: FoodKind.Branded,
+            brand: "Mars Chocolate North America LLC",
+            calories: 525m, protein: 7.5m, carbs: 60m, fat: 27.5m);
+
+        var realEggs = MakeDto("Egg, whole, raw", dataSource: "USDA", foodKind: FoodKind.WholeFood,
+            calories: 143m, protein: 12.6m, carbs: 0.7m, fat: 9.5m);
+
+        var marsQ = FoodScoring.ComputeStaticQuality(marsEggs);
+        var realQ = FoodScoring.ComputeStaticQuality(realEggs);
+
+        // Real whole-food eggs should have higher static quality than branded chocolate
+        realQ.Should().BeGreaterThan(marsQ,
+            "branded USDA chocolate 'Eggs' must not get whole-food quality boost");
+    }
+
+    [Fact]
+    public void FinalScore_EggsQuery_PenalizesHighCarbCandy()
+    {
+        var marsEggs = MakeDto("Eggs", dataSource: "USDA", foodKind: FoodKind.Branded,
+            brand: "Mars Chocolate North America LLC",
+            calories: 525m, protein: 7.5m, carbs: 60m, fat: 27.5m);
+
+        var realEggs = MakeDto("Egg, whole, raw", dataSource: "USDA", foodKind: FoodKind.WholeFood,
+            calories: 143m, protein: 12.6m, carbs: 0.7m, fat: 9.5m);
+
+        var query = "eggs";
+        var tokens = new[] { "eggs" };
+        var analyzed = new[] { "egg" };
+
+        var marsScore = FoodScoring.FinalScore(marsEggs, 50f, query, tokens, analyzed);
+        var realScore = FoodScoring.FinalScore(realEggs, 50f, query, tokens, analyzed);
+
+        // Real eggs should outscore Mars chocolate when searching "eggs"
+        realScore.Should().BeGreaterThan(marsScore,
+            "Mars Chocolate 'Eggs' with 60g carbs must score lower than real eggs for query 'eggs'");
+    }
+
+    // ════════════════════════════════════════════════════════════════
     //  HELPERS
     // ════════════════════════════════════════════════════════════════
 

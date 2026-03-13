@@ -9,6 +9,7 @@ public static class InsightEndpoints
     {
         group.MapGet("/correlations", GetCorrelations);
         group.MapGet("/nutrition-trends", GetNutritionTrends);
+        group.MapGet("/nutrition-by-meal-type", GetNutritionByMealType);
         group.MapGet("/additive-exposure", GetAdditiveExposure);
         group.MapGet("/trigger-foods", GetTriggerFoods);
         group.MapGet("/food-diary-analysis", GetFoodDiaryAnalysis);
@@ -50,6 +51,33 @@ public static class InsightEndpoints
                 mealCount = g.Count()
             });
         return Results.Ok(grouped.OrderBy(x => x.date));
+    }
+
+    static async Task<IResult> GetNutritionByMealType(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = GetUserId(principal);
+        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
+        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var meals = await store.GetMealLogsByDateRangeAsync(userId, fromDate, toDate);
+        var grouped = meals.GroupBy(m => m.MealType)
+            .Select(g => new
+            {
+                mealType = g.Key.ToString(),
+                totalCalories = g.Sum(m => m.TotalCalories),
+                totalProteinG = g.Sum(m => m.TotalProteinG),
+                totalCarbsG = g.Sum(m => m.TotalCarbsG),
+                totalFatG = g.Sum(m => m.TotalFatG),
+                mealCount = g.Count()
+            })
+            .OrderBy(x => x.mealType switch
+            {
+                "Breakfast" => 0,
+                "Lunch" => 1,
+                "Dinner" => 2,
+                "Snack" => 3,
+                _ => 4
+            });
+        return Results.Ok(grouped);
     }
 
     static async Task<IResult> GetAdditiveExposure(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store)

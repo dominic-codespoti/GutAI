@@ -336,7 +336,7 @@ export default function ChatScreen() {
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerLeft}>
           <View style={styles.headerIcon}>
             <Ionicons name="sparkles" size={20} color={colors.textOnPrimary} />

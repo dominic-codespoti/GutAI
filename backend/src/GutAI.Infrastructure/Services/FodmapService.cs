@@ -261,7 +261,8 @@ public class FodmapService : IFodmapService
         if (!hasIngredients)
         {
             // Trusted whole foods (USDA/AUSNUT) — the name IS the ingredient; no hidden ambiguity.
-            bool isTrustedWholeFood = product.DataSource is "USDA" or "AUSNUT" ||
+            bool isTrustedWholeFood = (product.DataSource is "USDA" or "AUSNUT" &&
+                product.FoodKind != GutAI.Domain.Enums.FoodKind.Branded) ||
                 product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
             return isTrustedWholeFood ? "Medium" : "Low";
         }

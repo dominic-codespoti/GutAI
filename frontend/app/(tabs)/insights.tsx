@@ -17,6 +17,7 @@ import type {
   TriggerFood,
   FoodDiaryAnalysis,
   EliminationDietStatus,
+  MealTypeNutrition,
 } from "../../src/types";
 import { useCallback, useState } from "react";
 import { InsightsSkeleton } from "../../components/SkeletonLoader";
@@ -28,6 +29,7 @@ import {
   confidenceIcon,
 } from "../../src/utils/colors";
 import { radius, spacing } from "../../src/utils/theme";
+import { mealTypeEmoji } from "../../src/utils/theme";
 import { toLocalDateStr } from "../../src/utils/date";
 import {
   useThemeColors,
@@ -55,6 +57,15 @@ export default function InsightsScreen() {
   } = useQuery({
     queryKey: ["nutrition-trends", period],
     queryFn: () => insightApi.nutritionTrends(period).then((r) => r.data),
+  });
+
+  const {
+    data: mealTypeMacros,
+    isLoading: loadingMealTypeMacros,
+    refetch: refetchMealTypeMacros,
+  } = useQuery({
+    queryKey: ["nutrition-by-meal-type", period],
+    queryFn: () => insightApi.nutritionByMealType(period).then((r) => r.data),
   });
 
   const {
@@ -124,6 +135,7 @@ export default function InsightsScreen() {
     setRefreshing(true);
     await Promise.all([
       refetchTrends(),
+      refetchMealTypeMacros(),
       refetchExposure(),
       refetchCorr(),
       refetchSymptoms(),
@@ -134,6 +146,7 @@ export default function InsightsScreen() {
     setRefreshing(false);
   }, [
     refetchTrends,
+    refetchMealTypeMacros,
     refetchExposure,
     refetchCorr,
     refetchSymptoms,
@@ -737,6 +750,165 @@ export default function InsightsScreen() {
               </View>
             )}
           </View>
+
+          {/* Macro Breakdown by Meal Type */}
+          {!loadingMealTypeMacros &&
+            mealTypeMacros &&
+            mealTypeMacros.length > 0 && (
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: radius.lg,
+                  padding: spacing.xl,
+                  marginBottom: spacing.lg,
+                  ...shadowMd,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: spacing.lg,
+                  }}
+                >
+                  <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
+                    🍽️
+                  </Text>
+                  <Text style={fonts.h3}>Macros by Meal</Text>
+                </View>
+
+                {mealTypeMacros.map((mt: MealTypeNutrition) => {
+                  const totalMacroG =
+                    mt.totalProteinG + mt.totalCarbsG + mt.totalFatG;
+                  const proteinPct =
+                    totalMacroG > 0
+                      ? (mt.totalProteinG / totalMacroG) * 100
+                      : 0;
+                  const carbsPct =
+                    totalMacroG > 0 ? (mt.totalCarbsG / totalMacroG) * 100 : 0;
+                  const fatPct =
+                    totalMacroG > 0 ? (mt.totalFatG / totalMacroG) * 100 : 0;
+                  const emoji = mealTypeEmoji[mt.mealType] ?? "🍽️";
+                  return (
+                    <View
+                      key={mt.mealType}
+                      style={{
+                        backgroundColor: colors.bg,
+                        borderRadius: radius.md,
+                        padding: 14,
+                        marginBottom: spacing.sm,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 15,
+                            fontWeight: "600",
+                            color: colors.text,
+                          }}
+                        >
+                          {emoji} {mt.mealType}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: colors.text,
+                          }}
+                        >
+                          {Math.round(mt.totalCalories)} cal
+                        </Text>
+                      </View>
+                      {/* Stacked macro bar */}
+                      <View
+                        style={{
+                          height: 8,
+                          borderRadius: 4,
+                          flexDirection: "row",
+                          overflow: "hidden",
+                          backgroundColor: colors.border,
+                        }}
+                      >
+                        {proteinPct > 0 && (
+                          <View
+                            style={{
+                              width: `${proteinPct}%`,
+                              height: 8,
+                              backgroundColor: colors.protein,
+                            }}
+                          />
+                        )}
+                        {carbsPct > 0 && (
+                          <View
+                            style={{
+                              width: `${carbsPct}%`,
+                              height: 8,
+                              backgroundColor: colors.carbs,
+                            }}
+                          />
+                        )}
+                        {fatPct > 0 && (
+                          <View
+                            style={{
+                              width: `${fatPct}%`,
+                              height: 8,
+                              backgroundColor: colors.fat,
+                            }}
+                          />
+                        )}
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          marginTop: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.protein,
+                            fontWeight: "600",
+                          }}
+                        >
+                          P: {Math.round(mt.totalProteinG)}g (
+                          {Math.round(proteinPct)}%)
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.carbs,
+                            fontWeight: "600",
+                          }}
+                        >
+                          C: {Math.round(mt.totalCarbsG)}g (
+                          {Math.round(carbsPct)}%)
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.fat,
+                            fontWeight: "600",
+                          }}
+                        >
+                          F: {Math.round(mt.totalFatG)}g ({Math.round(fatPct)}%)
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                          {mt.mealCount} meals
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
           {/* Additive Exposure - only show when data exists */}
           {!loadingExposure && (

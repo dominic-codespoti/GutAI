@@ -38,21 +38,20 @@ public static class DependencyInjection
         services.AddScoped<ICorrelationEngine, CorrelationEngine>();
 
         // HTTP Clients for external APIs
-        // OpenFoodFacts search can take 15-25s for niche queries. We allow generous
-        // per-attempt timeouts but limit retries to avoid compounding wait times.
-        // Rate limit: 10 search req/min (enforced per-IP by OFF).
+        // Search-a-licious (Elasticsearch) responds in 2-3s; barcode lookups on v2 ~2-3s with fields.
+        // Keep sensible timeouts for when the service is slow/degraded.
         services.AddHttpClient<OpenFoodFactsClient>(client =>
         {
             client.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0 (contact@gutai.app)");
-            client.Timeout = TimeSpan.FromSeconds(25);
+            client.Timeout = TimeSpan.FromSeconds(12);
         })
         .AddStandardResilienceHandler(options =>
         {
             options.Retry.MaxRetryAttempts = 1;
             options.Retry.Delay = TimeSpan.FromMilliseconds(500);
-            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
-            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(25);
-            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(45);
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(8);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(12);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(20);
         });
 
         // Register leaf data providers as concrete types for explicit composition

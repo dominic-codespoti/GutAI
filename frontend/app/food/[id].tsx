@@ -39,6 +39,7 @@ import {
   FoodDetailSkeleton,
   SearchResultSkeleton,
 } from "../../components/SkeletonLoader";
+import { useFavorites } from "../../src/hooks/useFavorites";
 
 const gutScoreColor = (score: number, c: ThemeColors) => {
   if (score >= 80) return c.primaryLight;
@@ -97,6 +98,7 @@ export default function FoodDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const [showAddToMeal, setShowAddToMeal] = useState(false);
   const [addToMealType, setAddToMealType] = useState<string>("Lunch");
   const [servingSize, setServingSize] = useState(100);
@@ -353,11 +355,37 @@ export default function FoodDetailScreen() {
                   cachePolicy="memory-disk"
                 />
               )}
-              <Text
-                style={{ fontSize: 22, fontWeight: "700", color: colors.text }}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
               >
-                {product.name}
-              </Text>
+                <Text
+                  style={{
+                    fontSize: 22,
+                    fontWeight: "700",
+                    color: colors.text,
+                    flex: 1,
+                  }}
+                >
+                  {product.name}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => toggleFavorite(product.id)}
+                  style={{ padding: 6, marginLeft: 8 }}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={isFavorite(product.id) ? "heart" : "heart-outline"}
+                    size={24}
+                    color={
+                      isFavorite(product.id) ? colors.danger : colors.textMuted
+                    }
+                  />
+                </TouchableOpacity>
+              </View>
               {product.brand && (
                 <Text
                   style={{

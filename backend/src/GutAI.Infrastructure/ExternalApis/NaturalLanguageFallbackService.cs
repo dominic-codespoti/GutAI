@@ -574,14 +574,14 @@ public partial class NaturalLanguageFallbackService
 
         // --- Data quality ---
         if (food.DataSource == "USDA")
-            score += 10;
+            score += food.FoodKind == GutAI.Domain.Enums.FoodKind.Branded ? 3 : 10;
         if (food.Calories100g.HasValue)
             score += 5;
         if (food.Protein100g.HasValue && food.Carbs100g.HasValue && food.Fat100g.HasValue)
             score += 5;
 
-        // --- Nutrition plausibility ---
-        score += NutritionPlausibilityScore(food, queryLower);
+        // --- Nutrition plausibility (delegate to shared implementation) ---
+        score += (double)FoodScoring.NutritionPlausibilityScore(food, queryLower);
 
         // --- Brand penalty for generic queries ---
         if (!string.IsNullOrEmpty(food.Brand) && food.Brand.Length > 1)
@@ -593,45 +593,5 @@ public partial class NaturalLanguageFallbackService
         }
 
         return score;
-    }
-
-    private static double NutritionPlausibilityScore(FoodProductDto dto, string queryLower)
-    {
-        if (!dto.Calories100g.HasValue) return 0;
-
-        double penalty = 0;
-        var cal = dto.Calories100g.Value;
-        var protein = dto.Protein100g ?? 0m;
-        var carbs = dto.Carbs100g ?? 0m;
-        var fat = dto.Fat100g ?? 0m;
-
-        if (queryLower.Contains("chicken") || queryLower.Contains("beef") ||
-            queryLower.Contains("fish") || queryLower.Contains("turkey") ||
-            queryLower.Contains("pork") || queryLower.Contains("lamb") ||
-            queryLower.Contains("steak") || queryLower.Contains("salmon"))
-        {
-            if (carbs > 40m) penalty -= 15;
-            if (protein < 5m && cal > 50m) penalty -= 10;
-        }
-
-        if (queryLower.Contains("oil") || queryLower.Contains("butter") || queryLower.Contains("lard"))
-        {
-            if (fat < 20m && cal > 100m) penalty -= 15;
-        }
-
-        if (queryLower.Contains("lettuce") || queryLower.Contains("spinach") ||
-            queryLower.Contains("kale") || queryLower.Contains("celery") ||
-            queryLower.Contains("cucumber"))
-        {
-            if (cal > 100m) penalty -= 15;
-        }
-
-        if (queryLower.Contains("juice") || queryLower.Contains("water") ||
-            queryLower.Contains("tea") || queryLower.Contains("coffee"))
-        {
-            if (fat > 20m) penalty -= 10;
-        }
-
-        return penalty;
     }
 }

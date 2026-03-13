@@ -309,7 +309,7 @@ public class GlycemicIndexService : IGlycemicIndexService
         // Whole foods with fiber tend to have much lower GI than processed foods.
         // Use a lower base for trusted whole foods to avoid overestimating GI for vegetables.
         bool isWholeFood = product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood ||
-            product.DataSource is "USDA" or "AUSNUT";
+            (product.DataSource is "USDA" or "AUSNUT" && product.FoodKind != GutAI.Domain.Enums.FoodKind.Branded);
         var hasFiber = (product.Fiber100g ?? 0) > 2;
         var baseGI = carbs < 10 ? 35
             : isWholeFood && hasFiber ? 40

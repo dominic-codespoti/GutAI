@@ -19,25 +19,31 @@ public class GutAiMcpTools
         WriteIndented = false
     };
 
-    [McpServerTool, Description("Search the food database by name. Returns matching food products with nutrition info.")]
+    [McpServerTool, Description("Search the food database by name. Returns up to 10 matching food products with IDs, nutrition, brand, data source, and match confidence.")]
     public static async Task<string> SearchFoods(
         IFoodApiService foodApi,
         [Description("Food name to search for")] string query,
         CancellationToken ct)
     {
-        var results = await foodApi.SearchAsync(query, ct);
-        var summary = results.Take(5).Select(f => new
+        var sanitized = QuerySanitizer.Sanitize(query);
+        var results = await foodApi.SearchAsync(sanitized, ct);
+        var summary = results.Take(10).Select((f, i) => new
         {
+            index = i + 1,
             id = f.Id,
             name = f.Name,
             brand = f.Brand,
+            dataSource = f.DataSource,
             calories100g = f.Calories100g,
             protein100g = f.Protein100g,
             carbs100g = f.Carbs100g,
             fat100g = f.Fat100g,
-            servingSize = f.ServingSize
+            fiber100g = f.Fiber100g,
+            servingSize = f.ServingSize,
+            matchConfidence = f.MatchConfidence,
+            ingredients = f.Ingredients?.Length > 120 ? f.Ingredients[..120] + "..." : f.Ingredients
         });
-        return JsonSerializer.Serialize(summary, JsonOpts);
+        return JsonSerializer.Serialize(new { results = summary }, JsonOpts);
     }
 
     [McpServerTool, Description("Get a FODMAP assessment for a food product.")]
@@ -58,59 +64,171 @@ public class GutAiMcpTools
             fodmap.FodmapScore,
             fodmap.FodmapRating,
             fodmap.TriggerCount,
-            triggers = fodmap.Triggers.Select(t => new { t.Name, t.Category, t.Severity }),
+            triggers = fodmap.Triggers.Select(t => new { t.Name, t.Category, t.Severity, t.Explanation }),
             fodmap.Summary
         }, JsonOpts);
     }
 
-    [McpServerTool, Description("Log a meal for the authenticated user using natural language.")]
+    [McpServerTool, Description("Get a safety report for a food product including FODMAP assessment, gut risk, additive analysis, and personalized score.")]
+    public static async Task<string> GetFoodSafety(
+        HttpContext httpContext,
+        ITableStore store,
+        FodmapService fodmapService,
+        GutRiskService gutRiskService,
+        PersonalizedScoringService scoringService,
+        [Description("The food product ID (GUID)")] string foodProductId,
+        CancellationToken ct)
+    {
+        var userId = GetUserId(httpContext);
+        var id = Guid.Parse(foodProductId);
+        var product = await store.GetFoodProductAsync(id, ct);
+        if (product is null) return "Food product not found.";
+
+        var dto = await BuildDto(product, store, ct);
+        var fodmap = fodmapService.Assess(dto);
+        var gutRisk = gutRiskService.Assess(dto);
+        var score = await scoringService.ScoreAsync(dto, userId, store);
+
+        return JsonSerializer.Serialize(new
+        {
+            product = new { product.Name, product.Brand, product.Ingredients },
+            fodmap = new { fodmap.FodmapScore, fodmap.FodmapRating, fodmap.Summary },
+            gutRisk = new { gutRisk.GutScore, gutRisk.GutRating, gutRisk.Summary },
+            personalizedScore = new { score.CompositeScore, score.Rating, score.Summary }
+        }, JsonOpts);
+    }
+
+    [McpServerTool, Description("Log a meal for the authenticated user. Supports structured items with food_product_id for accurate nutrition, or natural language fallback.")]
     public static async Task<string> LogMeal(
         HttpContext httpContext,
         ITableStore store,
         INutritionApiService nutritionApi,
-        [Description("Natural language description of the meal")] string description,
         [Description("Meal type: Breakfast, Lunch, Dinner, or Snack")] string mealType,
+        [Description("JSON array of items: [{\"food_product_id\":\"GUID\",\"name\":\"food name\",\"servings\":1}]. Use food_product_id from SearchFoods results when available.")] string? items,
+        [Description("Fallback: natural language description of the meal. Only use when items is not provided.")] string? description,
         CancellationToken ct)
     {
         var userId = GetUserId(httpContext);
         var mt = Enum.TryParse<MealType>(mealType, true, out var parsed) ? parsed : MealType.Snack;
+        var mealId = Guid.NewGuid();
+        var mealItems = new List<MealItem>();
+        var originalParts = new List<string>();
 
-        var items = await nutritionApi.ParseNaturalLanguageAsync(description, ct);
-        if (items.Count == 0) return "Could not parse any food items.";
+        // Structured items path (preferred — gives accurate nutrition from food DB)
+        if (!string.IsNullOrEmpty(items))
+        {
+            using var doc = JsonDocument.Parse(items);
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                var servings = item.TryGetProperty("servings", out var sv) && sv.ValueKind == JsonValueKind.Number
+                    ? sv.GetDecimal() : 1m;
+                var itemName = item.TryGetProperty("name", out var nm) ? nm.GetString() : null;
+
+                if (item.TryGetProperty("food_product_id", out var fpId) && fpId.GetString() is { } fpIdStr
+                    && Guid.TryParse(fpIdStr, out var productId))
+                {
+                    var product = await store.GetFoodProductAsync(productId, ct);
+                    if (product is not null)
+                    {
+                        var servingG = product.ServingQuantity is > 0 ? product.ServingQuantity.Value : 100m;
+                        var factor = servings * servingG / 100m;
+                        mealItems.Add(new MealItem
+                        {
+                            Id = Guid.NewGuid(),
+                            MealLogId = mealId,
+                            FoodName = itemName ?? product.Name,
+                            FoodProductId = product.Id,
+                            Servings = servings,
+                            ServingUnit = product.ServingSize ?? "serving",
+                            ServingWeightG = servingG * servings,
+                            Calories = (product.Calories100g ?? 0) * factor,
+                            ProteinG = (product.Protein100g ?? 0) * factor,
+                            CarbsG = (product.Carbs100g ?? 0) * factor,
+                            FatG = (product.Fat100g ?? 0) * factor,
+                            FiberG = (product.Fiber100g ?? 0) * factor,
+                            SugarG = (product.Sugar100g ?? 0) * factor,
+                            SodiumMg = (product.Sodium100g ?? 0) * factor,
+                        });
+                        originalParts.Add(itemName ?? product.Name);
+                        continue;
+                    }
+                }
+
+                // Fallback: parse item name via nutrition API
+                if (!string.IsNullOrEmpty(itemName))
+                {
+                    var parsedItems = await nutritionApi.ParseNaturalLanguageAsync(itemName, ct);
+                    foreach (var p in parsedItems)
+                    {
+                        mealItems.Add(new MealItem
+                        {
+                            Id = Guid.NewGuid(),
+                            MealLogId = mealId,
+                            FoodName = p.Name,
+                            Servings = servings * (p.ServingQuantity ?? 1m),
+                            ServingUnit = "serving",
+                            ServingWeightG = p.ServingWeightG * servings,
+                            Calories = p.Calories * servings,
+                            ProteinG = p.ProteinG * servings,
+                            CarbsG = p.CarbsG * servings,
+                            FatG = p.FatG * servings,
+                            FiberG = p.FiberG * servings,
+                            SugarG = p.SugarG * servings,
+                            SodiumMg = p.SodiumMg * servings,
+                            CholesterolMg = p.CholesterolMg * servings,
+                            SaturatedFatG = p.SaturatedFatG * servings,
+                            PotassiumMg = p.PotassiumMg * servings,
+                        });
+                        originalParts.Add(p.Name);
+                    }
+                }
+            }
+        }
+
+        // Legacy free-text fallback
+        if (mealItems.Count == 0 && !string.IsNullOrEmpty(description))
+        {
+            var parsedItems = await nutritionApi.ParseNaturalLanguageAsync(description, ct);
+            foreach (var p in parsedItems)
+            {
+                mealItems.Add(new MealItem
+                {
+                    Id = Guid.NewGuid(),
+                    MealLogId = mealId,
+                    FoodName = p.Name,
+                    Servings = p.ServingQuantity ?? 1m,
+                    ServingUnit = "serving",
+                    ServingWeightG = p.ServingWeightG,
+                    Calories = p.Calories,
+                    ProteinG = p.ProteinG,
+                    CarbsG = p.CarbsG,
+                    FatG = p.FatG,
+                    FiberG = p.FiberG,
+                    SugarG = p.SugarG,
+                    SodiumMg = p.SodiumMg,
+                    CholesterolMg = p.CholesterolMg,
+                    SaturatedFatG = p.SaturatedFatG,
+                    PotassiumMg = p.PotassiumMg
+                });
+                originalParts.Add(p.Name);
+            }
+        }
+
+        if (mealItems.Count == 0)
+            return "Could not resolve any food items from the provided input.";
 
         var meal = new MealLog
         {
-            Id = Guid.NewGuid(),
+            Id = mealId,
             UserId = userId,
             MealType = mt,
             LoggedAt = DateTime.UtcNow,
-            OriginalText = description
+            OriginalText = string.Join(", ", originalParts),
+            TotalCalories = mealItems.Sum(i => i.Calories),
+            TotalProteinG = mealItems.Sum(i => i.ProteinG),
+            TotalCarbsG = mealItems.Sum(i => i.CarbsG),
+            TotalFatG = mealItems.Sum(i => i.FatG)
         };
-
-        var mealItems = items.Select(p => new MealItem
-        {
-            Id = Guid.NewGuid(),
-            MealLogId = meal.Id,
-            FoodName = p.Name,
-            Servings = p.ServingQuantity ?? 1m,
-            ServingUnit = "serving",
-            ServingWeightG = p.ServingWeightG,
-            Calories = p.Calories,
-            ProteinG = p.ProteinG,
-            CarbsG = p.CarbsG,
-            FatG = p.FatG,
-            FiberG = p.FiberG,
-            SugarG = p.SugarG,
-            SodiumMg = p.SodiumMg,
-            CholesterolMg = p.CholesterolMg,
-            SaturatedFatG = p.SaturatedFatG,
-            PotassiumMg = p.PotassiumMg
-        }).ToList();
-
-        meal.TotalCalories = mealItems.Sum(i => i.Calories);
-        meal.TotalProteinG = mealItems.Sum(i => i.ProteinG);
-        meal.TotalCarbsG = mealItems.Sum(i => i.CarbsG);
-        meal.TotalFatG = mealItems.Sum(i => i.FatG);
 
         await store.UpsertMealLogAsync(meal, ct);
         await store.UpsertMealItemsAsync(userId, meal.Id, mealItems, ct);
@@ -120,7 +238,11 @@ public class GutAiMcpTools
             id = meal.Id,
             mealType = meal.MealType.ToString(),
             totalCalories = meal.TotalCalories,
-            items = mealItems.Select(i => new { i.FoodName, i.Calories })
+            totalProteinG = meal.TotalProteinG,
+            totalCarbsG = meal.TotalCarbsG,
+            totalFatG = meal.TotalFatG,
+            totalFiberG = mealItems.Sum(i => i.FiberG),
+            items = mealItems.Select(i => new { i.FoodName, i.Calories, i.ProteinG, i.CarbsG, i.FatG, i.FiberG })
         }, JsonOpts);
     }
 
@@ -152,24 +274,32 @@ public class GutAiMcpTools
         return JsonSerializer.Serialize(new { id = symptom.Id, symptom = type.Name, severity = symptom.Severity }, JsonOpts);
     }
 
-    [McpServerTool, Description("Get all meals the authenticated user logged today.")]
+    [McpServerTool, Description("Get all meals the authenticated user logged today with items and nutrition info.")]
     public static async Task<string> GetTodaysMeals(
         HttpContext httpContext,
         ITableStore store,
         CancellationToken ct)
     {
         var userId = GetUserId(httpContext);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var meals = await store.GetMealLogsByDateAsync(userId, today, ct);
+        var user = await store.GetUserAsync(userId, ct);
+        var (rangeStart, rangeEnd) = GetUserTodayUtcRange(user);
+
+        var meals = await store.GetMealLogsByDateRangeAsync(userId,
+            DateOnly.FromDateTime(rangeStart), DateOnly.FromDateTime(rangeEnd), ct);
+        meals = meals.Where(m => m.LoggedAt >= rangeStart && m.LoggedAt <= rangeEnd).ToList();
         foreach (var m in meals) m.Items = await store.GetMealItemsAsync(userId, m.Id, ct);
 
-        return JsonSerializer.Serialize(meals.Select(m => new
+        var summary = meals.Select(m => new
         {
             mealType = m.MealType.ToString(),
             loggedAt = m.LoggedAt,
             totalCalories = m.TotalCalories,
-            items = m.Items.Select(i => new { i.FoodName, i.Calories })
-        }), JsonOpts);
+            totalProteinG = m.TotalProteinG,
+            totalCarbsG = m.TotalCarbsG,
+            totalFatG = m.TotalFatG,
+            items = m.Items.Select(i => new { i.FoodName, i.Calories, i.ProteinG, i.CarbsG, i.FatG, i.FiberG })
+        });
+        return JsonSerializer.Serialize(summary, JsonOpts);
     }
 
     [McpServerTool, Description("Get the authenticated user's trigger foods from correlation analysis.")]
@@ -191,6 +321,7 @@ public class GutAiMcpTools
             {
                 food = g.Key,
                 symptoms = g.Select(c => c.SymptomName).Distinct().ToList(),
+                totalOccurrences = g.Sum(c => c.Occurrences),
                 avgSeverity = g.Average(c => (double)c.AverageSeverity)
             })
             .OrderByDescending(t => t.avgSeverity).Take(10);
@@ -228,8 +359,11 @@ public class GutAiMcpTools
     {
         var userId = GetUserId(httpContext);
         var user = await store.GetUserAsync(userId, ct);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var meals = await store.GetMealLogsByDateAsync(userId, today, ct);
+        var (rangeStart, rangeEnd) = GetUserTodayUtcRange(user);
+
+        var meals = await store.GetMealLogsByDateRangeAsync(userId,
+            DateOnly.FromDateTime(rangeStart), DateOnly.FromDateTime(rangeEnd), ct);
+        meals = meals.Where(m => m.LoggedAt >= rangeStart && m.LoggedAt <= rangeEnd).ToList();
         foreach (var m in meals) m.Items = await store.GetMealItemsAsync(userId, m.Id, ct);
 
         return JsonSerializer.Serialize(new
@@ -238,6 +372,7 @@ public class GutAiMcpTools
             totalProteinG = meals.Sum(m => m.TotalProteinG),
             totalCarbsG = meals.Sum(m => m.TotalCarbsG),
             totalFatG = meals.Sum(m => m.TotalFatG),
+            totalFiberG = meals.SelectMany(m => m.Items).Sum(i => i.FiberG),
             mealCount = meals.Count,
             goals = new
             {
@@ -269,8 +404,67 @@ public class GutAiMcpTools
         }, JsonOpts);
     }
 
+    [McpServerTool, Description("Get the authenticated user's profile including allergies, gut conditions, dietary preferences, and daily nutrition goals.")]
+    public static async Task<string> GetUserProfile(
+        HttpContext httpContext,
+        ITableStore store,
+        CancellationToken ct)
+    {
+        var userId = GetUserId(httpContext);
+        var user = await store.GetUserAsync(userId, ct);
+        if (user is null) return "User not found.";
+
+        return JsonSerializer.Serialize(new
+        {
+            user.DisplayName,
+            user.Allergies,
+            user.DietaryPreferences,
+            user.GutConditions,
+            user.TimezoneId,
+            goals = new
+            {
+                dailyCalories = user.DailyCalorieGoal,
+                dailyProteinG = user.DailyProteinGoalG,
+                dailyCarbsG = user.DailyCarbGoalG,
+                dailyFatG = user.DailyFatGoalG,
+                dailyFiberG = user.DailyFiberGoalG
+            }
+        }, JsonOpts);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────
+
     private static Guid GetUserId(HttpContext httpContext) =>
         Guid.Parse(httpContext.User.FindFirstValue("sub")!);
+
+    /// <summary>
+    /// Returns the UTC start/end of "today" in the user's local timezone.
+    /// Falls back to UTC if the user has no timezone configured.
+    /// </summary>
+    private static (DateTime UtcStart, DateTime UtcEnd) GetUserTodayUtcRange(User? user)
+    {
+        TimeZoneInfo tz;
+        try
+        {
+            tz = !string.IsNullOrEmpty(user?.TimezoneId)
+                ? TimeZoneInfo.FindSystemTimeZoneById(user.TimezoneId)
+                : TimeZoneInfo.Utc;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            tz = TimeZoneInfo.Utc;
+        }
+
+        var nowInUserTz = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        var localToday = nowInUserTz.Date;
+        var localTomorrow = localToday.AddDays(1);
+
+        var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localToday, DateTimeKind.Unspecified), tz);
+        var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localTomorrow, DateTimeKind.Unspecified), tz)
+            .AddTicks(-1);
+
+        return (utcStart, utcEnd);
+    }
 
     private static async Task<FoodProductDto> BuildDto(FoodProduct product, ITableStore store, CancellationToken ct)
     {
@@ -284,6 +478,9 @@ public class GutAiMcpTools
                 Id = a?.Id ?? aid,
                 Name = a?.Name ?? "Unknown",
                 CspiRating = a?.CspiRating.ToString() ?? "Unknown",
+                UsRegulatoryStatus = a?.UsRegulatoryStatus.ToString() ?? "Unknown",
+                EuRegulatoryStatus = a?.EuRegulatoryStatus.ToString() ?? "Unknown",
+                SafetyRating = a?.SafetyRating.ToString() ?? "Unknown",
                 Category = a?.Category ?? "Unknown",
                 ENumber = a?.ENumber,
                 HealthConcerns = a?.HealthConcerns ?? ""
@@ -295,8 +492,10 @@ public class GutAiMcpTools
             Id = product.Id,
             Name = product.Name,
             Brand = product.Brand,
+            Barcode = product.Barcode,
             Ingredients = product.Ingredients,
             NovaGroup = product.NovaGroup,
+            NutriScore = product.NutriScore,
             AllergensTags = product.AllergensTags ?? [],
             Calories100g = product.Calories100g,
             Protein100g = product.Protein100g,
@@ -307,7 +506,8 @@ public class GutAiMcpTools
             Sodium100g = product.Sodium100g,
             ServingSize = product.ServingSize,
             Additives = additiveDtos,
-            AdditivesTags = additiveDtos.Where(a => a.ENumber != null).Select(a => $"en:{a.ENumber!.ToLowerInvariant()}").ToList()
+            AdditivesTags = additiveDtos.Where(a => a.ENumber != null)
+                .Select(a => $"en:{a.ENumber!.ToLowerInvariant()}").ToList()
         };
     }
 }

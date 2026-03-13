@@ -262,6 +262,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      backBehavior="history"
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         tabBarActiveTintColor: colors.primary,

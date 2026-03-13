@@ -80,7 +80,8 @@ internal static class FoodScoring
 
         // Richness boost: images and ingredients improve UX, but only for non-whole-foods.
         // USDA whole foods never have images — don't let metadata bias crush them.
-        bool isTrustedWholeFood = dto.DataSource is "USDA" or "AUSNUT" ||
+        bool isTrustedWholeFood = (dto.DataSource is "USDA" or "AUSNUT" &&
+            dto.FoodKind != GutAI.Domain.Enums.FoodKind.Branded) ||
             dto.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
         if (!string.IsNullOrEmpty(dto.ImageUrl))
             q += isTrustedWholeFood ? 0.1f : 0.25f;
@@ -284,7 +285,17 @@ internal static class FoodScoring
             if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood)
                 score += 10f;
             else if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.Branded && !queryHasBrand)
+            {
                 score -= 15f;
+
+                // Extra penalty for branded products whose name is suspiciously short/generic.
+                // A single-word branded product name (e.g. "Eggs", "Garlic", "Coffee") that
+                // matches a common whole-food query is almost always misleading — it's a
+                // candy, sausage, or drink mix, not the actual whole food.
+                var nameTokens = dto.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (nameTokens.Length <= 2 && !string.IsNullOrEmpty(dto.Brand))
+                    score -= 20f;
+            }
 
             if (!queryHasBrand && !string.IsNullOrEmpty(dto.Brand) && dto.Brand.Length > 1)
                 score -= 5f;
@@ -472,7 +483,7 @@ internal static class FoodScoring
     //  Nutrition plausibility
     // ────────────────────────────────────────────────────────────────
 
-    private static float NutritionPlausibilityScore(FoodProductDto dto, string queryLower)
+    internal static float NutritionPlausibilityScore(FoodProductDto dto, string queryLower)
     {
         if (!dto.Calories100g.HasValue) return 0f;
 
@@ -481,7 +492,17 @@ internal static class FoodScoring
         var protein = dto.Protein100g ?? 0m;
         var carbs = dto.Carbs100g ?? 0m;
         var fat = dto.Fat100g ?? 0m;
+        var sugar = dto.Sugar100g ?? 0m;
 
+        // Eggs: high protein (~13g), moderate fat (~11g), near-zero carbs (<2g)
+        // Chocolate "Eggs" (candy) have 60g+ carbs — clearly not actual eggs
+        if (queryLower is "egg" or "eggs")
+        {
+            if (carbs > 20m) penalty -= 30f;
+            if (protein < 5m && cal > 50m) penalty -= 10f;
+        }
+
+        // Meats: high protein, low carbs
         if (queryLower.Contains("chicken") || queryLower.Contains("beef") ||
             queryLower.Contains("fish") || queryLower.Contains("turkey") ||
             queryLower.Contains("pork") || queryLower.Contains("lamb") ||
@@ -491,11 +512,13 @@ internal static class FoodScoring
             if (protein < 5m && cal > 50m) penalty -= 10f;
         }
 
+        // Oils/fats: nearly 100% fat
         if (queryLower.Contains("oil") || queryLower.Contains("butter") || queryLower.Contains("lard"))
         {
             if (fat < 20m && cal > 100m) penalty -= 15f;
         }
 
+        // Leafy greens / low-cal vegetables: very low calories
         if (queryLower.Contains("lettuce") || queryLower.Contains("spinach") ||
             queryLower.Contains("kale") || queryLower.Contains("celery") ||
             queryLower.Contains("cucumber"))
@@ -503,10 +526,66 @@ internal static class FoodScoring
             if (cal > 100m) penalty -= 15f;
         }
 
+        // Beverages: low fat
         if (queryLower.Contains("juice") || queryLower.Contains("water") ||
             queryLower.Contains("tea") || queryLower.Contains("coffee"))
         {
             if (fat > 20m) penalty -= 10f;
+        }
+
+        // Garlic / onion / herbs: very low cal, low fat whole foods
+        // Branded "Garlic" is sausage (321 cal, 28g fat), real garlic is ~149 cal, 0.5g fat
+        if (queryLower is "garlic" or "onion" or "ginger" or "basil" or "oregano"
+            or "thyme" or "rosemary" or "cilantro" or "parsley" or "mint" or "dill")
+        {
+            if (fat > 15m) penalty -= 20f;
+            if (protein > 20m) penalty -= 15f;
+        }
+
+        // Oats / oatmeal: moderate cal (~370), low sugar (<1g), high fiber
+        // Branded "Oatmeal" is granola bar (397 cal, 22g sugar)
+        if (queryLower is "oats" or "oatmeal" or "porridge")
+        {
+            if (sugar > 15m) penalty -= 20f;
+        }
+
+        // Rice: ~130 cal cooked, ~360 dry, very low fat/sugar, moderate protein
+        if (queryLower is "rice")
+        {
+            if (sugar > 10m) penalty -= 15f;
+            if (fat > 10m) penalty -= 15f;
+        }
+
+        // Nuts: high cal (~580), high fat (~50g), moderate protein, low sugar
+        // Candied/flavored versions have high carbs/sugar
+        if (queryLower is "almonds" or "walnuts" or "cashews" or "pecans"
+            or "pistachios" or "peanuts" or "hazelnuts" or "macadamia")
+        {
+            if (carbs > 35m && sugar > 15m) penalty -= 15f;
+            if (fat < 15m) penalty -= 15f;
+        }
+
+        // Yogurt: ~60 cal, ~4g protein, ~5g sugar (plain)
+        // Branded yogurt-flavored products may have extreme sugar
+        if (queryLower is "yogurt" or "yoghurt")
+        {
+            if (sugar > 25m) penalty -= 15f;
+        }
+
+        // Chocolate (as ingredient/baking): real cocoa ~230 cal, <2g sugar
+        // Candy "Chocolate" is 500+ cal, 53g sugar
+        if (queryLower is "chocolate" or "cocoa")
+        {
+            if (sugar > 40m) penalty -= 20f;
+        }
+
+        // Fruit: raw fruit is low cal (<100/100g), low fat
+        if (queryLower is "apple" or "banana" or "orange" or "strawberry" or "strawberries"
+            or "blueberry" or "blueberries" or "grape" or "grapes" or "mango"
+            or "pineapple" or "peach" or "pear" or "watermelon" or "cherry" or "cherries")
+        {
+            if (cal > 150m) penalty -= 15f;
+            if (fat > 10m) penalty -= 15f;
         }
 
         return penalty;

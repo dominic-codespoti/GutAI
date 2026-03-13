@@ -58,6 +58,11 @@ public interface ITableStore
     Task UpsertUserFoodAlertAsync(UserFoodAlert alert, CancellationToken ct = default);
     Task DeleteUserFoodAlertAsync(Guid userId, int additiveId, CancellationToken ct = default);
 
+    Task<List<FavoriteFoodProduct>> GetUserFavoriteFoodsAsync(Guid userId, CancellationToken ct = default);
+    Task<FavoriteFoodProduct?> GetUserFavoriteFoodAsync(Guid userId, Guid foodProductId, CancellationToken ct = default);
+    Task UpsertFavoriteFoodAsync(FavoriteFoodProduct favorite, CancellationToken ct = default);
+    Task DeleteFavoriteFoodAsync(Guid userId, Guid foodProductId, CancellationToken ct = default);
+
     Task<InsightReport?> GetInsightReportAsync(Guid userId, Guid reportId, CancellationToken ct = default);
     Task<List<InsightReport>> GetInsightReportsAsync(Guid userId, CancellationToken ct = default);
     Task UpsertInsightReportAsync(InsightReport report, CancellationToken ct = default);
