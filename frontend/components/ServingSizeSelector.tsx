@@ -59,6 +59,9 @@ export function ServingSizeSelector({
                 onServingChange(preset.grams);
                 onCustomTextChange("");
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`Serving size ${preset.label}`}
+              accessibilityState={{ selected: active }}
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 6,
@@ -109,8 +112,11 @@ export function ServingSizeSelector({
             if (n > 0) onServingChange(n);
           }}
           keyboardType="numeric"
+          autoCorrect={false}
+          maxLength={5}
           placeholder="e.g. 75"
           placeholderTextColor={colors.textLight}
+          accessibilityLabel="Custom serving size in grams"
           style={{
             flex: 1,
             borderWidth: 1,
@@ -141,6 +147,9 @@ export function ServingSizeSelector({
           <TouchableOpacity
             key={m}
             onPress={() => onMultiplierChange(m)}
+            accessibilityRole="button"
+            accessibilityLabel={`Multiplier ${m}`}
+            accessibilityState={{ selected: multiplier === m }}
             style={{
               flex: 1,
               paddingVertical: 6,

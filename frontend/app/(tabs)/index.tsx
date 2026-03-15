@@ -328,13 +328,17 @@ export default function DashboardScreen() {
             <Text style={{ fontSize: 15, color: c.textMuted }}>
               {greeting},
             </Text>
-            <Text style={f.h1}>{user?.displayName ?? "there"} 👋</Text>
+            <Text style={f.h1} accessibilityRole="header">
+              {user?.displayName ?? "there"} 👋
+            </Text>
           </View>
 
           {/* Alerts */}
           {alerts && alerts.length > 0 && (
             <TouchableOpacity
               onPress={() => router.push("/(tabs)/profile")}
+              accessibilityRole="button"
+              accessibilityLabel={`${alerts.length} food additive alert${alerts.length !== 1 ? "s" : ""} active. Tap to view.`}
               style={{
                 backgroundColor: c.dangerBg,
                 borderRadius: radius.md,
@@ -513,7 +517,10 @@ export default function DashboardScreen() {
               ...shMd,
             }}
           >
-            <Text style={{ ...f.h4, marginBottom: spacing.lg }}>
+            <Text
+              style={{ ...f.h4, marginBottom: spacing.lg }}
+              accessibilityRole="header"
+            >
               Today's Calories
             </Text>
             <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
@@ -569,7 +576,12 @@ export default function DashboardScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={{ ...f.h4, marginBottom: spacing.lg }}>Macros</Text>
+              <Text
+                style={{ ...f.h4, marginBottom: spacing.lg }}
+                accessibilityRole="header"
+              >
+                Macros
+              </Text>
 
               <Ionicons
                 name={macrosExpanded ? "chevron-up" : "chevron-down"}
@@ -641,8 +653,14 @@ export default function DashboardScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={f.h3}>Today's Meals</Text>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/meals")}>
+              <Text style={f.h3} accessibilityRole="header">
+                Today's Meals
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(tabs)/meals")}
+                accessibilityRole="link"
+                accessibilityLabel="See all meals"
+              >
                 <Text
                   style={{
                     fontSize: 13,
@@ -787,8 +805,14 @@ export default function DashboardScreen() {
                 marginBottom: spacing.md,
               }}
             >
-              <Text style={f.h3}>Today's Symptoms</Text>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/symptoms")}>
+              <Text style={f.h3} accessibilityRole="header">
+                Today's Symptoms
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(tabs)/symptoms")}
+                accessibilityRole="link"
+                accessibilityLabel="See all symptoms"
+              >
                 <Text
                   style={{
                     fontSize: 13,
@@ -927,7 +951,10 @@ export default function DashboardScreen() {
               ...shMd,
             }}
           >
-            <Text style={{ ...f.h4, marginBottom: spacing.md }}>
+            <Text
+              style={{ ...f.h4, marginBottom: spacing.md }}
+              accessibilityRole="header"
+            >
               ⚡ Trigger Foods
             </Text>
             {triggerFoods && triggerFoods.length > 0 ? (

@@ -63,10 +63,14 @@ function ToastItem({
   return (
     <Animated.View
       style={{ opacity, transform: [{ translateY }], marginBottom: 8 }}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="assertive"
     >
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => dismiss(id)}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss notification"
         style={{
           flexDirection: "row",
           alignItems: "center",

@@ -41,6 +41,8 @@ export function SwipeableItemRow({ children, onSwap, onDelete }: Props) {
           onSwap();
         }}
         activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Swap item"
         style={{
           backgroundColor: colors.primary,
           justifyContent: "center",
@@ -82,6 +84,8 @@ export function SwipeableItemRow({ children, onSwap, onDelete }: Props) {
           onDelete();
         }}
         activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Delete item"
         style={{
           backgroundColor: colors.danger,
           justifyContent: "center",

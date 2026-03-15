@@ -193,7 +193,12 @@ export default function InsightsScreen() {
       >
         <View style={{ padding: spacing.xl }}>
           {/* Header */}
-          <Text style={{ ...fonts.h1, marginBottom: 4 }}>Insights</Text>
+          <Text
+            style={{ ...fonts.h1, marginBottom: 4 }}
+            accessibilityRole="header"
+          >
+            Insights
+          </Text>
           <Text style={{ ...fonts.caption, marginBottom: spacing.lg }}>
             {`Food ↔ symptom patterns from the last ${period} days`}
           </Text>
@@ -208,6 +213,9 @@ export default function InsightsScreen() {
                 <TouchableOpacity
                   key={d}
                   onPress={() => setPeriod(d)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${d} day period`}
                   style={{
                     flex: 1,
                     paddingVertical: 10,
@@ -346,7 +354,9 @@ export default function InsightsScreen() {
               }}
             >
               <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🎯</Text>
-              <Text style={fonts.h3}>Top Trigger Foods</Text>
+              <Text style={fonts.h3} accessibilityRole="header">
+                Top Trigger Foods
+              </Text>
             </View>
 
             {loadingTrigger ? (
@@ -447,7 +457,9 @@ export default function InsightsScreen() {
               }}
             >
               <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🔍</Text>
-              <Text style={fonts.h3}>Correlations</Text>
+              <Text style={fonts.h3} accessibilityRole="header">
+                Correlations
+              </Text>
             </View>
 
             {loadingCorr ? (
@@ -619,7 +631,9 @@ export default function InsightsScreen() {
               }}
             >
               <Text style={{ fontSize: 20, marginRight: spacing.sm }}>📊</Text>
-              <Text style={fonts.h3}>Nutrition Trends</Text>
+              <Text style={fonts.h3} accessibilityRole="header">
+                Nutrition Trends
+              </Text>
             </View>
 
             {loadingTrends ? (
@@ -694,19 +708,49 @@ export default function InsightsScreen() {
                           marginTop: 4,
                         }}
                       >
-                        <Text style={{ fontSize: 10, color: colors.protein }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.protein,
+                            fontWeight: "600",
+                          }}
+                        >
                           P: {Math.round(day.protein)}g
                         </Text>
-                        <Text style={{ fontSize: 10, color: colors.carbs }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.carbs,
+                            fontWeight: "600",
+                          }}
+                        >
                           C: {Math.round(day.carbs)}g
                         </Text>
-                        <Text style={{ fontSize: 10, color: colors.fat }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.fat,
+                            fontWeight: "600",
+                          }}
+                        >
                           F: {Math.round(day.fat)}g
                         </Text>
-                        <Text style={{ fontSize: 10, color: colors.fiber }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.fiber,
+                            fontWeight: "600",
+                          }}
+                        >
                           Fb: {Math.round(day.fiber)}g
                         </Text>
-                        <Text style={{ fontSize: 10, color: colors.textMuted }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.textMuted,
+                            fontWeight: "600",
+                          }}
+                        >
                           {day.mealCount} meals
                         </Text>
                       </View>
@@ -774,7 +818,9 @@ export default function InsightsScreen() {
                   <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
                     🍽️
                   </Text>
-                  <Text style={fonts.h3}>Macros by Meal</Text>
+                  <Text style={fonts.h3} accessibilityRole="header">
+                    Macros by Meal
+                  </Text>
                 </View>
 
                 {mealTypeMacros.map((mt: MealTypeNutrition) => {
@@ -931,7 +977,9 @@ export default function InsightsScreen() {
                 <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
                   🧪
                 </Text>
-                <Text style={fonts.h3}>Additive Exposure</Text>
+                <Text style={fonts.h3} accessibilityRole="header">
+                  Additive Exposure
+                </Text>
               </View>
 
               {exposure && exposure.length > 0 ? (
@@ -1032,7 +1080,9 @@ export default function InsightsScreen() {
                 <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
                   💡
                 </Text>
-                <Text style={fonts.h3}>Insights & Tips</Text>
+                <Text style={fonts.h3} accessibilityRole="header">
+                  Insights & Tips
+                </Text>
               </View>
 
               {diaryAnalysis &&
@@ -1169,7 +1219,9 @@ export default function InsightsScreen() {
               }}
             >
               <Text style={{ fontSize: 20, marginRight: spacing.sm }}>🥗</Text>
-              <Text style={fonts.h3}>Elimination Diet</Text>
+              <Text style={fonts.h3} accessibilityRole="header">
+                Elimination Diet
+              </Text>
             </View>
 
             {loadingElimination ? (

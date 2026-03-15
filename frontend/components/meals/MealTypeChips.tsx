@@ -3,6 +3,7 @@ import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import { useThemeColors, useThemeShadow } from "../../src/stores/theme";
 import { MEAL_TYPES, getMealTypeForTime } from "../../src/utils/constants";
 import { useMealSheetStore, type MealType } from "../../src/stores/mealSheet";
+import * as haptics from "../../src/utils/haptics";
 
 /**
  * Merged chip row: selects the active meal type which BOTH
@@ -31,7 +32,13 @@ export function MealTypeChips() {
         return (
           <TouchableOpacity
             key={type}
-            onPress={() => setMealType(type)}
+            onPress={() => {
+              haptics.selection();
+              setMealType(type);
+            }}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={type}
             style={{
               flex: 1,
               paddingVertical: 10,

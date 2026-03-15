@@ -37,7 +37,9 @@ export function GoalField({
         value={value}
         onChangeText={handleChange}
         keyboardType="numeric"
+        autoCorrect={false}
         maxLength={maxLength}
+        accessibilityLabel={label}
         style={{
           borderWidth: 1,
           borderColor: colors.border,

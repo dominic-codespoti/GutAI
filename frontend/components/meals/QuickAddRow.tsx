@@ -180,6 +180,8 @@ export function QuickAddRow() {
             <TouchableOpacity
               onPress={() => handleQuickLog(item)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Quick add ${item.foodName}, ${item.calories} calories`}
               style={{
                 flexDirection: "row",
                 alignItems: "center",

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import EventSource from "react-native-sse";
 import { useThemeColors } from "../../src/stores/theme";
+import * as haptics from "../../src/utils/haptics";
 import { chatApi } from "../../src/api";
 import { getItem } from "../../src/utils/storage";
 import Constants from "expo-constants";
@@ -315,6 +316,8 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={styles.paywallBtn}
             onPress={() => presentPaywall()}
+            accessibilityRole="button"
+            accessibilityLabel="Subscribe to Gut Lens Pro"
           >
             <Ionicons
               name="diamond-outline"
@@ -332,7 +335,7 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={0}
     >
       {/* Header */}
@@ -349,6 +352,8 @@ export default function ChatScreen() {
         <TouchableOpacity
           onPress={() => clearChat.mutate()}
           style={styles.clearBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Clear chat"
         >
           <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
         </TouchableOpacity>
@@ -387,6 +392,8 @@ export default function ChatScreen() {
                 onPress={() => {
                   setInput(s);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={s}
               >
                 <Text style={styles.suggestionText}>{s}</Text>
               </TouchableOpacity>
@@ -400,6 +407,7 @@ export default function ChatScreen() {
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messageList}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() =>
             flatListRef.current?.scrollToEnd({ animated: false })
           }
@@ -420,18 +428,25 @@ export default function ChatScreen() {
           placeholder="Ask about your gut health..."
           placeholderTextColor={colors.textMuted}
           multiline
+          autoCapitalize="sentences"
           maxLength={2000}
           editable={!isStreaming}
           onSubmitEditing={sendMessage}
           blurOnSubmit={false}
+          accessibilityLabel="Type a message"
         />
         <TouchableOpacity
-          onPress={sendMessage}
+          onPress={() => {
+            haptics.light();
+            sendMessage();
+          }}
           disabled={!input.trim() || isStreaming}
           style={[
             styles.sendBtn,
             (!input.trim() || isStreaming) && styles.sendBtnDisabled,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Send message"
         >
           {isStreaming ? (
             <ActivityIndicator size="small" color={colors.textOnPrimary} />

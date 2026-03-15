@@ -76,8 +76,10 @@ export function SwapSearchContent({
         value={search}
         onChangeText={setSearch}
         autoFocus
-        autoCapitalize="sentences"
+        autoCapitalize="none"
+        autoCorrect={false}
         returnKeyType="search"
+        maxLength={200}
         style={{
           backgroundColor: colors.bg,
           borderRadius: radius.sm,

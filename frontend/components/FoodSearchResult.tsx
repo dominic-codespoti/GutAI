@@ -12,6 +12,7 @@ import {
 import { SourceChip } from "./SourceChip";
 import { ratingColor } from "../src/utils/colors";
 import { useFavorites } from "../src/hooks/useFavorites";
+import * as haptics from "../src/utils/haptics";
 
 interface FoodSearchResultProps {
   product: FoodProduct;
@@ -85,7 +86,7 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
           marginTop: 1,
         },
         infoButton: {
-          padding: 4,
+          padding: 8,
           marginLeft: spacing.xs,
         },
         footer: {
@@ -126,6 +127,8 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
       onPress={() => onPress(product)}
       style={[styles.container, shadow, style]}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={product.name}
     >
       <View style={styles.imageContainer}>
         {product.imageUrl ? (
@@ -137,9 +140,13 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
             placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
             cachePolicy="memory-disk"
             recyclingKey={product.imageUrl}
+            accessibilityLabel={product.name}
           />
         ) : (
-          <View style={styles.fallbackImage}>
+          <View
+            style={styles.fallbackImage}
+            accessibilityLabel="No image available"
+          >
             <Ionicons
               name="fast-food-outline"
               size={24}
@@ -164,10 +171,16 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
           <TouchableOpacity
             onPress={(e) => {
               e.stopPropagation();
+              haptics.selection();
               toggleFavorite(product.id);
             }}
             style={styles.infoButton}
-            hitSlop={8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              favorited ? "Remove from favorites" : "Add to favorites"
+            }
+            accessibilityState={{ selected: favorited }}
           >
             <Ionicons
               name={favorited ? "heart" : "heart-outline"}
@@ -182,6 +195,9 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
                 onDetailPress(product);
               }}
               style={styles.infoButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="View food details"
             >
               <Ionicons
                 name="information-circle-outline"

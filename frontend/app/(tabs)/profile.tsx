@@ -23,6 +23,7 @@ import { BottomSheet } from "../../components/BottomSheet";
 import { AllergyChips } from "../../components/AllergyChips";
 import { GoalField } from "../../components/GoalField";
 import { ProfileSkeleton } from "../../components/SkeletonLoader";
+import * as haptics from "../../src/utils/haptics";
 import type { UserFoodAlert, FoodAdditive } from "../../src/types";
 import { ratingColor } from "../../src/utils/colors";
 import { GUT_CONDITION_OPTIONS } from "../../src/utils/options";
@@ -261,6 +262,7 @@ export default function ProfileScreen() {
           <ScrollView
             style={{ flex: 1, backgroundColor: colors.bg }}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -356,6 +358,8 @@ export default function ProfileScreen() {
                 )}
                 <TouchableOpacity
                   onPress={openProfileEdit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit Profile"
                   style={{
                     marginTop: spacing.md,
                     flexDirection: "row",
@@ -398,9 +402,13 @@ export default function ProfileScreen() {
                     marginBottom: spacing.md,
                   }}
                 >
-                  <Text style={fonts.h4}>Daily Goals</Text>
+                  <Text style={fonts.h4} accessibilityRole="header">
+                    Daily Goals
+                  </Text>
                   <TouchableOpacity
                     onPress={openGoalsEdit}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit Daily Goals"
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
@@ -503,7 +511,9 @@ export default function ProfileScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 16, marginRight: 6 }}>⚠️</Text>
-                  <Text style={fonts.h4}>Food Additive Alerts</Text>
+                  <Text style={fonts.h4} accessibilityRole="header">
+                    Food Additive Alerts
+                  </Text>
                 </View>
                 {alerts && alerts.length > 0 ? (
                   alerts.map((a: UserFoodAlert) => (
@@ -546,6 +556,8 @@ export default function ProfileScreen() {
                             () => removeAlertMutation.mutate(a.additiveId),
                           )
                         }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove alert for ${a.name}`}
                       >
                         <Ionicons
                           name="close-circle"
@@ -596,6 +608,8 @@ export default function ProfileScreen() {
               {/* Browse Additives */}
               <TouchableOpacity
                 onPress={() => setShowAdditiveBrowser(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Browse and add additive alerts"
                 style={{
                   backgroundColor: colors.card,
                   borderRadius: radius.md,
@@ -651,7 +665,10 @@ export default function ProfileScreen() {
                     ...shadow,
                   }}
                 >
-                  <Text style={{ ...fonts.h4, marginBottom: spacing.md }}>
+                  <Text
+                    style={{ ...fonts.h4, marginBottom: spacing.md }}
+                    accessibilityRole="header"
+                  >
                     Food-Symptom Correlations
                   </Text>
                   {correlations.slice(0, 5).map((c, i) => (
@@ -711,6 +728,8 @@ export default function ProfileScreen() {
               {/* Settings */}
               <TouchableOpacity
                 onPress={() => router.push("/settings")}
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
                 style={{
                   backgroundColor: colors.card,
                   borderRadius: radius.md,
@@ -758,6 +777,8 @@ export default function ProfileScreen() {
               {/* Logout */}
               <TouchableOpacity
                 onPress={handleLogout}
+                accessibilityRole="button"
+                accessibilityLabel="Log Out"
                 style={{
                   backgroundColor: colors.dangerBg,
                   borderRadius: radius.md,
@@ -793,7 +814,10 @@ export default function ProfileScreen() {
               visible={editingProfile}
               onClose={() => setEditingProfile(false)}
             >
-              <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
+              <Text
+                style={{ ...fonts.h3, marginBottom: spacing.lg }}
+                accessibilityRole="header"
+              >
                 Edit Profile
               </Text>
               <Text style={{ ...fonts.caption, marginBottom: 4 }}>
@@ -805,6 +829,10 @@ export default function ProfileScreen() {
                 style={inputStyle}
                 placeholder="Your name"
                 placeholderTextColor={colors.textLight}
+                autoCapitalize="words"
+                autoCorrect={false}
+                autoComplete="name"
+                textContentType="name"
                 maxLength={100}
               />
               <Text
@@ -838,6 +866,8 @@ export default function ProfileScreen() {
                 style={inputStyle}
                 placeholder="e.g. vegetarian, keto"
                 placeholderTextColor={colors.textLight}
+                autoCapitalize="none"
+                autoCorrect={false}
                 maxLength={200}
               />
 
@@ -864,6 +894,9 @@ export default function ProfileScreen() {
                     <TouchableOpacity
                       key={c.id}
                       onPress={() => toggleCondition(c.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${c.label} condition`}
+                      accessibilityState={{ selected: active }}
                       style={{
                         backgroundColor: active
                           ? colors.primaryBg
@@ -905,6 +938,8 @@ export default function ProfileScreen() {
               >
                 <TouchableOpacity
                   onPress={() => setEditingProfile(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel editing profile"
                   style={{ paddingHorizontal: 20, paddingVertical: 10 }}
                 >
                   <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
@@ -914,6 +949,8 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   onPress={saveProfile}
                   disabled={profileMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save profile"
                   style={{
                     backgroundColor: colors.primary,
                     paddingHorizontal: 20,
@@ -942,7 +979,10 @@ export default function ProfileScreen() {
               visible={editingGoals}
               onClose={() => setEditingGoals(false)}
             >
-              <Text style={{ ...fonts.h3, marginBottom: spacing.lg }}>
+              <Text
+                style={{ ...fonts.h3, marginBottom: spacing.lg }}
+                accessibilityRole="header"
+              >
                 Edit Daily Goals
               </Text>
               {[
@@ -974,6 +1014,8 @@ export default function ProfileScreen() {
               >
                 <TouchableOpacity
                   onPress={() => setEditingGoals(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel editing goals"
                   style={{ paddingHorizontal: 20, paddingVertical: 10 }}
                 >
                   <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
@@ -983,6 +1025,8 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   onPress={saveGoals}
                   disabled={goalsMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save goals"
                   style={{
                     backgroundColor: colors.primary,
                     paddingHorizontal: 20,
@@ -1020,9 +1064,13 @@ export default function ProfileScreen() {
                   marginBottom: spacing.lg,
                 }}
               >
-                <Text style={fonts.h3}>Browse Additives</Text>
+                <Text style={fonts.h3} accessibilityRole="header">
+                  Browse Additives
+                </Text>
                 <TouchableOpacity
                   onPress={() => setShowAdditiveBrowser(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close additive browser"
                   style={{ padding: 4 }}
                 >
                   <Ionicons
@@ -1037,6 +1085,9 @@ export default function ProfileScreen() {
                 placeholderTextColor={colors.textLight}
                 value={additiveSearch}
                 onChangeText={setAdditiveSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
                 style={{ ...inputStyle, marginBottom: spacing.md }}
                 maxLength={200}
               />
@@ -1110,6 +1161,8 @@ export default function ProfileScreen() {
                         ) : (
                           <TouchableOpacity
                             onPress={() => addAlertMutation.mutate(add.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Watch ${add.name}`}
                             style={{
                               backgroundColor: colors.dangerBg,
                               borderRadius: 6,

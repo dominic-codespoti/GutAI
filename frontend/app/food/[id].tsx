@@ -40,6 +40,7 @@ import {
   SearchResultSkeleton,
 } from "../../components/SkeletonLoader";
 import { useFavorites } from "../../src/hooks/useFavorites";
+import * as haptics from "../../src/utils/haptics";
 
 const gutScoreColor = (score: number, c: ThemeColors) => {
   if (score >= 80) return c.primaryLight;
@@ -322,6 +323,7 @@ export default function FoodDetailScreen() {
       >
         <ScrollView
           style={{ flex: 1, backgroundColor: colors.bg }}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -373,9 +375,19 @@ export default function FoodDetailScreen() {
                   {product.name}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => toggleFavorite(product.id)}
+                  onPress={() => {
+                    haptics.selection();
+                    toggleFavorite(product.id);
+                  }}
                   style={{ padding: 6, marginLeft: 8 }}
-                  hitSlop={8}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isFavorite(product.id)
+                      ? "Remove from favorites"
+                      : "Add to favorites"
+                  }
+                  accessibilityState={{ selected: isFavorite(product.id) }}
                 >
                   <Ionicons
                     name={isFavorite(product.id) ? "heart" : "heart-outline"}
@@ -448,6 +460,8 @@ export default function FoodDetailScreen() {
                   />
                 </View>
                 <Text
+                  accessibilityRole="header"
+                  accessibilityLabel={`Your Gut Health Score: ${personalScore.compositeScore} out of 100, rated ${personalScore.rating}`}
                   style={{
                     fontSize: 56,
                     fontWeight: "800",
@@ -1379,6 +1393,7 @@ export default function FoodDetailScreen() {
                         color: colors.text,
                         flex: 1,
                       }}
+                      accessibilityRole="header"
                     >
                       🔄 Gut-Friendly Substitutions
                     </Text>
@@ -1545,6 +1560,7 @@ export default function FoodDetailScreen() {
                   color: colors.text,
                   marginBottom: 8,
                 }}
+                accessibilityRole="header"
               >
                 Serving Size
               </Text>
@@ -1560,13 +1576,16 @@ export default function FoodDetailScreen() {
                   <TouchableOpacity
                     key={p.label}
                     onPress={() => {
+                      haptics.selection();
                       setServingSize(p.grams);
                       setCustomServing("");
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${p.label} serving`}
+                    accessibilityState={{
+                      selected: servingSize === p.grams && !customServing,
+                    }}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 8,
                       backgroundColor:
                         servingSize === p.grams && !customServing
                           ? colors.primaryLight
@@ -1607,6 +1626,7 @@ export default function FoodDetailScreen() {
                     if (n > 0 && n <= 5000) setServingSize(n);
                   }}
                   keyboardType="numeric"
+                  autoCorrect={false}
                   maxLength={4}
                   style={{
                     borderWidth: 1,
@@ -1640,6 +1660,7 @@ export default function FoodDetailScreen() {
                   color: colors.text,
                   marginBottom: 12,
                 }}
+                accessibilityRole="header"
               >
                 Nutrition per {servingSize}g
               </Text>
@@ -1743,6 +1764,7 @@ export default function FoodDetailScreen() {
                     color: colors.text,
                     marginBottom: 8,
                   }}
+                  accessibilityRole="header"
                 >
                   Ingredients
                 </Text>
@@ -1809,6 +1831,7 @@ export default function FoodDetailScreen() {
                     color: colors.danger,
                     marginBottom: 8,
                   }}
+                  accessibilityRole="header"
                 >
                   ⚠️ Allergens
                 </Text>
@@ -1911,6 +1934,7 @@ export default function FoodDetailScreen() {
                     color: colors.text,
                     marginBottom: 12,
                   }}
+                  accessibilityRole="header"
                 >
                   Additives ({report.additives.length})
                 </Text>
@@ -2058,6 +2082,8 @@ export default function FoodDetailScreen() {
                   <TouchableOpacity
                     onPress={() => setShowAddToMeal(false)}
                     style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel"
                   >
                     <Text
                       style={{ color: colors.textSecondary, fontWeight: "600" }}
@@ -2073,6 +2099,11 @@ export default function FoodDetailScreen() {
                       paddingHorizontal: 16,
                       paddingVertical: 8,
                       borderRadius: 8,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Log meal"
+                    accessibilityState={{
+                      disabled: addToMealMutation.isPending,
                     }}
                   >
                     {addToMealMutation.isPending ? (
@@ -2095,7 +2126,10 @@ export default function FoodDetailScreen() {
               </View>
             ) : (
               <TouchableOpacity
-                onPress={() => setShowAddToMeal(true)}
+                onPress={() => {
+                  haptics.light();
+                  setShowAddToMeal(true);
+                }}
                 style={{
                   backgroundColor: colors.primaryLight,
                   borderRadius: 12,
@@ -2105,6 +2139,8 @@ export default function FoodDetailScreen() {
                   justifyContent: "center",
                   marginBottom: 12,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Add to meal"
               >
                 <Ionicons
                   name="add-circle-outline"
@@ -2136,6 +2172,8 @@ export default function FoodDetailScreen() {
                 paddingVertical: 16,
                 marginTop: 8,
               }}
+              accessibilityRole="link"
+              accessibilityLabel="Sources and medical disclaimer"
             >
               <Ionicons
                 name="information-circle-outline"

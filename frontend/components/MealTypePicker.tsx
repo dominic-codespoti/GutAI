@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { MEAL_TYPES } from "../src/utils/constants";
 import { useThemeColors } from "../src/stores/theme";
+import * as haptics from "../src/utils/haptics";
 
 interface MealTypePickerProps {
   selected: string;
@@ -14,7 +15,13 @@ export function MealTypePicker({ selected, onSelect }: MealTypePickerProps) {
       {MEAL_TYPES.map((type) => (
         <TouchableOpacity
           key={type}
-          onPress={() => onSelect(type)}
+          onPress={() => {
+            haptics.selection();
+            onSelect(type);
+          }}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: selected === type }}
+          accessibilityLabel={type}
           style={{
             flex: 1,
             paddingVertical: 6,

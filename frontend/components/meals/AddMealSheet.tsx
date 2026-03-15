@@ -318,6 +318,9 @@ export function AddMealSheet() {
                   setActiveTab(key);
                   setShowReview(false);
                 }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: activeTab === key }}
+                accessibilityLabel={label}
                 style={{
                   flex: 1,
                   flexDirection: "row",
@@ -357,7 +360,9 @@ export function AddMealSheet() {
                 value={naturalText}
                 onChangeText={setNaturalText}
                 multiline
+                autoCapitalize="sentences"
                 maxLength={500}
+                accessibilityLabel="Describe your meal"
                 style={{
                   fontSize: 15,
                   minHeight: 80,
@@ -380,6 +385,8 @@ export function AddMealSheet() {
                 <TouchableOpacity
                   onPress={handleClose}
                   style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
                 >
                   <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
                     Cancel
@@ -390,6 +397,8 @@ export function AddMealSheet() {
                     naturalText && parseMutation.mutate(naturalText)
                   }
                   disabled={parseMutation.isPending || !naturalText.trim()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Parse and log meal"
                   style={{
                     backgroundColor: colors.primary,
                     paddingHorizontal: 16,
@@ -482,6 +491,8 @@ export function AddMealSheet() {
                           setSubView("swap");
                         }}
                         style={{ marginLeft: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Swap ${item.name}`}
                       >
                         <Ionicons
                           name="swap-horizontal"
@@ -492,6 +503,8 @@ export function AddMealSheet() {
                       <TouchableOpacity
                         onPress={() => removeParsedItem(idx)}
                         style={{ marginLeft: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${item.name}`}
                       >
                         <Ionicons
                           name="close-circle"
@@ -571,6 +584,8 @@ export function AddMealSheet() {
                       setShowReview(false);
                     }}
                     style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel"
                   >
                     <Text
                       style={{ color: colors.textMuted, fontWeight: "600" }}
@@ -622,7 +637,9 @@ export function AddMealSheet() {
                 placeholderTextColor={colors.textLight}
                 value={manualName}
                 onChangeText={setManualName}
+                autoCapitalize="words"
                 maxLength={200}
+                accessibilityLabel="Food name"
                 style={{
                   fontWeight: "600",
                   fontSize: 15,
@@ -640,26 +657,30 @@ export function AddMealSheet() {
                     value: manualCalories,
                     set: (t: string) => setManualCalories(sanitizeInt(t)),
                     ml: 5,
+                    kb: "numeric" as const,
                   },
                   {
                     label: "Protein",
                     value: manualProtein,
                     set: (t: string) => setManualProtein(sanitizeInt(t)),
                     ml: 4,
+                    kb: "numeric" as const,
                   },
                   {
                     label: "Carbs",
                     value: manualCarbs,
                     set: (t: string) => setManualCarbs(sanitizeInt(t)),
                     ml: 4,
+                    kb: "numeric" as const,
                   },
                   {
                     label: "Fat",
                     value: manualFat,
                     set: (t: string) => setManualFat(sanitizeInt(t)),
                     ml: 4,
+                    kb: "numeric" as const,
                   },
-                ].map(({ label, value, set, ml }) => (
+                ].map(({ label, value, set, ml, kb }) => (
                   <View key={label} style={{ flex: 1 }}>
                     <Text
                       style={{
@@ -674,56 +695,10 @@ export function AddMealSheet() {
                       placeholder="0"
                       value={value}
                       onChangeText={set}
-                      keyboardType="numeric"
+                      keyboardType={kb}
+                      autoCorrect={false}
                       maxLength={ml}
-                      style={editFieldStyle}
-                    />
-                  </View>
-                ))}
-              </View>
-              <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
-                {[
-                  {
-                    label: "Fiber",
-                    value: manualFiber,
-                    set: (t: string) => setManualFiber(sanitizeInt(t)),
-                    ml: 4,
-                  },
-                  {
-                    label: "Sugar",
-                    value: manualSugar,
-                    set: (t: string) => setManualSugar(sanitizeInt(t)),
-                    ml: 4,
-                  },
-                  {
-                    label: "Na (mg)",
-                    value: manualSodium,
-                    set: (t: string) => setManualSodium(sanitizeInt(t)),
-                    ml: 5,
-                  },
-                  {
-                    label: "Servings",
-                    value: manualServings,
-                    set: (t: string) => setManualServings(sanitizeDecimal(t)),
-                    ml: 5,
-                  },
-                ].map(({ label, value, set, ml }) => (
-                  <View key={label} style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: colors.textMuted,
-                        marginBottom: 2,
-                      }}
-                    >
-                      {label}
-                    </Text>
-                    <TextInput
-                      placeholder="0"
-                      value={value}
-                      onChangeText={set}
-                      keyboardType="numeric"
-                      maxLength={ml}
+                      accessibilityLabel={label}
                       style={editFieldStyle}
                     />
                   </View>
@@ -740,6 +715,8 @@ export function AddMealSheet() {
                 <TouchableOpacity
                   onPress={handleClose}
                   style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
                 >
                   <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
                     Cancel
@@ -748,6 +725,8 @@ export function AddMealSheet() {
                 <TouchableOpacity
                   onPress={handleLogManual}
                   disabled={createMeal.isPending || !manualName.trim()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Log meal"
                   style={{
                     backgroundColor: colors.primary,
                     paddingHorizontal: 16,

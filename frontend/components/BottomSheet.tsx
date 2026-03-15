@@ -87,6 +87,7 @@ export function BottomSheet({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
         pointerEvents="box-none"
+        accessibilityViewIsModal={true}
       >
         {/* Backdrop */}
         <Animated.View
@@ -98,6 +99,8 @@ export function BottomSheet({
               Keyboard.dismiss();
               onClose();
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Close sheet"
           />
         </Animated.View>
 
@@ -125,6 +128,8 @@ export function BottomSheet({
               alignSelf: "center",
               marginBottom: spacing.lg,
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           />
           {children}
         </Animated.View>

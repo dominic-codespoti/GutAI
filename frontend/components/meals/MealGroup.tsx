@@ -72,6 +72,7 @@ export function MealGroup({
           alignItems: "center",
           marginBottom: 8,
         }}
+        accessibilityRole="header"
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View
@@ -114,6 +115,8 @@ export function MealGroup({
             onLongPress={() => handleLongPressMeal(meal)}
             delayLongPress={400}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${type} meal, ${meal.totalCalories} calories`}
             style={{
               flexDirection: "row",
               alignItems: "center",

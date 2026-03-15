@@ -148,6 +148,9 @@ export function EditMealSheet() {
                 <TouchableOpacity
                   key={t}
                   onPress={() => setEditMealType(t)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={t}
                   style={{
                     flex: 1,
                     paddingVertical: 8,
@@ -191,6 +194,8 @@ export function EditMealSheet() {
             <TouchableOpacity
               onPress={() => setEditMealDate((d) => shiftDate(d, -1))}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Previous day"
             >
               <Ionicons
                 name="chevron-back"
@@ -223,6 +228,8 @@ export function EditMealSheet() {
             <TouchableOpacity
               onPress={() => setEditMealDate((d) => shiftDate(d, 1))}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Next day"
             >
               <Ionicons
                 name="chevron-forward"
@@ -233,7 +240,10 @@ export function EditMealSheet() {
           </View>
 
           {/* Item list */}
-          <ScrollView style={{ maxHeight: 320 }}>
+          <ScrollView
+            style={{ maxHeight: 320 }}
+            keyboardShouldPersistTaps="handled"
+          >
             {editItems.map((item, idx) => {
               const cfg = editConfigs[idx] ?? {
                 servingG: item.servingWeightG ?? 100,
@@ -278,6 +288,8 @@ export function EditMealSheet() {
                         setSubView("swap");
                       }}
                       style={{ marginLeft: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Swap ${item.foodName}`}
                     >
                       <Ionicons
                         name="swap-horizontal"
@@ -288,6 +300,8 @@ export function EditMealSheet() {
                     <TouchableOpacity
                       onPress={() => removeItem(idx)}
                       style={{ marginLeft: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${item.foodName}`}
                     >
                       <Ionicons
                         name="close-circle"
@@ -346,6 +360,8 @@ export function EditMealSheet() {
             <TouchableOpacity
               onPress={close}
               style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
             >
               <Text style={{ color: colors.textMuted, fontWeight: "600" }}>
                 Cancel
@@ -354,6 +370,8 @@ export function EditMealSheet() {
             <TouchableOpacity
               onPress={handleSave}
               disabled={updateMeal.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Save meal"
               style={{
                 backgroundColor: colors.primary,
                 paddingHorizontal: 20,

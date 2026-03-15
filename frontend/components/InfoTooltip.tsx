@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TouchableOpacity, Modal, View, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useThemeColors } from "../src/stores/theme";
+import * as haptics from "../src/utils/haptics";
 
 export function InfoTooltip({ title, body }: { title: string; body: string }) {
   const [visible, setVisible] = useState(false);
@@ -9,9 +10,14 @@ export function InfoTooltip({ title, body }: { title: string; body: string }) {
   return (
     <>
       <TouchableOpacity
-        onPress={() => setVisible(true)}
-        hitSlop={8}
-        style={{ marginLeft: 4 }}
+        onPress={() => {
+          haptics.light();
+          setVisible(true);
+        }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={{ marginLeft: 4, padding: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="More information"
       >
         <Ionicons
           name="information-circle-outline"

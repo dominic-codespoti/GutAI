@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { ALLERGY_OPTIONS } from "../src/utils/options";
 import { radius, spacing } from "../src/utils/theme";
 import { useThemeColors } from "../src/stores/theme";
+import * as haptics from "../src/utils/haptics";
 
 interface AllergyChipsProps {
   selected: string[];
@@ -17,7 +18,13 @@ export function AllergyChips({ selected, onToggle }: AllergyChipsProps) {
         return (
           <TouchableOpacity
             key={a}
-            onPress={() => onToggle(a)}
+            onPress={() => {
+              haptics.selection();
+              onToggle(a);
+            }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: active }}
+            accessibilityLabel={a}
             style={{
               backgroundColor: active ? colors.primaryBg : colors.borderLight,
               borderWidth: 1,

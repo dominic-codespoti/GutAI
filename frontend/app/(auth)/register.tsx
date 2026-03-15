@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,7 @@ import {
   useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
+import * as haptics from "../../src/utils/haptics";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -34,8 +36,12 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const register = useAuthStore((s) => s.register);
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const handleRegister = async () => {
+    haptics.medium();
     if (!displayName || !email || !password) {
       toast.error("Please fill in all fields");
       return;
@@ -87,12 +93,14 @@ export default function RegisterScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <View
-          style={{
-            flex: 1,
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
             justifyContent: "center",
             paddingHorizontal: spacing.xxl,
           }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           {/* Header */}
           <View style={{ alignItems: "center", marginBottom: spacing.xxxl }}>
@@ -158,7 +166,15 @@ export default function RegisterScreen() {
                 placeholderTextColor={colors.textLight}
                 value={displayName}
                 onChangeText={setDisplayName}
+                autoCapitalize="words"
+                autoCorrect={false}
+                autoComplete="name"
+                textContentType="name"
                 maxLength={100}
+                accessibilityLabel="Display name"
+                returnKeyType="next"
+                onSubmitEditing={() => emailRef.current?.focus()}
+                blurOnSubmit={false}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -191,8 +207,16 @@ export default function RegisterScreen() {
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
                 keyboardType="email-address"
                 maxLength={254}
+                ref={emailRef}
+                accessibilityLabel="Email address"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -228,7 +252,16 @@ export default function RegisterScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                textContentType="newPassword"
                 maxLength={128}
+                ref={passwordRef}
+                accessibilityLabel="Password"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+                blurOnSubmit={false}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -236,7 +269,13 @@ export default function RegisterScreen() {
                   color: colors.text,
                 }}
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showPassword ? "Hide password" : "Show password"
+                }
+              >
                 <Ionicons
                   name={showPassword ? "eye-off" : "eye"}
                   size={20}
@@ -268,7 +307,15 @@ export default function RegisterScreen() {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                textContentType="newPassword"
                 maxLength={128}
+                ref={confirmPasswordRef}
+                accessibilityLabel="Confirm password"
+                returnKeyType="done"
+                onSubmitEditing={handleRegister}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -296,6 +343,8 @@ export default function RegisterScreen() {
             <TouchableOpacity
               onPress={handleRegister}
               disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Create account"
               style={{
                 backgroundColor: colors.primary,
                 borderRadius: radius.md,
@@ -330,13 +379,17 @@ export default function RegisterScreen() {
             <Text style={{ color: colors.textSecondary }}>
               Already have an account?{" "}
             </Text>
-            <Link href="/(auth)/login">
+            <Link
+              href="/(auth)/login"
+              accessibilityRole="link"
+              accessibilityLabel="Go to login"
+            >
               <Text style={{ color: colors.primary, fontWeight: "700" }}>
                 Log In
               </Text>
             </Link>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeScreen>
   );

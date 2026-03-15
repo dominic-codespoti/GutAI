@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
+import * as haptics from "../../src/utils/haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { foodApi, userApi, mealApi } from "../../src/api";
@@ -270,6 +271,7 @@ export default function ScanScreen() {
               marginBottom: 12,
             }}
           >
+            {/* 9. Section heading: Barcode Lookup */}
             <Text
               style={{
                 fontSize: 14,
@@ -277,6 +279,7 @@ export default function ScanScreen() {
                 color: colors.textSecondary,
                 marginBottom: 8,
               }}
+              accessibilityRole="header"
             >
               Barcode Lookup
             </Text>
@@ -287,7 +290,8 @@ export default function ScanScreen() {
                 onChangeText={setBarcode}
                 keyboardType="number-pad"
                 returnKeyType="search"
-                maxLength={200}
+                autoCorrect={false}
+                maxLength={20}
                 style={{
                   flex: 1,
                   borderWidth: 1,
@@ -297,8 +301,11 @@ export default function ScanScreen() {
                   fontSize: 16,
                 }}
               />
+              {/* 2. Camera button */}
               <TouchableOpacity
                 onPress={openCamera}
+                accessibilityRole="button"
+                accessibilityLabel="Scan barcode with camera"
                 style={{
                   backgroundColor: colors.primaryLight,
                   borderRadius: 8,
@@ -325,8 +332,11 @@ export default function ScanScreen() {
             {barcodeQuery.data && (
               <TouchableOpacity
                 onPress={() => handleSelectProduct(barcodeQuery.data!)}
+                accessibilityRole="button"
+                accessibilityLabel="Select barcode result"
                 style={{ marginTop: 12 }}
               >
+                {/* 3. Barcode result */}
                 <FoodSearchResult
                   product={barcodeQuery.data}
                   onPress={handleProductPress}
@@ -344,6 +354,7 @@ export default function ScanScreen() {
               marginBottom: 12,
             }}
           >
+            {/* 9. Section heading: Search Foods */}
             <Text
               style={{
                 fontSize: 14,
@@ -351,6 +362,7 @@ export default function ScanScreen() {
                 color: colors.textSecondary,
                 marginBottom: 8,
               }}
+              accessibilityRole="header"
             >
               Search Foods
             </Text>
@@ -358,7 +370,8 @@ export default function ScanScreen() {
               placeholder="Search by name..."
               value={searchText}
               onChangeText={setSearchText}
-              autoCapitalize="sentences"
+              autoCapitalize="none"
+              autoCorrect={false}
               returnKeyType="search"
               maxLength={200}
               style={{
@@ -424,6 +437,8 @@ export default function ScanScreen() {
                 {selectedProductId && (
                   <TouchableOpacity
                     onPress={() => router.push(`/food/${selectedProductId}`)}
+                    accessibilityRole="link"
+                    accessibilityLabel="View full food details"
                   >
                     <Text
                       style={{
@@ -500,6 +515,8 @@ export default function ScanScreen() {
                         {!alertIds.has(add.id) ? (
                           <TouchableOpacity
                             onPress={() => addAlertMutation.mutate(add.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Add alert for ${add.name}`}
                             style={{
                               backgroundColor: colors.dangerBg,
                               borderRadius: 6,
@@ -611,6 +628,8 @@ export default function ScanScreen() {
                         setShowAddToMeal(false);
                         setAddToMealProduct(null);
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel"
                       style={{ paddingHorizontal: 12, paddingVertical: 8 }}
                     >
                       <Text
@@ -627,6 +646,8 @@ export default function ScanScreen() {
                         addToMealMutation.mutate(safetyReport.data!.product)
                       }
                       disabled={addToMealMutation.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel="Log meal"
                       style={{
                         backgroundColor: colors.primaryLight,
                         paddingHorizontal: 16,
@@ -664,6 +685,8 @@ export default function ScanScreen() {
                         : 100,
                     );
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add to meal"
                   style={{
                     marginTop: 12,
                     backgroundColor: colors.primaryLight,
@@ -771,6 +794,8 @@ export default function ScanScreen() {
               setShowAddToMeal(false);
               setAddToMealProduct(null);
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
             style={{
               flex: 1,
               paddingVertical: 14,
@@ -792,6 +817,8 @@ export default function ScanScreen() {
           <TouchableOpacity
             onPress={() => addToMealMutation.mutate(addToMealProduct!)}
             disabled={addToMealMutation.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Log meal"
             style={{
               flex: 1,
               backgroundColor: colors.primaryLight,

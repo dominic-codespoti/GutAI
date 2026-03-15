@@ -23,6 +23,7 @@ import {
 } from "../src/utils/options";
 import { radius, spacing } from "../src/utils/theme";
 import { useThemeColors, useThemeFonts } from "../src/stores/theme";
+import * as haptics from "../src/utils/haptics";
 import { SafeScreen } from "../components/SafeScreen";
 
 export default function OnboardingScreen() {
@@ -55,12 +56,14 @@ export default function OnboardingScreen() {
   }, [step]);
 
   const toggleAllergy = (a: string) => {
+    haptics.selection();
     setSelectedAllergies((prev) =>
       prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
     );
   };
 
   const toggleCondition = (c: string) => {
+    haptics.selection();
     setSelectedConditions((prev) =>
       prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
     );
@@ -148,6 +151,7 @@ export default function OnboardingScreen() {
           ...fonts.h1,
           marginBottom: spacing.sm,
         }}
+        accessibilityRole="header"
       >
         Welcome to GutLens
       </Text>
@@ -170,6 +174,7 @@ export default function OnboardingScreen() {
           ...fonts.h2,
           marginBottom: spacing.xs,
         }}
+        accessibilityRole="header"
       >
         Any allergies?
       </Text>
@@ -186,6 +191,7 @@ export default function OnboardingScreen() {
           ...fonts.h2,
           marginBottom: spacing.xs,
         }}
+        accessibilityRole="header"
       >
         Dietary preference?
       </Text>
@@ -195,7 +201,13 @@ export default function OnboardingScreen() {
       {DIET_OPTIONS.map((d) => (
         <TouchableOpacity
           key={d}
-          onPress={() => setSelectedDiet(d)}
+          onPress={() => {
+            haptics.selection();
+            setSelectedDiet(d);
+          }}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: selectedDiet === d }}
+          accessibilityLabel={d}
           style={{
             backgroundColor:
               selectedDiet === d ? colors.primaryBg : colors.card,
@@ -251,6 +263,7 @@ export default function OnboardingScreen() {
           ...fonts.h2,
           marginBottom: spacing.xs,
         }}
+        accessibilityRole="header"
       >
         Any gut conditions?
       </Text>
@@ -263,6 +276,9 @@ export default function OnboardingScreen() {
           <TouchableOpacity
             key={c.id}
             onPress={() => toggleCondition(c.id)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: active }}
+            accessibilityLabel={c.label}
             style={{
               backgroundColor: active ? colors.primaryBg : colors.card,
               borderWidth: 1,
@@ -325,6 +341,7 @@ export default function OnboardingScreen() {
           ...fonts.h2,
           marginBottom: spacing.xs,
         }}
+        accessibilityRole="header"
       >
         Set your daily goals
       </Text>
@@ -374,6 +391,7 @@ export default function OnboardingScreen() {
         <ScrollView
           style={{ flex: 1, backgroundColor: colors.bg }}
           contentContainerStyle={{ padding: spacing.xxl, paddingBottom: 100 }}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Progress dots */}
           <View
@@ -383,6 +401,8 @@ export default function OnboardingScreen() {
               marginBottom: spacing.xxxl,
               gap: spacing.sm,
             }}
+            accessibilityLabel={`Step ${step + 1} of ${steps.length}`}
+            accessibilityRole="adjustable"
           >
             {steps.map((_, i) => (
               <View
@@ -414,11 +434,16 @@ export default function OnboardingScreen() {
           >
             {step > 0 ? (
               <TouchableOpacity
-                onPress={() => setStep(step - 1)}
+                onPress={() => {
+                  haptics.medium();
+                  setStep(step - 1);
+                }}
                 style={{
                   paddingHorizontal: spacing.xxl,
                   paddingVertical: spacing.md,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Back"
               >
                 <Text
                   style={{
@@ -436,13 +461,18 @@ export default function OnboardingScreen() {
 
             {step < steps.length - 1 ? (
               <TouchableOpacity
-                onPress={() => setStep(step + 1)}
+                onPress={() => {
+                  haptics.medium();
+                  setStep(step + 1);
+                }}
                 style={{
                   backgroundColor: colors.primaryLight,
                   paddingHorizontal: 28,
                   paddingVertical: spacing.md,
                   borderRadius: radius.md,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Next"
               >
                 <Text
                   style={{
@@ -456,7 +486,10 @@ export default function OnboardingScreen() {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                onPress={finish}
+                onPress={() => {
+                  haptics.medium();
+                  finish();
+                }}
                 disabled={saving}
                 style={{
                   backgroundColor: colors.primaryLight,
@@ -464,6 +497,8 @@ export default function OnboardingScreen() {
                   paddingVertical: spacing.md,
                   borderRadius: radius.md,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Get Started"
               >
                 {saving ? (
                   <ActivityIndicator color={colors.textOnPrimary} />
@@ -486,6 +521,8 @@ export default function OnboardingScreen() {
             <TouchableOpacity
               onPress={finish}
               style={{ alignItems: "center", marginTop: spacing.lg }}
+              accessibilityRole="button"
+              accessibilityLabel="Skip onboarding"
             >
               <Text style={{ color: colors.textMuted, fontSize: 14 }}>
                 Skip setup →

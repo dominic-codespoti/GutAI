@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,7 @@ import {
   useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
+import * as haptics from "../../src/utils/haptics";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -32,8 +34,10 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const login = useAuthStore((s) => s.login);
+  const passwordRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
+    haptics.medium();
     if (!email || !password) {
       toast.error("Please fill in all fields");
       return;
@@ -68,12 +72,14 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <View
-          style={{
-            flex: 1,
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
             justifyContent: "center",
             paddingHorizontal: spacing.xxl,
           }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           {/* Logo Area */}
           <View style={{ alignItems: "center", marginBottom: spacing.xxxl }}>
@@ -140,8 +146,15 @@ export default function LoginScreen() {
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
                 keyboardType="email-address"
                 maxLength={254}
+                accessibilityLabel="Email address"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -174,7 +187,15 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="password"
+                textContentType="password"
                 maxLength={128}
+                ref={passwordRef}
+                accessibilityLabel="Password"
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
                 style={{
                   flex: 1,
                   padding: 14,
@@ -182,7 +203,13 @@ export default function LoginScreen() {
                   color: colors.text,
                 }}
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showPassword ? "Hide password" : "Show password"
+                }
+              >
                 <Ionicons
                   name={showPassword ? "eye-off" : "eye"}
                   size={20}
@@ -194,6 +221,8 @@ export default function LoginScreen() {
             <TouchableOpacity
               onPress={handleLogin}
               disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Log in"
               style={{
                 backgroundColor: colors.primary,
                 borderRadius: radius.md,
@@ -228,7 +257,11 @@ export default function LoginScreen() {
             <Text style={{ color: colors.textSecondary }}>
               Don't have an account?{" "}
             </Text>
-            <Link href="/(auth)/register">
+            <Link
+              href="/(auth)/register"
+              accessibilityRole="link"
+              accessibilityLabel="Sign up for an account"
+            >
               <Text style={{ color: colors.primary, fontWeight: "700" }}>
                 Sign Up
               </Text>
@@ -247,6 +280,8 @@ export default function LoginScreen() {
             <Link
               href="/sources"
               style={{ flexDirection: "row", alignItems: "center" }}
+              accessibilityRole="link"
+              accessibilityLabel="Sources and disclaimer"
             >
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Ionicons
@@ -268,6 +303,8 @@ export default function LoginScreen() {
             <Link
               href="/privacy"
               style={{ flexDirection: "row", alignItems: "center" }}
+              accessibilityRole="link"
+              accessibilityLabel="Privacy policy"
             >
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Ionicons
@@ -287,7 +324,7 @@ export default function LoginScreen() {
               </View>
             </Link>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeScreen>
   );

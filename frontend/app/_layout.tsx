@@ -11,6 +11,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Ionicons } from "@expo/vector-icons";
 import { queryClient } from "../src/queryClient";
 import { api } from "../src/api/client";
+import * as haptics from "../src/utils/haptics";
 import {
   useSubscriptionStore,
   configurePurchases,
@@ -24,6 +25,7 @@ function AuthGate() {
   const rcConfigured = useRef(false);
 
   const safeBack = () => {
+    haptics.light();
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -100,7 +102,10 @@ function AuthGate() {
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
-              style={{ marginRight: 8, padding: 4 }}
+              style={{ marginRight: 8, padding: 10 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
@@ -121,7 +126,10 @@ function AuthGate() {
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
-              style={{ marginRight: 8, padding: 4 }}
+              style={{ marginRight: 8, padding: 10 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
@@ -142,7 +150,10 @@ function AuthGate() {
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
-              style={{ marginRight: 8, padding: 4 }}
+              style={{ marginRight: 8, padding: 10 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>
@@ -163,7 +174,10 @@ function AuthGate() {
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
-              style={{ marginRight: 8, padding: 4 }}
+              style={{ marginRight: 8, padding: 10 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <Ionicons name="chevron-back" size={24} color={c.text} />
             </TouchableOpacity>

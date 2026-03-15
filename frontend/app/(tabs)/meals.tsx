@@ -32,6 +32,7 @@ import { AddMealSheet } from "../../components/meals/AddMealSheet";
 import { EditMealSheet } from "../../components/meals/EditMealSheet";
 import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
 import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
+import * as haptics from "../../src/utils/haptics";
 import type { MealLog } from "../../src/types";
 import { MealGroup } from "../../components/meals/MealGroup";
 
@@ -48,6 +49,7 @@ export default function MealsScreen() {
   const [fabOpen, setFabOpen] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
   const toggleFab = () => {
+    haptics.medium();
     const toValue = fabOpen ? 0 : 1;
     Animated.spring(fabAnim, {
       toValue,
@@ -178,9 +180,15 @@ export default function MealsScreen() {
             style={{ flexDirection: "row", marginBottom: spacing.md, gap: 6 }}
           >
             <TouchableOpacity
-              onPress={() => setFilterType(null)}
+              onPress={() => {
+                haptics.selection();
+                setFilterType(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Show all meals"
+              accessibilityState={{ selected: filterType === null }}
               style={{
-                paddingVertical: 6,
+                paddingVertical: 10,
                 paddingHorizontal: 14,
                 borderRadius: radius.full,
                 backgroundColor:
@@ -205,9 +213,15 @@ export default function MealsScreen() {
             {MEAL_TYPES.map((t) => (
               <TouchableOpacity
                 key={t}
-                onPress={() => setFilterType(filterType === t ? null : t)}
+                onPress={() => {
+                  haptics.selection();
+                  setFilterType(filterType === t ? null : t);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Filter by ${t}`}
+                accessibilityState={{ selected: filterType === t }}
                 style={{
-                  paddingVertical: 6,
+                  paddingVertical: 10,
                   paddingHorizontal: 14,
                   borderRadius: radius.full,
                   backgroundColor:
@@ -260,6 +274,8 @@ export default function MealsScreen() {
               </Text>
               <TouchableOpacity
                 onPress={() => refetch()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading meals"
                 style={{
                   marginTop: spacing.md,
                   backgroundColor: colors.primary,
@@ -329,6 +345,7 @@ export default function MealsScreen() {
         <TouchableOpacity
           activeOpacity={1}
           onPress={closeFab}
+          accessibilityLabel="Close menu"
           style={{
             position: "absolute",
             top: 0,
@@ -391,7 +408,12 @@ export default function MealsScreen() {
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={action.onPress}
+                onPress={() => {
+                  haptics.medium();
+                  action.onPress();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={action.label}
                 activeOpacity={0.85}
                 style={{
                   width: 44,
@@ -418,6 +440,9 @@ export default function MealsScreen() {
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={toggleFab}
+        accessibilityRole="button"
+        accessibilityLabel={fabOpen ? "Close meal options" : "Add meal"}
+        accessibilityState={{ expanded: fabOpen }}
         style={{
           position: "absolute",
           bottom: 28,

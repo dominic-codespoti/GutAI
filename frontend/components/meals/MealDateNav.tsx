@@ -33,11 +33,18 @@ export function MealDateNav() {
       <TouchableOpacity
         onPress={() => setDate(shiftDate(selectedDate, -1))}
         style={{ padding: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Previous day"
+        hitSlop={8}
       >
         <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => setDate(todayStr)}>
+      <TouchableOpacity
+        onPress={() => setDate(todayStr)}
+        accessibilityRole="button"
+        accessibilityLabel={`Current date: ${formatDateLabel(selectedDate)}. Tap to go to today.`}
+      >
         <Text
           style={{
             fontSize: 16,
@@ -79,6 +86,9 @@ export function MealDateNav() {
       <TouchableOpacity
         onPress={() => !isToday && setDate(shiftDate(selectedDate, 1))}
         style={{ padding: 8, opacity: isToday ? 0.3 : 1 }}
+        accessibilityRole="button"
+        accessibilityLabel="Next day"
+        hitSlop={8}
       >
         <Ionicons
           name="chevron-forward"

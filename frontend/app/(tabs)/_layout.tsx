@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -9,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useThemeColors } from "../../src/stores/theme";
+import * as haptics from "../../src/utils/haptics";
 import Svg, { Path, Defs, Filter, FeDropShadow } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -104,6 +106,7 @@ function CustomTabBar({
           const color = isFocused ? colors.primary : colors.textMuted;
 
           const onPress = () => {
+            haptics.selection();
             const event = navigation.emit({
               type: "tabPress",
               target: route.key,
@@ -120,6 +123,9 @@ function CustomTabBar({
                 <TouchableOpacity
                   onPress={onPress}
                   activeOpacity={0.8}
+                  accessibilityRole="tab"
+                  accessibilityLabel="Meals"
+                  accessibilityState={{ selected: isFocused }}
                   style={{
                     width: 56,
                     height: 56,
@@ -188,7 +194,7 @@ function AnimatedTabIcon({
   isFocused: boolean;
   onPress: () => void;
 }) {
-  const scale = new Animated.Value(1);
+  const scale = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
     Animated.spring(scale, {
@@ -214,6 +220,9 @@ function AnimatedTabIcon({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       activeOpacity={0.7}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: isFocused }}
       style={{
         flex: 1,
         alignItems: "center",
@@ -253,8 +262,10 @@ export default function TabLayout() {
   const headerRight = () => (
     <TouchableOpacity
       onPress={() => router.push("/(tabs)/profile")}
-      style={{ marginRight: 14, padding: 4 }}
-      hitSlop={8}
+      style={{ marginRight: 14, padding: 8 }}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel="Profile settings"
     >
       <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
     </TouchableOpacity>
