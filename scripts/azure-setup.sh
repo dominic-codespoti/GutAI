@@ -281,7 +281,9 @@ if $DO_DEPLOY; then
       jwtSecret="$JWT_SECRET" \
       usdaApiKey="$USDA_KEY" \
       ghcrUsername="$GH_USER" \
-      ghcrPassword="$GH_TOKEN"
+      ghcrPassword="$GH_TOKEN" \
+      azureOpenAIEndpoint="https://ai-misc-proj-resource.openai.azure.com/" \
+      azureOpenAIDeploymentName="gpt-4o-mini"
 
   API_URL=$(az deployment group show \
     --resource-group "$RESOURCE_GROUP" \

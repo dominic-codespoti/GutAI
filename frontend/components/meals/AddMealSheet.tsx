@@ -613,7 +613,10 @@ export function AddMealSheet() {
 
           {/* ── Manual tab ── */}
           {activeTab === "manual" && (
-            <View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <TextInput
                 placeholder="Food name (e.g. Chicken breast)"
                 placeholderTextColor={colors.textLight}
@@ -771,7 +774,7 @@ export function AddMealSheet() {
                   )}
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           )}
         </View>
       )}

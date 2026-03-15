@@ -107,7 +107,9 @@ jobs:
               jwtSecret='${{ secrets.JWT_SECRET }}' \
               usdaApiKey='${{ secrets.USDA_API_KEY }}' \
               ghcrUsername='${{ steps.owner.outputs.owner }}' \
-              ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}'
+              ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}' \
+              azureOpenAIEndpoint='https://ai-misc-proj-resource.openai.azure.com/' \
+              azureOpenAIDeploymentName='gpt-4o-mini'
 
           API_URL=$(az deployment group show \
             --resource-group ${{ env.AZURE_RG }} \
