@@ -79,6 +79,9 @@ builder.Services.AddMcpServer()
 // Health checks
 builder.Services.AddHealthChecks();
 
+// Application Insights
+builder.Services.AddApplicationInsightsTelemetry();
+
 var app = builder.Build();
 
 // Middleware pipeline

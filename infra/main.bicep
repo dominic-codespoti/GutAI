@@ -61,6 +61,18 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
+// ── Application Insights ──
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${prefix}-appinsights'
+  location: location
+  tags: tags
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+  }
+}
+
 // ── Container Apps Environment ──
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: '${prefix}-env'
@@ -120,6 +132,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'jwt-secret', value: jwtSecret }
         { name: 'usda-api-key', value: effectiveUsdaApiKey }
         { name: 'ghcr-password', value: ghcrPassword }
+        { name: 'appinsights-connection', value: appInsights.properties.ConnectionString }
       ]
     }
     template: {
@@ -137,6 +150,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
             { name: 'DOTNET_RUNNING_IN_CONTAINER', value: 'true' }
             { name: 'DOTNET_GCServer', value: '0' }
+            { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', secretRef: 'appinsights-connection' }
             { name: 'ConnectionStrings__AzureStorage', secretRef: 'storage-connection' }
             { name: 'Jwt__Secret', secretRef: 'jwt-secret' }
             { name: 'Jwt__Issuer', value: 'GutAI' }
