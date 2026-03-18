@@ -38,6 +38,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         builder.UseEnvironment("Development");
         builder.UseSetting("AdminKey", TestAdminKey);
+        builder.UseSetting("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://centralus-0.in.applicationinsights.azure.com/;LiveEndpoint=https://centralus.livediagnostics.monitor.azure.com/");
         builder.ConfigureServices(services =>
         {
             var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(TableServiceClient));
