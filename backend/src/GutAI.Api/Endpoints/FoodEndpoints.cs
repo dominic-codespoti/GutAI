@@ -26,6 +26,12 @@ public static class FoodEndpoints
         group.MapGet("/{id:guid}/substitutions", GetSubstitutions);
         group.MapGet("/{id:guid}/glycemic", GetGlycemic);
         group.MapGet("/{id:guid}/personalized-score", GetPersonalizedScore);
+        group.MapGet("/custom", GetCustomFoods);
+        group.MapPost("/custom", CreateCustomFood);
+        group.MapPut("/custom/{id:guid}", UpdateCustomFood);
+        group.MapDelete("/custom/{id:guid}", DeleteCustomFood);
+        group.MapPost("/parse-label", ParseNutritionLabel).DisableAntiforgery();
+
         group.MapPost("/", CreateFoodProduct).AddEndpointFilter<AdminKeyFilter>();
         group.MapPut("/{id:guid}", UpdateFoodProduct).AddEndpointFilter<AdminKeyFilter>();
         group.MapDelete("/{id:guid}", DeleteFoodProduct).AddEndpointFilter<AdminKeyFilter>();
@@ -34,7 +40,7 @@ public static class FoodEndpoints
 
     static async Task<IResult> SearchFoodProducts(string? q, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, ICacheService cache, ILogger<Program> logger)
     {
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = user.FindFirstValue("sub");
         var query = QuerySanitizer.Sanitize(q ?? string.Empty);
         if (query.Length < 2)
             return Results.Ok(Array.Empty<FoodProductDto>());
@@ -207,6 +213,26 @@ public static class FoodEndpoints
         return Results.Ok(finalResults);
     }
 
+    static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store)
+    {
+        var product = await store.GetFoodProductAsync(id);
+        if (product != null) 
+        {
+            var additives = await store.GetAllFoodAdditivesAsync();
+            return MapToDto(product, additives);
+        }
+
+        var uidStr = user.FindFirstValue("sub");
+        if (uidStr != null && Guid.TryParse(uidStr, out var uid))
+        {
+            var customFood = await store.GetCustomFoodAsync(uid, id);
+            if (customFood != null)
+                return MapCustomToFoodProductDto(customFood, await store.GetAllFoodAdditivesAsync());
+        }
+
+        return null;
+    }
+
     static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IFoodApiService foodApi)
     {
         if (string.IsNullOrWhiteSpace(barcode) || barcode.Length > 50)
@@ -269,20 +295,18 @@ public static class FoodEndpoints
         });
     }
 
-    static async Task<IResult> GetFoodProduct(Guid id, ITableStore store)
+    
+
+    static async Task<IResult> GetFoodProduct(Guid id, ClaimsPrincipal user, ITableStore store)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        return Results.Ok(MapToDto(product, additives));
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store);
+        return dto != null ? Results.Ok(dto) : Results.NotFound();
     }
 
-    static async Task<IResult> GetSafetyReport(Guid id, ITableStore store, GutRiskService gutRiskService, FodmapService fodmapService, SubstitutionService substitutionService, GlycemicIndexService glycemicService)
+    static async Task<IResult> GetSafetyReport(Guid id, ClaimsPrincipal user, ITableStore store, GutRiskService gutRiskService, FodmapService fodmapService, SubstitutionService substitutionService, GlycemicIndexService glycemicService)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        var dto = MapToDto(product, additives);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store);
+        if (dto is null) return Results.NotFound();
 
         var gutRisk = gutRiskService.Assess(dto);
         var fodmap = fodmapService.Assess(dto);
@@ -305,53 +329,43 @@ public static class FoodEndpoints
         });
     }
 
-    static async Task<IResult> GetGutRisk(Guid id, ITableStore store, GutRiskService gutRiskService)
+    static async Task<IResult> GetGutRisk(Guid id, ClaimsPrincipal user, ITableStore store, GutRiskService gutRiskService)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        var dto = MapToDto(product, additives);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store);
+        if (dto is null) return Results.NotFound();
         var result = gutRiskService.Assess(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetFodmap(Guid id, ITableStore store, FodmapService fodmapService)
+    static async Task<IResult> GetFodmap(Guid id, ClaimsPrincipal user, ITableStore store, FodmapService fodmapService)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        var dto = MapToDto(product, additives);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store);
+        if (dto is null) return Results.NotFound();
         var result = fodmapService.Assess(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetSubstitutions(Guid id, ITableStore store, SubstitutionService substitutionService)
+    static async Task<IResult> GetSubstitutions(Guid id, ClaimsPrincipal user, ITableStore store, SubstitutionService substitutionService)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        var dto = MapToDto(product, additives);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store);
+        if (dto is null) return Results.NotFound();
         var result = substitutionService.GetSubstitutions(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetGlycemic(Guid id, ITableStore store, GlycemicIndexService glycemicService)
+    static async Task<IResult> GetGlycemic(Guid id, ClaimsPrincipal user, ITableStore store, GlycemicIndexService glycemicService)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
-        var additives = await store.GetAllFoodAdditivesAsync();
-        var dto = MapToDto(product, additives);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store);
+        if (dto is null) return Results.NotFound();
         var result = glycemicService.Assess(dto);
         return Results.Ok(result);
     }
 
     static async Task<IResult> GetPersonalizedScore(Guid id, ClaimsPrincipal principal, ITableStore store, PersonalizedScoringService scoringService)
     {
-        var product = await store.GetFoodProductAsync(id);
-        if (product is null) return Results.NotFound();
+        var dto = await GetResolvedFoodProductDtoAsync(id, principal, store);
+        if (dto is null) return Results.NotFound();
         var userId = Guid.Parse(principal.FindFirstValue("sub")!);
-        var additives = await store.GetAllFoodAdditivesAsync();
-        var dto = MapToDto(product, additives);
         var result = await scoringService.ScoreAsync(dto, userId, store);
         return Results.Ok(result);
     }
@@ -569,5 +583,124 @@ public static class FoodEndpoints
         var userId = Guid.Parse(principal.FindFirstValue("sub")!);
         await store.DeleteFavoriteFoodAsync(userId, id);
         return Results.NoContent();
+    }
+    static FoodProductDto MapCustomToFoodProductDto(CustomFood customFood, IEnumerable<FoodAdditive> additives = null)
+    {
+        var ratio = customFood.ServingSize > 0 ? (100m / customFood.ServingSize) : 1m;
+        var f = new FoodProduct
+        {
+            Id = customFood.Id,
+            Name = customFood.Name,
+            Brand = customFood.BrandName,
+            Ingredients = customFood.Ingredients,
+            ServingSize = customFood.ServingSizeUnit != null ? $"{customFood.ServingSize}{customFood.ServingSizeUnit}" : $"{customFood.ServingSize}g",
+            ServingQuantity = customFood.ServingSize,
+            Calories100g = Math.Round(customFood.Calories * ratio, 2),
+            Protein100g = Math.Round(customFood.ProteinG * ratio, 2),
+            Carbs100g = Math.Round(customFood.CarbG * ratio, 2),
+            Fat100g = Math.Round(customFood.FatG * ratio, 2),
+            Fiber100g = customFood.FiberG.HasValue ? Math.Round(customFood.FiberG.Value * ratio, 2) : null,
+            Sugar100g = customFood.SugarG.HasValue ? Math.Round(customFood.SugarG.Value * ratio, 2) : null,
+            Sodium100g = customFood.SodiumMg.HasValue ? Math.Round(customFood.SodiumMg.Value * ratio, 2) : null,
+            FoodKind = GutAI.Domain.Enums.FoodKind.Unknown,
+            DataSource = "Custom"
+        };
+        return MapToDto(f, additives ?? Array.Empty<FoodAdditive>());
+    }
+
+    static async Task<IResult> GetCustomFoods(ClaimsPrincipal user, ITableStore store)
+    {
+        if (Guid.TryParse(user.FindFirstValue("sub"), out var uid))
+        {
+            var items = await store.GetCustomFoodsAsync(uid);
+            var results = items.Select(c => MapCustomToFoodProductDto(c));
+            return Results.Ok(results);
+        }
+        return Results.Unauthorized();
+    }
+
+    static async Task<IResult> CreateCustomFood(CustomFoodDto dto, ClaimsPrincipal user, ITableStore store)
+    {
+        var uid = Guid.Parse(user.FindFirstValue("sub")!);
+        var customFood = new CustomFood
+        {
+            Id = Guid.NewGuid(),
+            UserId = uid,
+            Name = dto.Name,
+            BrandName = dto.BrandName,
+            ServingSize = dto.ServingSize,
+            ServingSizeUnit = dto.ServingSizeUnit,
+            Calories = dto.Calories,
+            ProteinG = dto.ProteinG,
+            CarbG = dto.CarbG,
+            FatG = dto.FatG,
+            FiberG = dto.FiberG,
+            SugarG = dto.SugarG,
+            SodiumMg = dto.SodiumMg,
+            Ingredients = dto.Ingredients,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        await store.UpsertCustomFoodAsync(customFood);
+        return Results.Created($"/api/food/custom/{customFood.Id}", customFood);
+    }
+
+    static async Task<IResult> UpdateCustomFood(Guid id, CustomFoodDto dto, ClaimsPrincipal user, ITableStore store)
+    {
+        var uid = Guid.Parse(user.FindFirstValue("sub")!);
+        var existing = await store.GetCustomFoodAsync(uid, id);
+        if (existing == null)
+            return Results.NotFound();
+
+        existing.Name = dto.Name;
+        existing.BrandName = dto.BrandName;
+        existing.ServingSize = dto.ServingSize;
+        existing.ServingSizeUnit = dto.ServingSizeUnit;
+        existing.Calories = dto.Calories;
+        existing.ProteinG = dto.ProteinG;
+        existing.CarbG = dto.CarbG;
+        existing.FatG = dto.FatG;
+        existing.FiberG = dto.FiberG;
+        existing.SugarG = dto.SugarG;
+        existing.SodiumMg = dto.SodiumMg;
+        existing.Ingredients = dto.Ingredients;
+        existing.UpdatedAt = DateTime.UtcNow;
+
+        await store.UpsertCustomFoodAsync(existing);
+        return Results.Ok(existing);
+    }
+
+    static async Task<IResult> DeleteCustomFood(Guid id, ClaimsPrincipal user, ITableStore store)
+    {
+        var uid = Guid.Parse(user.FindFirstValue("sub")!);
+        var existing = await store.GetCustomFoodAsync(uid, id);
+        if (existing == null)
+            return Results.NotFound();
+
+        await store.DeleteCustomFoodAsync(uid, id);
+        return Results.NoContent();
+    }
+
+    static async Task<IResult> ParseNutritionLabel(Microsoft.AspNetCore.Http.HttpRequest request, ClaimsPrincipal principal, ITableStore store, IContentUnderstandingService aiService)
+    {
+        var uid = Guid.Parse(principal.FindFirstValue("sub")!);
+        var user = await store.GetUserAsync(uid);
+
+        if (!request.HasFormContentType || !request.Form.Files.Any())
+            return Results.BadRequest("No image provided.");
+
+        var file = request.Form.Files.GetFile("file") ?? request.Form.Files.FirstOrDefault();
+
+        if (file == null || file.Length == 0)
+            return Results.BadRequest("No image provided.");
+
+        using var stream = file.OpenReadStream();
+        var result = await aiService.ParseNutritionLabelAsync(stream, file.ContentType);
+
+        if (result == null)
+            return Results.BadRequest("Could not parse nutrition label from image.");
+
+        return Results.Ok(result);
     }
 }

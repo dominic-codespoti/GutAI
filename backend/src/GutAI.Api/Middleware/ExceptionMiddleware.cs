@@ -55,7 +55,7 @@ public class ExceptionMiddleware
                     _ => "Internal Server Error"
                 },
                 Detail = context.Response.StatusCode == (int)HttpStatusCode.InternalServerError
-                    ? "An unexpected error occurred. Please try again later."
+                    ? "An unexpected error occurred."
                     : ex.Message,
                 Instance = context.Request.Path
             };

@@ -90,15 +90,18 @@ public static class DependencyInjection
         services.AddSingleton<IGlycemicIndexService>(sp => sp.GetRequiredService<GlycemicIndexService>());
         services.AddScoped<PersonalizedScoringService>();
         services.AddScoped<IFoodDiaryAnalysisService, FoodDiaryAnalysisService>();
+        services.AddScoped<IContentUnderstandingService, ContentUnderstandingService>();
 
         // Azure OpenAI Assistants for chat
         var aiEndpoint = configuration["AzureOpenAI:Endpoint"];
         var aiDeployment = configuration["AzureOpenAI:DeploymentName"] ?? "gpt-5-nano";
+
         if (!string.IsNullOrEmpty(aiEndpoint))
         {
             var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), new DefaultAzureCredential());
             var assistantClient = azureClient.GetAssistantClient();
             services.AddSingleton(assistantClient);
+            services.AddSingleton(azureClient);
 
             // Lazy assistant creation — created on first use, not at startup
             var assistantIdTask = new Lazy<Task<string>>(async () =>

@@ -31,7 +31,7 @@ import {
   nutritionSummaryText,
 } from "../../src/utils/nutrition";
 import type { FoodProduct, SafetyReport } from "../../src/types";
-import { useRouter } from "expo-router";
+import { useRouter, useGlobalSearchParams } from "expo-router";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { ratingColor } from "../../src/utils/colors";
 import { maybeRequestReview } from "../../src/utils/review";
@@ -60,6 +60,19 @@ export default function ScanScreen() {
   const [addToMealProduct, setAddToMealProduct] = useState<FoodProduct | null>(
     null,
   );
+
+  const params = useGlobalSearchParams<{ tab?: string }>();
+  type TabType = "standard" | "favorites" | "custom";
+  const [activeTab, setActiveTab] = useState<TabType>("standard");
+
+  useEffect(() => {
+    if (
+      params.tab &&
+      ["standard", "favorites", "custom"].includes(params.tab)
+    ) {
+      setActiveTab(params.tab as TabType);
+    }
+  }, [params.tab]);
 
   const effectiveGrams = addToMealServingG * addToMealMultiplier;
 
@@ -174,6 +187,18 @@ export default function ScanScreen() {
 
   const alertIds = new Set((alerts ?? []).map((a) => a.additiveId));
 
+  const favoritesQuery = useQuery({
+    queryKey: ["favorites"],
+    queryFn: () => foodApi.favorites().then((r) => r.data),
+    enabled: activeTab === "favorites",
+  });
+
+  const customFoodsQuery = useQuery({
+    queryKey: ["custom-foods"],
+    queryFn: () => foodApi.customFoods().then((r) => r.data),
+    enabled: activeTab === "custom",
+  });
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -243,6 +268,51 @@ export default function ScanScreen() {
     setShowAddToMeal(true);
   };
 
+  const renderTabSelector = () => (
+    <View
+      style={{
+        flexDirection: "row",
+        marginHorizontal: 16,
+        marginTop: 16,
+        marginBottom: 12,
+        backgroundColor: colors.card,
+        borderRadius: 12,
+        padding: 4,
+      }}
+    >
+      {[
+        { id: "standard", label: "Search" },
+        { id: "favorites", label: "Favorites" },
+        { id: "custom", label: "Custom" },
+      ].map((tab) => {
+        const isActive = activeTab === tab.id;
+        return (
+          <TouchableOpacity
+            key={tab.id}
+            onPress={() => setActiveTab(tab.id as TabType)}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              alignItems: "center",
+              borderRadius: 8,
+              backgroundColor: isActive ? colors.primaryLight : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                color: isActive ? colors.textOnPrimary : colors.textSecondary,
+                fontWeight: isActive ? "600" : "500",
+                fontSize: 14,
+              }}
+            >
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
   return (
     <View style={{ flex: 1 }}>
       <KeyboardAvoidingView
@@ -250,50 +320,134 @@ export default function ScanScreen() {
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <ScrollView
-          style={{ flex: 1, backgroundColor: colors.bg }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primaryLight}
-            />
-          }
-        >
-          {/* Barcode Input */}
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
+        {renderTabSelector()}
+
+        {activeTab === "standard" && (
+          <ScrollView
+            style={{ flex: 1, backgroundColor: colors.bg }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primaryLight}
+              />
+            }
           >
-            {/* 9. Section heading: Barcode Lookup */}
-            <Text
+            {/* Barcode Input */}
+            <View
               style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: colors.textSecondary,
-                marginBottom: 8,
+                backgroundColor: colors.card,
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 12,
               }}
-              accessibilityRole="header"
             >
-              Barcode Lookup
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TextInput
-                placeholder="Enter barcode number"
-                value={barcode}
-                onChangeText={setBarcode}
-                keyboardType="number-pad"
-                returnKeyType="search"
-                autoCorrect={false}
-                maxLength={20}
+              {/* 9. Section heading: Barcode Lookup */}
+              <Text
                 style={{
-                  flex: 1,
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: colors.textSecondary,
+                  marginBottom: 8,
+                }}
+                accessibilityRole="header"
+              >
+                Barcode Lookup
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TextInput
+                  placeholder="Enter barcode number"
+                  value={barcode}
+                  onChangeText={setBarcode}
+                  keyboardType="number-pad"
+                  returnKeyType="search"
+                  autoCorrect={false}
+                  maxLength={20}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 16,
+                  }}
+                />
+                {/* 2. Camera button */}
+                <TouchableOpacity
+                  onPress={openCamera}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan barcode with camera"
+                  style={{
+                    backgroundColor: colors.primaryLight,
+                    borderRadius: 8,
+                    width: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons
+                    name="camera"
+                    size={24}
+                    color={colors.textOnPrimary}
+                  />
+                </TouchableOpacity>
+              </View>
+              {barcodeQuery.isLoading && <SearchResultSkeleton count={1} />}
+              {barcodeQuery.isError && (
+                <Text
+                  style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
+                >
+                  Product not found for this barcode
+                </Text>
+              )}
+              {barcodeQuery.data && (
+                <TouchableOpacity
+                  onPress={() => handleSelectProduct(barcodeQuery.data!)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select barcode result"
+                  style={{ marginTop: 12 }}
+                >
+                  {/* 3. Barcode result */}
+                  <FoodSearchResult
+                    product={barcodeQuery.data}
+                    onPress={handleProductPress}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Search */}
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 12,
+              }}
+            >
+              {/* 9. Section heading: Search Foods */}
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: colors.textSecondary,
+                  marginBottom: 8,
+                }}
+                accessibilityRole="header"
+              >
+                Search Foods
+              </Text>
+              <TextInput
+                placeholder="Search by name..."
+                value={searchText}
+                onChangeText={setSearchText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                maxLength={200}
+                style={{
                   borderWidth: 1,
                   borderColor: colors.border,
                   borderRadius: 8,
@@ -301,422 +455,440 @@ export default function ScanScreen() {
                   fontSize: 16,
                 }}
               />
-              {/* 2. Camera button */}
-              <TouchableOpacity
-                onPress={openCamera}
-                accessibilityRole="button"
-                accessibilityLabel="Scan barcode with camera"
-                style={{
-                  backgroundColor: colors.primaryLight,
-                  borderRadius: 8,
-                  width: 48,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons
-                  name="camera"
-                  size={24}
-                  color={colors.textOnPrimary}
-                />
-              </TouchableOpacity>
-            </View>
-            {barcodeQuery.isLoading && <SearchResultSkeleton count={1} />}
-            {barcodeQuery.isError && (
-              <Text
-                style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
-              >
-                Product not found for this barcode
-              </Text>
-            )}
-            {barcodeQuery.data && (
-              <TouchableOpacity
-                onPress={() => handleSelectProduct(barcodeQuery.data!)}
-                accessibilityRole="button"
-                accessibilityLabel="Select barcode result"
-                style={{ marginTop: 12 }}
-              >
-                {/* 3. Barcode result */}
+              {searchResults.isLoading && <SearchResultSkeleton count={3} />}
+              {searchResults.isError && (
+                <Text
+                  style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
+                >
+                  Search failed — try again
+                </Text>
+              )}
+              {pendingLookup.isLoading && <SearchResultSkeleton count={1} />}
+              {searchResults.data?.map((product, index) => (
                 <FoodSearchResult
-                  product={barcodeQuery.data}
+                  key={product.barcode || `search-${index}`}
+                  product={product}
                   onPress={handleProductPress}
                 />
-              </TouchableOpacity>
-            )}
-          </View>
+              ))}
+            </View>
 
-          {/* Search */}
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
-          >
-            {/* 9. Section heading: Search Foods */}
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: colors.textSecondary,
-                marginBottom: 8,
-              }}
-              accessibilityRole="header"
-            >
-              Search Foods
-            </Text>
-            <TextInput
-              placeholder="Search by name..."
-              value={searchText}
-              onChangeText={setSearchText}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              maxLength={200}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 16,
-              }}
-            />
-            {searchResults.isLoading && <SearchResultSkeleton count={3} />}
-            {searchResults.isError && (
-              <Text
-                style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
-              >
-                Search failed — try again
-              </Text>
-            )}
-            {pendingLookup.isLoading && <SearchResultSkeleton count={1} />}
-            {searchResults.data?.map((product, index) => (
-              <FoodSearchResult
-                key={product.barcode || `search-${index}`}
-                product={product}
-                onPress={handleProductPress}
+            {/* Safety Report */}
+            {safetyReport.isLoading && <SearchResultSkeleton count={2} />}
+            {safetyReport.isError && (
+              <ErrorState
+                message="Failed to load safety report"
+                onRetry={() => safetyReport.refetch()}
               />
-            ))}
-          </View>
-
-          {/* Safety Report */}
-          {safetyReport.isLoading && <SearchResultSkeleton count={2} />}
-          {safetyReport.isError && (
-            <ErrorState
-              message="Failed to load safety report"
-              onRetry={() => safetyReport.refetch()}
-            />
-          )}
-          {safetyReport.data && (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 12,
-                padding: 16,
-                marginTop: 4,
-              }}
-            >
+            )}
+            {safetyReport.data && (
               <View
                 style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  backgroundColor: colors.card,
+                  borderRadius: 12,
+                  padding: 16,
+                  marginTop: 4,
                 }}
               >
-                <Text
+                <View
                   style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: colors.text,
-                    marginBottom: 4,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
                   }}
                 >
-                  {safetyReport.data.product.name}
-                </Text>
-                {selectedProductId && (
-                  <TouchableOpacity
-                    onPress={() => router.push(`/food/${selectedProductId}`)}
-                    accessibilityRole="link"
-                    accessibilityLabel="View full food details"
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: "700",
+                      color: colors.text,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {safetyReport.data.product.name}
+                  </Text>
+                  {selectedProductId && (
+                    <TouchableOpacity
+                      onPress={() => router.push(`/food/${selectedProductId}`)}
+                      accessibilityRole="link"
+                      accessibilityLabel="View full food details"
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: colors.protein,
+                          fontWeight: "600",
+                        }}
+                      >
+                        Full Details →
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <NutritionBar
+                  calories={Math.round(
+                    safetyReport.data.product.calories100g ?? 0,
+                  )}
+                  proteinG={Math.round(
+                    safetyReport.data.product.protein100g ?? 0,
+                  )}
+                  carbsG={Math.round(safetyReport.data.product.carbs100g ?? 0)}
+                  fatG={Math.round(safetyReport.data.product.fat100g ?? 0)}
+                  subtitle="per 100g"
+                />
+
+                {safetyReport.data.additives.length > 0 && (
+                  <>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: "600",
+                        color: colors.textSecondary,
+                        marginBottom: 8,
+                      }}
+                    >
+                      Additives ({safetyReport.data.additives.length})
+                    </Text>
+                    {safetyReport.data.additives.map((add) => (
+                      <View
+                        key={add.id}
+                        style={{
+                          borderLeftWidth: 3,
+                          borderLeftColor: ratingColor(add.cspiRating),
+                          paddingLeft: 12,
+                          paddingVertical: 8,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={{ fontWeight: "600", color: colors.text }}
+                            >
+                              {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                color: colors.textSecondary,
+                                marginTop: 2,
+                              }}
+                            >
+                              CSPI: {add.cspiRating} · US: {add.usStatus} · EU:{" "}
+                              {add.euStatus}
+                            </Text>
+                          </View>
+                          {!alertIds.has(add.id) ? (
+                            <TouchableOpacity
+                              onPress={() => addAlertMutation.mutate(add.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Add alert for ${add.name}`}
+                              style={{
+                                backgroundColor: colors.dangerBg,
+                                borderRadius: 6,
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: "600",
+                                  color: colors.danger,
+                                }}
+                              >
+                                + Alert
+                              </Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <View
+                              style={{
+                                backgroundColor: colors.primaryBg,
+                                borderRadius: 6,
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: "600",
+                                  color: colors.primaryLight,
+                                }}
+                              >
+                                ✓ Alert
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        {add.healthConcerns && (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.danger,
+                              marginTop: 2,
+                            }}
+                          >
+                            ⚠ {add.healthConcerns}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {/* Quick Add to Meal */}
+                {showAddToMeal ? (
+                  <View
+                    style={{
+                      marginTop: 12,
+                      backgroundColor: colors.bg,
+                      borderRadius: 8,
+                      padding: 12,
+                    }}
                   >
                     <Text
                       style={{
                         fontSize: 13,
-                        color: colors.protein,
                         fontWeight: "600",
+                        color: colors.textSecondary,
+                        marginBottom: 8,
                       }}
                     >
-                      Full Details →
+                      Add to meal:
+                    </Text>
+                    <MealTypePicker
+                      selected={addToMealType}
+                      onSelect={setAddToMealType}
+                    />
+                    <ServingSizeSelector
+                      servingG={addToMealServingG}
+                      onServingChange={setAddToMealServingG}
+                      customText={customServingText}
+                      onCustomTextChange={setCustomServingText}
+                      multiplier={addToMealMultiplier}
+                      onMultiplierChange={setAddToMealMultiplier}
+                      product={addToMealProduct ?? safetyReport.data?.product}
+                      summaryText={
+                        safetyReport.data?.product
+                          ? nutritionSummaryText(
+                              scaleNutrition(
+                                safetyReport.data.product,
+                                effectiveGrams,
+                              ),
+                              effectiveGrams,
+                            )
+                          : undefined
+                      }
+                    />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "flex-end",
+                        gap: 8,
+                        marginTop: 8,
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowAddToMeal(false);
+                          setAddToMealProduct(null);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel"
+                        style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontWeight: "600",
+                          }}
+                        >
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() =>
+                          addToMealMutation.mutate(safetyReport.data!.product)
+                        }
+                        disabled={addToMealMutation.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel="Log meal"
+                        style={{
+                          backgroundColor: colors.primaryLight,
+                          paddingHorizontal: 16,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                        }}
+                      >
+                        {addToMealMutation.isPending ? (
+                          <ActivityIndicator
+                            color={colors.textOnPrimary}
+                            size="small"
+                          />
+                        ) : (
+                          <Text
+                            style={{
+                              color: colors.textOnPrimary,
+                              fontWeight: "600",
+                            }}
+                          >
+                            Log It
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowAddToMeal(true);
+                      setAddToMealMultiplier(1);
+                      setCustomServingText("");
+                      setAddToMealServingG(
+                        safetyReport.data?.product.servingQuantity
+                          ? Math.round(
+                              safetyReport.data.product.servingQuantity,
+                            )
+                          : 100,
+                      );
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add to meal"
+                    style={{
+                      marginTop: 12,
+                      backgroundColor: colors.primaryLight,
+                      borderRadius: 8,
+                      padding: 12,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={18}
+                      color={colors.textOnPrimary}
+                    />
+                    <Text
+                      style={{
+                        color: colors.textOnPrimary,
+                        fontWeight: "600",
+                        marginLeft: 6,
+                        fontSize: 14,
+                      }}
+                    >
+                      Add to Meal
                     </Text>
                   </TouchableOpacity>
                 )}
               </View>
+            )}
+          </ScrollView>
+        )}
 
-              <NutritionBar
-                calories={Math.round(
-                  safetyReport.data.product.calories100g ?? 0,
-                )}
-                proteinG={Math.round(
-                  safetyReport.data.product.protein100g ?? 0,
-                )}
-                carbsG={Math.round(safetyReport.data.product.carbs100g ?? 0)}
-                fatG={Math.round(safetyReport.data.product.fat100g ?? 0)}
-                subtitle="per 100g"
+        {activeTab === "favorites" && (
+          <ScrollView
+            style={{
+              flex: 1,
+              backgroundColor: colors.bg,
+              paddingHorizontal: 16,
+            }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primaryLight}
               />
-
-              {safetyReport.data.additives.length > 0 && (
-                <>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: colors.textSecondary,
-                      marginBottom: 8,
-                    }}
-                  >
-                    Additives ({safetyReport.data.additives.length})
-                  </Text>
-                  {safetyReport.data.additives.map((add) => (
-                    <View
-                      key={add.id}
-                      style={{
-                        borderLeftWidth: 3,
-                        borderLeftColor: ratingColor(add.cspiRating),
-                        paddingLeft: 12,
-                        paddingVertical: 8,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          alignItems: "flex-start",
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{ fontWeight: "600", color: colors.text }}
-                          >
-                            {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: colors.textSecondary,
-                              marginTop: 2,
-                            }}
-                          >
-                            CSPI: {add.cspiRating} · US: {add.usStatus} · EU:{" "}
-                            {add.euStatus}
-                          </Text>
-                        </View>
-                        {!alertIds.has(add.id) ? (
-                          <TouchableOpacity
-                            onPress={() => addAlertMutation.mutate(add.id)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Add alert for ${add.name}`}
-                            style={{
-                              backgroundColor: colors.dangerBg,
-                              borderRadius: 6,
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                fontWeight: "600",
-                                color: colors.danger,
-                              }}
-                            >
-                              + Alert
-                            </Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <View
-                            style={{
-                              backgroundColor: colors.primaryBg,
-                              borderRadius: 6,
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                fontWeight: "600",
-                                color: colors.primaryLight,
-                              }}
-                            >
-                              ✓ Alert
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      {add.healthConcerns && (
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: colors.danger,
-                            marginTop: 2,
-                          }}
-                        >
-                          ⚠ {add.healthConcerns}
-                        </Text>
-                      )}
-                    </View>
-                  ))}
-                </>
-              )}
-
-              {/* Quick Add to Meal */}
-              {showAddToMeal ? (
-                <View
-                  style={{
-                    marginTop: 12,
-                    backgroundColor: colors.bg,
-                    borderRadius: 8,
-                    padding: 12,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: colors.textSecondary,
-                      marginBottom: 8,
-                    }}
-                  >
-                    Add to meal:
-                  </Text>
-                  <MealTypePicker
-                    selected={addToMealType}
-                    onSelect={setAddToMealType}
+            }
+          >
+            {favoritesQuery.isLoading && (
+              <ActivityIndicator
+                style={{ marginTop: 20 }}
+                color={colors.primaryLight}
+              />
+            )}
+            {favoritesQuery.data?.length === 0 && (
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: colors.textSecondary,
+                  marginTop: 20,
+                }}
+              >
+                No liked foods yet.
+              </Text>
+            )}
+            {favoritesQuery.data?.map((f) => {
+              const product = {
+                ...f,
+                id: f.foodProductId,
+                name: f.foodName,
+              } as any as FoodProduct;
+              return (
+                <View key={product.id}>
+                  <FoodSearchResult
+                    product={product}
+                    onPress={handleProductPress}
+                    onDetailPress={handleDetailPress}
                   />
-                  <ServingSizeSelector
-                    servingG={addToMealServingG}
-                    onServingChange={setAddToMealServingG}
-                    customText={customServingText}
-                    onCustomTextChange={setCustomServingText}
-                    multiplier={addToMealMultiplier}
-                    onMultiplierChange={setAddToMealMultiplier}
-                    product={addToMealProduct ?? safetyReport.data?.product}
-                    summaryText={
-                      safetyReport.data?.product
-                        ? nutritionSummaryText(
-                            scaleNutrition(
-                              safetyReport.data.product,
-                              effectiveGrams,
-                            ),
-                            effectiveGrams,
-                          )
-                        : undefined
-                    }
-                  />
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "flex-end",
-                      gap: 8,
-                      marginTop: 8,
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowAddToMeal(false);
-                        setAddToMealProduct(null);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Cancel"
-                      style={{ paddingHorizontal: 12, paddingVertical: 8 }}
-                    >
-                      <Text
-                        style={{
-                          color: colors.textSecondary,
-                          fontWeight: "600",
-                        }}
-                      >
-                        Cancel
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        addToMealMutation.mutate(safetyReport.data!.product)
-                      }
-                      disabled={addToMealMutation.isPending}
-                      accessibilityRole="button"
-                      accessibilityLabel="Log meal"
-                      style={{
-                        backgroundColor: colors.primaryLight,
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderRadius: 8,
-                      }}
-                    >
-                      {addToMealMutation.isPending ? (
-                        <ActivityIndicator
-                          color={colors.textOnPrimary}
-                          size="small"
-                        />
-                      ) : (
-                        <Text
-                          style={{
-                            color: colors.textOnPrimary,
-                            fontWeight: "600",
-                          }}
-                        >
-                          Log It
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
                 </View>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowAddToMeal(true);
-                    setAddToMealMultiplier(1);
-                    setCustomServingText("");
-                    setAddToMealServingG(
-                      safetyReport.data?.product.servingQuantity
-                        ? Math.round(safetyReport.data.product.servingQuantity)
-                        : 100,
-                    );
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add to meal"
-                  style={{
-                    marginTop: 12,
-                    backgroundColor: colors.primaryLight,
-                    borderRadius: 8,
-                    padding: 12,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name="add-circle-outline"
-                    size={18}
-                    color={colors.textOnPrimary}
-                  />
-                  <Text
-                    style={{
-                      color: colors.textOnPrimary,
-                      fontWeight: "600",
-                      marginLeft: 6,
-                      fontSize: 14,
-                    }}
-                  >
-                    Add to Meal
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </ScrollView>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {activeTab === "custom" && (
+          <ScrollView
+            style={{
+              flex: 1,
+              backgroundColor: colors.bg,
+              paddingHorizontal: 16,
+            }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primaryLight}
+              />
+            }
+          >
+            {customFoodsQuery.isLoading && (
+              <ActivityIndicator
+                style={{ marginTop: 20 }}
+                color={colors.primaryLight}
+              />
+            )}
+            {customFoodsQuery.data?.length === 0 && (
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: colors.textSecondary,
+                  marginTop: 20,
+                }}
+              >
+                No custom foods found.
+              </Text>
+            )}
+            {customFoodsQuery.data?.map((c) => (
+              <View key={c.id}>
+                <FoodSearchResult
+                  product={c}
+                  onPress={handleProductPress}
+                  onDetailPress={handleDetailPress}
+                  hideFavorite={true}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        )}
       </KeyboardAvoidingView>
 
       <BottomSheet

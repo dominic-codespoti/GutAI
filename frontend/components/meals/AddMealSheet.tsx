@@ -632,6 +632,34 @@ export function AddMealSheet() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
+              <TouchableOpacity
+                onPress={() => {
+                  close();
+                  router.push("/food/create");
+                }}
+                style={{
+                  backgroundColor: colors.card,
+                  borderColor: colors.primary,
+                  borderWidth: 1,
+                  padding: 12,
+                  borderRadius: radius.md,
+                  marginBottom: spacing.md,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons
+                  name="camera"
+                  size={18}
+                  color={colors.primary}
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={{ color: colors.primary, fontWeight: "600" }}>
+                  Create Custom Food with Label Scanner
+                </Text>
+              </TouchableOpacity>
+
               <TextInput
                 placeholder="Food name (e.g. Chicken breast)"
                 placeholderTextColor={colors.textLight}

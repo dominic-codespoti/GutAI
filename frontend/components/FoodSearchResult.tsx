@@ -18,6 +18,7 @@ interface FoodSearchResultProps {
   product: FoodProduct;
   onPress: (product: FoodProduct) => void;
   onDetailPress?: (product: FoodProduct) => void;
+  hideFavorite?: boolean;
   style?: any;
 }
 
@@ -25,6 +26,7 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
   product,
   onPress,
   onDetailPress,
+  hideFavorite,
   style,
 }) => {
   const colors = useThemeColors();
@@ -168,26 +170,28 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
               </Text>
             )}
           </View>
-          <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation();
-              haptics.selection();
-              toggleFavorite(product.id);
-            }}
-            style={styles.infoButton}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel={
-              favorited ? "Remove from favorites" : "Add to favorites"
-            }
-            accessibilityState={{ selected: favorited }}
-          >
-            <Ionicons
-              name={favorited ? "heart" : "heart-outline"}
-              size={20}
-              color={favorited ? colors.danger : colors.textMuted}
-            />
-          </TouchableOpacity>
+          {!hideFavorite && (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                haptics.selection();
+                toggleFavorite(product.id);
+              }}
+              style={styles.infoButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                favorited ? "Remove from favorites" : "Add to favorites"
+              }
+              accessibilityState={{ selected: favorited }}
+            >
+              <Ionicons
+                name={favorited ? "heart" : "heart-outline"}
+                size={20}
+                color={favorited ? colors.danger : colors.textMuted}
+              />
+            </TouchableOpacity>
+          )}
           {onDetailPress && (
             <TouchableOpacity
               onPress={(e) => {

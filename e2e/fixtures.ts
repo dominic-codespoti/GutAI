@@ -78,7 +78,7 @@ async function createAuthenticatedUser(page: Page) {
 async function waitForAppReady(page: Page) {
   // The app shows "GutLens" on login OR the tab bar once authenticated
   // Wait for either the Home tab content or login screen
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
   // Give the React app time to hydrate
   await page.waitForTimeout(2000);
 }

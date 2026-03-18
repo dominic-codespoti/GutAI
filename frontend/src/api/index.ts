@@ -1,5 +1,7 @@
 import { api } from "./client";
+import { Platform } from "react-native";
 import { toLocalDateStr } from "../utils/date";
+import { getItem } from "../utils/storage";
 import type {
   AuthResponse,
   MealLog,
@@ -33,6 +35,7 @@ import type {
   Streak,
   MealTypeNutrition,
   FavoriteFood,
+  CustomFood,
 } from "../types";
 
 interface UpdateProfileRequest {
@@ -119,6 +122,44 @@ export const foodApi = {
   favorites: () => api.get<FavoriteFood[]>("/api/food/favorites"),
   addFavorite: (id: string) => api.post(`/api/food/${id}/favorite`),
   removeFavorite: (id: string) => api.delete(`/api/food/${id}/favorite`),
+  customFoods: () => api.get<FoodProduct[]>("/api/food/custom"),
+  createCustomFood: (data: CustomFood) =>
+    api.post<CustomFood>("/api/food/custom", data),
+  updateCustomFood: (id: string, data: CustomFood) =>
+    api.put<CustomFood>(`/api/food/custom/${id}`, data),
+  deleteCustomFood: (id: string) => api.delete(`/api/food/custom/${id}`),
+  parseLabel: async (imageUri: string, mimeType: string) => {
+    const formData = new FormData();
+
+    if (Platform.OS === "web") {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      formData.append("file", blob, "label.jpg");
+    } else {
+      formData.append("file", {
+        uri: imageUri,
+        name: "label.jpg",
+        type: mimeType,
+      } as any);
+    }
+
+    // Bypass axios since it struggles with mixed native/web FormData boundary rendering
+    // when a global Content-Type interceptor is set
+    const token = await getItem("accessToken");
+    const baseURL = api.defaults.baseURL || "";
+
+    const response = await fetch(`${baseURL}/api/food/parse-label`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Label parsing failed");
+    }
+    const data: CustomFood = await response.json();
+    return { data };
+  },
 };
 
 export const symptomApi = {

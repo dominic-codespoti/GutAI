@@ -1028,4 +1028,75 @@ public class TableStorageStore : ITableStore
         };
     }
 
+    // ═══════════════════════════════════════════════════════════
+    //  CustomFoods
+    // ═══════════════════════════════════════════════════════════
+
+    public async Task<CustomFood?> GetCustomFoodAsync(Guid userId, Guid foodId, CancellationToken ct = default)
+    {
+        var e = await GetEntityOrNullAsync(userId.ToString(), $"CUSTOMFOOD|{foodId}", ct);
+        return e == null ? null : MapToCustomFood(e);
+    }
+
+    public async Task<List<CustomFood>> GetCustomFoodsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var pk = userId.ToString();
+        var filter = $"PartitionKey eq '{pk}' and RowKey ge 'CUSTOMFOOD|' and RowKey lt 'CUSTOMFOOD|~'";
+        var entities = await QueryAsync(filter, ct);
+        return entities.Select(MapToCustomFood).OrderByDescending(c => c.CreatedAt).ToList();
+    }
+
+    public async Task UpsertCustomFoodAsync(CustomFood food, CancellationToken ct = default)
+    {
+        var e = new TableEntity(food.UserId.ToString(), $"CUSTOMFOOD|{food.Id}")
+        {
+            { "Name", food.Name },
+            { "BrandName", food.BrandName },
+            { "ServingSize", (double)food.ServingSize },
+            { "ServingSizeUnit", food.ServingSizeUnit },
+            { "Calories", (double)food.Calories },
+            { "ProteinG", (double)food.ProteinG },
+            { "CarbG", (double)food.CarbG },
+            { "FatG", (double)food.FatG }
+        };
+
+        if (food.FiberG.HasValue) e.Add("FiberG", (double)food.FiberG.Value);
+        if (food.SugarG.HasValue) e.Add("SugarG", (double)food.SugarG.Value);
+        if (food.SodiumMg.HasValue) e.Add("SodiumMg", (double)food.SodiumMg.Value);
+        if (food.Ingredients != null) e.Add("Ingredients", food.Ingredients);
+
+        e.Add("CreatedAt", food.CreatedAt);
+        e.Add("UpdatedAt", food.UpdatedAt);
+
+        await UpsertAsync(e, ct);
+    }
+
+    public async Task DeleteCustomFoodAsync(Guid userId, Guid foodId, CancellationToken ct = default)
+    {
+        await DeleteAsync(userId.ToString(), $"CUSTOMFOOD|{foodId}", ct);
+    }
+
+    private static CustomFood MapToCustomFood(TableEntity e)
+    {
+        var foodId = Guid.Parse(e.RowKey.Substring("CUSTOMFOOD|".Length));
+        return new CustomFood
+        {
+            Id = foodId,
+            UserId = Guid.Parse(e.PartitionKey),
+            Name = e.GetString("Name") ?? "",
+            BrandName = e.GetString("BrandName"),
+            ServingSize = (decimal)(e.GetDouble("ServingSize") ?? 100),
+            ServingSizeUnit = e.GetString("ServingSizeUnit") ?? "g",
+            Calories = (decimal)(e.GetDouble("Calories") ?? 0),
+            ProteinG = (decimal)(e.GetDouble("ProteinG") ?? 0),
+            CarbG = (decimal)(e.GetDouble("CarbG") ?? 0),
+            FatG = (decimal)(e.GetDouble("FatG") ?? 0),
+            FiberG = e.ContainsKey("FiberG") ? (decimal?)e.GetDouble("FiberG") : null,
+            SugarG = e.ContainsKey("SugarG") ? (decimal?)e.GetDouble("SugarG") : null,
+            SodiumMg = e.ContainsKey("SodiumMg") ? (decimal?)e.GetDouble("SodiumMg") : null,
+            Ingredients = e.GetString("Ingredients"),
+            CreatedAt = e.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow,
+            UpdatedAt = e.GetDateTimeOffset("UpdatedAt")?.UtcDateTime ?? DateTime.UtcNow
+        };
+    }
 }

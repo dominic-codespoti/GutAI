@@ -123,6 +123,9 @@ export interface FoodProduct {
   brand: string | null;
   ingredients: string | null;
   imageUrl: string | null;
+  imageFrontUrl: string | null;
+  imageIngredientsUrl: string | null;
+  imageNutritionUrl: string | null;
   novaGroup: number | null;
   nutriScore: string | null;
   allergensTags: string[];
@@ -505,4 +508,20 @@ export interface MealFood {
   dataSource: string | null;
   sourceUrl: string | null;
   externalId: string | null;
+}
+
+export interface CustomFood {
+  id?: string;
+  name: string;
+  brandName?: string | null;
+  servingSize: number;
+  servingSizeUnit: string;
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG?: number | null;
+  sugarG?: number | null;
+  sodiumMg?: number | null;
+  ingredients?: string | null;
 }

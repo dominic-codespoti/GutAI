@@ -67,4 +67,8 @@ public interface ITableStore
     Task<List<InsightReport>> GetInsightReportsAsync(Guid userId, CancellationToken ct = default);
     Task UpsertInsightReportAsync(InsightReport report, CancellationToken ct = default);
 
+    Task<CustomFood?> GetCustomFoodAsync(Guid userId, Guid foodId, CancellationToken ct = default);
+    Task<List<CustomFood>> GetCustomFoodsAsync(Guid userId, CancellationToken ct = default);
+    Task UpsertCustomFoodAsync(CustomFood food, CancellationToken ct = default);
+    Task DeleteCustomFoodAsync(Guid userId, Guid foodId, CancellationToken ct = default);
 }
