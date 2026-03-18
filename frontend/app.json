@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "gut.ai",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "infoPlist": {
         "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
         "ITSAppUsesNonExemptEncryption": false
