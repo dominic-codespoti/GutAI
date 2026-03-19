@@ -8,11 +8,13 @@ public class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionMiddleware> _logger;
+    private readonly Microsoft.ApplicationInsights.TelemetryClient _telemetryClient;
 
-    public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger)
+    public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger, Microsoft.ApplicationInsights.TelemetryClient telemetryClient)
     {
         _next = next;
         _logger = logger;
+        _telemetryClient = telemetryClient;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -24,6 +26,7 @@ public class ExceptionMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception on {Method} {Path}", context.Request.Method, context.Request.Path);
+            _telemetryClient.TrackException(ex);
 
             if (context.Response.HasStarted)
             {
