@@ -684,25 +684,44 @@ public static class FoodEndpoints
     }
 
     [Microsoft.AspNetCore.Mvc.DisableRequestSizeLimit]
-    static async Task<IResult> ParseNutritionLabel(Microsoft.AspNetCore.Http.HttpRequest request, ClaimsPrincipal principal, ITableStore store, IContentUnderstandingService aiService)
+    static async Task<IResult> ParseNutritionLabel(Microsoft.AspNetCore.Http.HttpRequest request, ClaimsPrincipal principal, ITableStore store, IContentUnderstandingService aiService, ILogger<Program> logger)
     {
-        var uid = Guid.Parse(principal.FindFirstValue("sub")!);
-        var user = await store.GetUserAsync(uid);
+        try
+        {
+            var uid = Guid.Parse(principal.FindFirstValue("sub")!);
+            var user = await store.GetUserAsync(uid);
 
-        if (!request.HasFormContentType || !request.Form.Files.Any())
-            return Results.BadRequest("No image provided.");
+            if (!request.HasFormContentType || !request.Form.Files.Any())
+            {
+                logger.LogWarning("ParseNutritionLabel called without multipart form content or files.");
+                return Results.BadRequest("No image provided.");
+            }
 
-        var file = request.Form.Files.GetFile("file") ?? request.Form.Files.FirstOrDefault();
+            var file = request.Form.Files.GetFile("file") ?? request.Form.Files.FirstOrDefault();
 
-        if (file == null || file.Length == 0)
-            return Results.BadRequest("No image provided.");
+            if (file == null || file.Length == 0)
+            {
+                logger.LogWarning("ParseNutritionLabel received an empty file from user {UserId}.", uid);
+                return Results.BadRequest("No image provided.");
+            }
 
-        using var stream = file.OpenReadStream();
-        var result = await aiService.ParseNutritionLabelAsync(stream, file.ContentType);
+            logger.LogInformation("Processing nutrition label image {FileName} of size {Size} bytes for user {UserId}.", file.FileName, file.Length, uid);
 
-        if (result == null)
-            return Results.BadRequest("Could not parse nutrition label from image.");
+            using var stream = file.OpenReadStream();
+            var result = await aiService.ParseNutritionLabelAsync(stream, file.ContentType);
 
-        return Results.Ok(result);
+            if (result == null)
+            {
+                logger.LogWarning("AI content understanding could not extract data for file {FileName}, user {UserId}.", file.FileName, uid);
+                return Results.BadRequest("Could not parse nutrition label from image.");
+            }
+
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An unexpected error occurred while parsing the nutrition label.");
+            return Results.Problem("An error occurred while processing your image. Please try again or use a lower resolution image.", statusCode: 500);
+        }
     }
 }
