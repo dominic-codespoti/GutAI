@@ -7,6 +7,9 @@ using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Jpeg;
 
 public static class FoodEndpoints
 {
@@ -705,10 +708,30 @@ public static class FoodEndpoints
                 return Results.BadRequest("No image provided.");
             }
 
-            logger.LogInformation("Processing nutrition label image {FileName} of size {Size} bytes for user {UserId}.", file.FileName, file.Length, uid);
+            logger.LogInformation("Processing nutrition label image {FileName} of original size {Size} bytes for user {UserId}.", file.FileName, file.Length, uid);
 
-            using var stream = file.OpenReadStream();
-            var result = await aiService.ParseNutritionLabelAsync(stream, file.ContentType);
+            using var originalStream = file.OpenReadStream();
+            using var image = await Image.LoadAsync(originalStream);
+
+            // Resize proportionally if the width or height exceeds 1500px
+            const int MaxDimension = 1500;
+            if (image.Width > MaxDimension || image.Height > MaxDimension)
+            {
+                var resizeOptions = new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(MaxDimension, MaxDimension)
+                };
+                image.Mutate(x => x.Resize(resizeOptions));
+            }
+
+            using var compressedStream = new MemoryStream();
+            await image.SaveAsJpegAsync(compressedStream, new JpegEncoder { Quality = 80 });
+            compressedStream.Position = 0;
+
+            logger.LogInformation("Successfully resized image to {CompressedSize} bytes.", compressedStream.Length);
+
+            var result = await aiService.ParseNutritionLabelAsync(compressedStream, "image/jpeg");
 
             if (result == null)
             {
