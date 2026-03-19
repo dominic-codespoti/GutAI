@@ -1,0 +1,104 @@
+{
+  "id": "50013c32-beb0-4b46-a2c6-8ef21467eddf",
+  "status": "Succeeded",
+  "result": {
+    "analyzerId": "prebuilt-documentFields",
+    "apiVersion": "2025-11-01",
+    "createdAt": "2026-03-18T12:58:08Z",
+    "stringEncoding": "codePoint",
+    "warnings": [],
+    "contents": [
+      {
+        "path": "input1",
+        "markdown": "Questions or Comments?\n1-800-352-4477\n\nGUARANTEED FRESH\nUntil printed\ndate or this snack is on us\n\nMon-Fri 9:00am to 4:30pm CT emoil or chat at fritolay.com\n\n\n# Nutrition Facts\n\nAbout 9 servings per container\nServing size About 33 pieces (28g)\n\nAmount per serving\n\nCalories\n150\n\n\n<table>\n<tr>\n<td colspan=\"3\">% Dally Value\"</td>\n</tr>\n<tr>\n<td>Total Fat 8g</td>\n<td></td>\n<td>10%</td>\n</tr>\n<tr>\n<td>Saturated Fat 1g</td>\n<td></td>\n<td>6%</td>\n</tr>\n<tr>\n<td>Trans Fat 0g</td>\n<td></td>\n<td></td>\n</tr>\n<tr>\n<td>Cholesterol Omg</td>\n<td></td>\n<td>0%</td>\n</tr>\n<tr>\n<td>Sodium 280mg</td>\n<td></td>\n<td>12%</td>\n</tr>\n<tr>\n<td>Total Carbohydrate 18g</td>\n<td></td>\n<td>6%</td>\n</tr>\n<tr>\n<td>Dietary Fiber less than 1g</td>\n<td></td>\n<td>3%</td>\n</tr>\n<tr>\n<td>Total Sugars 0g</td>\n<td></td>\n<td></td>\n</tr>\n</table>\n\n\nProtein 2g\n\n\n<table>\n<tr>\n<td>Vitamin D 0mcg</td>\n<td>0%</td>\n</tr>\n<tr>\n<td>Calcium 10mg</td>\n<td>0%</td>\n</tr>\n<tr>\n<td>Iron 0.5mg</td>\n<td>2%</td>\n</tr>\n<tr>\n<td>Potassium 30mg</td>\n<td>0%</td>\n</tr>\n</table>\n\n\nNot a significant source of added sugars.\n\n\\* The % Daily Value (DV) tells you how much a nutrient\nin a serving of food contributes to a daily diet. 2,000\ncalories a day is used for general nutrition advice.\n\nINGREDIENTS: ENRICHED CORN MEAL (CORN MEAL, FERROUS\nSULFATE, NIACIN, THIAMIN MONONITRATE, RIBOFLAVIN, FOLIC\nACID), VEGETABLE OIL (CORN, CANOLA, AND/OR SUNFLOWER\nOIL), SALT, WHEY, MALTODEXTRIN (MADE FROM CORN).\nBUTTERMILK, MONOSODIUM GLUTAMATE, ROMANO CHEESE\n(COW'S MILK, CHEESE CULTURES, SALT, ENZYMES), TOMATO\nPOWDER, CHEDDAR CHEESE (MILK, CHEESE CULTURES, SALT,\nENZYMES), ONION POWDER, ARTIFICIAL COLOR (RED 40 LAKE,\nYELLOW 6 LAKE, YELLOW 6), NATURAL FLAVORS, GARLIC\nPOWDER, SOOIUM CASEINATE, LACTOSE, LACTIC ACID, CITRIC\nACID, SUGAR, SKIM MILK, WHEY PROTEIN CONCENTRATE,\nDISODIUM INOSINATE, AND DISODIUM GUANYLATE.\nCONTAINS MILK INGREDIENTS.\n\nFRITO-LAY, INC.\nPLANO, TX 75024-4099\n2015 FRITO-LAY\nNORTH AMERICA, INC.\n\n\n![Frito Lay ®](figures/1.1)\n\n\n![G F GLUTEN FREE](figures/1.2)\n\n\n![UPCA](barcodes/1.1 \"028400710176\")\n0\n28400 71017\n6\nSL-CHES-7E\nLAP\n30057483\n\nWATCH\nOUT!\n(There's a fire\nin this bag.)\n\n\n![®](figures/1.3)\n\n\nThese snacks are hot -\n\nFlamin Hote\n\nDo you dare?\n\nGet ready\nfor a sizzle of flavor\nthat will set your\nmouth on fire.\n\nDive into a red hot\nblaze of fiery crunch\nwith CHESTER'S® brand\nFlamin Hot\nflavored Corn Snacks.\n\nif you dare\n\nLook for more\nFlamin Hot\nflavor in these snacks...\n\nCHEETOS® Crunchy snacks\nFUNYUNS® Onion Flavored Rings\n\nsmartlabel\n\nScan here for more food tef grmation\nof tail 1-400-332-4477\n\n\n![f](figures/1.4)\n\n\nFind us on:\nfacebook.com/fritolay\n",
+        "fields": {
+          "ProductName": {
+            "type": "string",
+            "valueString": "CHESTER'S® brand Flamin Hot flavored Corn Snacks",
+            "spans": [
+              {
+                "offset": 2332,
+                "length": 16
+              },
+              {
+                "offset": 2349,
+                "length": 10
+              },
+              {
+                "offset": 2360,
+                "length": 20
+              }
+            ],
+            "confidence": 0.589
+          },
+          "CaloriesPerServing": {
+            "type": "number",
+            "valueNumber": 150,
+            "spans": [
+              {
+                "offset": 274,
+                "length": 3
+              }
+            ],
+            "confidence": 0.901
+          },
+          "NutritionFacts": {
+            "type": "object",
+            "valueObject": {
+              "TotalFat": {
+                "type": "string",
+                "valueString": "8g",
+                "spans": [
+                  {
+                    "offset": 354,
+                    "length": 2
+                  }
+                ],
+                "confidence": 0.974
+              },
+              "TotalCarbohydrate": {
+                "type": "string",
+                "valueString": "18g",
+                "spans": [
+                  {
+                    "offset": 645,
+                    "length": 3
+                  }
+                ],
+                "confidence": 0.977
+              },
+              "TotalSugars": {
+                "type": "string",
+                "valueString": "0g",
+                "spans": [
+                  {
+                    "offset": 773,
+                    "length": 2
+                  }
+                ],
+                "confidence": 0.973
+              },
+              "Protein": {
+                "type": "string",
+                "valueString": "2g",
+                "spans": [
+                  {
+                    "offset": 826,
+                    "length": 2
+                  }
+                ],
+                "confidence": 0.98
+              }
+            }
+          },
+          "Ingredients": {
+            "type": "string",
+            "valueString": "ENRICHED CORN MEAL (CORN MEAL, FERROUS SULFATE, NIACIN, THIAMIN MONONITRATE, RIBOFLAVIN, FOLIC ACID), VEGETABLE OIL (CORN, CANOLA, AND/OR SUNFLOWER OIL), SALT, WHEY, MALTODEXTRIN (MADE FROM CORN). BUTTERMILK, MONOSODIUM GLUTAMATE, ROMANO CHEESE (COW'S MILK, CHEESE CULTURES, SALT, ENZYMES), TOMATO POWDER, CHEDDAR CHEESE (MILK, CHEESE CULTURES, SALT, ENZYMES), ONION POWDER, ARTIFICIAL COLOR (RED 40 LAKE, YELLOW 6 LAKE, YELLOW 6), NATURAL FLAVORS, GARLIC POWDER, SOOIUM CASEINATE, LACTOSE, LACTIC ACID, CITRIC ACID, SUGAR, SKIM MILK, WHEY PROTEIN CONCENTRATE, DISODIUM INOSINATE, AND DISODIUM GUANYLATE.",
+            "spans": [],
+            "confidence": 0.754
+          }
+        }
+      }
+    ]
+  }
+}

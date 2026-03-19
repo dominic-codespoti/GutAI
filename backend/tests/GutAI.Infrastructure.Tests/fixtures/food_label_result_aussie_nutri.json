@@ -1,0 +1,524 @@
+{
+	"id": "11384b55-ec63-46b2-b2d0-8c2fbe659dc4",
+	"status": "Succeeded",
+	"result": {
+		"analyzerId": "prebuilt-documentFields",
+		"apiVersion": "2025-11-01",
+		"createdAt": "2026-03-18T13:07:56Z",
+		"stringEncoding": "codePoint",
+		"warnings": [],
+		"contents": [
+			{
+				"path": "input1",
+				"markdown": "![NUTRI GRAIN 25% OF YOUR DAILY PROTEIN ORIGINAL NUTRI-GRAIN® NEEDS PACKED WITH PROTEIN TO SUPPORT LEAN MUSCLE GROWTH AND DEVELOPMENT^ NO ARTIFICIAL COLOURS, FLAVOURS OR PRESERVATIVES CHOC MALT FLAVOUR 12.7g PROTEIN PER SERVE PROTEIN PACKED CHOC BALLS Vegan friendly](figures/1.1)\n\n\n# Fuel for active bodies\n\n\n![](figures/1.2)\n\n\nIRON & B VITAMINS\nTo help reduce tiredness\nand fatigue#\n\n\n![](figures/1.3)\n\n\nFIBRE\nSource of fibre\n\n\n![](figures/1.4)\n\n\nSUPPORTS\nHEALTHY MINDS\nwith 5 essential\nnutrientss\n\n\n## Cereal made with original Nutri-Grain® and choc flavoured balls\n\n\n<table>\n<caption>Nutrition Information (Average) Servings per package: 11 Serving size: 45g (1 1/4 metric cup)</caption>\n<tr>\n<th></th>\n<th>Quantity per serving</th>\n<th>% Daily intake A per serving</th>\n<th>Quantity per 100g</th>\n</tr>\n<tr>\n<td>Energy</td>\n<td>740 kJ</td>\n<td>9%</td>\n<td>1650 kJ</td>\n</tr>\n<tr>\n<td>Protein</td>\n<td>12.7 g</td>\n<td>25%</td>\n<td>28.3 g</td>\n</tr>\n<tr>\n<td>Fat, total</td>\n<td>1.6 g</td>\n<td>2%</td>\n<td>3.6 g</td>\n</tr>\n<tr>\n<td>- saturated</td>\n<td>0.4 g</td>\n<td>2%</td>\n<td>0.8 g</td>\n</tr>\n<tr>\n<td>Carbohydrate</td>\n<td>26.2g</td>\n<td>8%</td>\n<td>58.3 g</td>\n</tr>\n<tr>\n<td>- sugars</td>\n<td>9.4 g</td>\n<td>10%</td>\n<td>20.9 g</td>\n</tr>\n<tr>\n<td>Dietary fibre</td>\n<td>2.3 g</td>\n<td>8%</td>\n<td>5.1 g</td>\n</tr>\n<tr>\n<td>Sodium</td>\n<td>159 mg</td>\n<td>7%</td>\n<td>355 mg</td>\n</tr>\n<tr>\n<td>Riboflavin (Vit B2)<br>Niacin (Vit B3)<br>Vitamin B6</td>\n<td>0.42 mg<br>2.5 mg<br>0.4 mg</td>\n<td>% RDI*<br>25%<br>25%<br>25%</td>\n<td>0.94 mg<br>5.6 mg<br>0.9 mg</td>\n</tr>\n<tr>\n<td>Folate</td>\n<td>50 μg</td>\n<td>25%</td>\n<td>111 μg</td>\n</tr>\n<tr>\n<td>Calcium</td>\n<td>80 mg</td>\n<td>10%</td>\n<td>177 mg</td>\n</tr>\n<tr>\n<td>Iron</td>\n<td>3.0 mg</td>\n<td>25%</td>\n<td>6.7 mg</td>\n</tr>\n<tr>\n<td>Zinc</td>\n<td>1.8 mg</td>\n<td>15%</td>\n<td>4.0 mg</td>\n</tr>\n</table>\n\nA Percentage daily intakes are based on an average adult diet of 8700 kJ.\n\\* Percentage Recommended Dietary Intake (Aust/NZ)\n\n\n### Ingredients\n\nCereals (44%)(wheat flour, maize flour, oat flour [oats], whole\ngrain oat flour [oats]), wheat protein, sugar, pea protein, cocoa\n(2.5%), oat fibre (oats), maltodextrin, minerals (calcium\ncarbonate, iron, zinc oxide), molasses, salt, vegetable gum\n(acacia gum), natural flavours, barley malt extract, raising agent\n(potassium bicarbonate), natural colours (paprika, tumeric),\nvitamins (niacin, vitamin E, riboflavin, vitamin B6, folate).\n\nContains gluten, wheat.\nMay contain peanut, tree nuts.\n\n^Protein is necessary for tissue building and repair and contributes to the\nmaintenance of muscle mass as part of a healthy varied diet.\n\n\\# Iron contributes to normal energy production, calcium and vitamin B6 contribute to\nnormal energy metabolism, vitamin 82 and niacin contribute to normal energy\nrelease from food as part of a healthy varied diet.\n\nS Iron and zinc contribute to normal cognitive function. Folate, nilacin and vitamin B6\ncontribute to normal psychological function as part of a healthy varied diet.\n$ Iron, riboflavin, nilacin, vitamin B6 and folate aill contribute to the reduction of\ntiredness and fatigue as part of a healthy varied diet.\n\nMade In Australia\nfrom at least 64%\nAustrallan Ingredients\n\nmn\n\nKellogg's\n",
+				"fields": {
+					"ProductName": {
+						"type": "string",
+						"valueString": "Nutri-Grain Protein Packed Choc Balls",
+						"spans": [
+							{
+								"offset": 2,
+								"length": 11
+							},
+							{
+								"offset": 226,
+								"length": 14
+							},
+							{
+								"offset": 241,
+								"length": 10
+							}
+						],
+						"confidence": 0.019,
+						"source": "D(1,291.0000,69.0000,924.0000,69.0000,924.0000,148.0000,291.0000,148.0000);D(1,525.0000,719.0000,768.0000,719.0000,768.0000,745.0000,525.0000,745.0000);D(1,562.0000,747.0000,742.0000,747.0000,742.0000,773.0000,562.0000,773.0000)"
+					},
+					"Flavour": {
+						"type": "string",
+						"valueString": "Choc Malt",
+						"spans": [
+							{
+								"offset": 184,
+								"length": 9
+							}
+						],
+						"confidence": 0.027,
+						"source": "D(1,246.0039,650.4476,402.0032,651.5385,401.7441,688.5926,245.7447,687.5017)"
+					},
+					"ProteinPerServe": {
+						"type": "number",
+						"valueNumber": 12.7,
+						"spans": [
+							{
+								"offset": 906,
+								"length": 6
+							}
+						],
+						"confidence": 0.719,
+						"source": "D(1,559.0000,928.0000,585.0000,928.0000,585.0000,939.0000,559.0000,939.0000)"
+					},
+					"ServingSize": {
+						"type": "string",
+						"valueString": "45g (1 1/4 metric cup)",
+						"spans": [
+							{
+								"offset": 659,
+								"length": 22
+							}
+						],
+						"confidence": 0.96,
+						"source": "D(1,518.0000,855.0000,616.0000,855.0000,616.0000,869.0000,518.0000,869.0000)"
+					},
+					"ServingsPerPackage": {
+						"type": "integer",
+						"valueInteger": 11,
+						"spans": [
+							{
+								"offset": 642,
+								"length": 2
+							}
+						],
+						"confidence": 0.97,
+						"source": "D(1,560.0000,846.0000,571.0000,846.0000,571.0000,857.0000,560.0000,857.0000)"
+					},
+					"CountryOfOrigin": {
+						"type": "string",
+						"valueString": "Australia",
+						"spans": [
+							{
+								"offset": 3183,
+								"length": 9
+							}
+						],
+						"confidence": 0.849,
+						"source": "D(1,784.0000,1069.0000,820.0000,1068.0000,820.0000,1076.0000,784.0000,1077.0000)"
+					},
+					"AustralianIngredientsPercentage": {
+						"type": "number",
+						"valueNumber": 64,
+						"spans": [
+							{
+								"offset": 3207,
+								"length": 2
+							}
+						],
+						"confidence": 0.938,
+						"source": "D(1,804.0000,1078.0000,816.0000,1078.0000,816.0000,1086.0000,804.0000,1086.0000)"
+					},
+					"Ingredients": {
+						"type": "string",
+						"valueString": "Cereals (44%)(wheat flour, maize flour, oat flour [oats], whole\ngrain oat flour [oats]), wheat protein, sugar, pea protein, cocoa\n(2.5%), oat fibre (oats), maltodextrin, minerals (calcium\ncarbonate, iron, zinc oxide), molasses, salt, vegetable gum\n(acacia gum), natural flavours, barley malt extract, raising agent\n(potassium bicarbonate), natural colours (paprika, tumeric),\nvitamins (niacin, vitamin E, riboflavin, vitamin B6, folate).",
+						"spans": [
+							{
+								"offset": 2017,
+								"length": 63
+							},
+							{
+								"offset": 2081,
+								"length": 65
+							},
+							{
+								"offset": 2147,
+								"length": 57
+							},
+							{
+								"offset": 2205,
+								"length": 59
+							},
+							{
+								"offset": 2265,
+								"length": 66
+							},
+							{
+								"offset": 2332,
+								"length": 60
+							},
+							{
+								"offset": 2393,
+								"length": 61
+							}
+						],
+						"confidence": 0.78,
+						"source": "D(1,729.0000,846.0000,970.0000,846.0000,970.0000,858.0000,729.0000,858.0000);D(1,728.0000,857.0000,973.0000,857.0000,973.0000,868.0000,728.0000,868.0000);D(1,729.0000,867.0000,942.0000,867.0000,942.0000,878.0000,729.0000,878.0000);D(1,729.0000,878.0000,953.0000,878.0000,953.0000,890.0000,729.0000,890.0000);D(1,728.0000,889.0000,976.0000,889.0000,976.0000,900.0000,728.0000,900.0000);D(1,729.0000,899.0000,958.0000,899.0000,958.0000,910.0000,729.0000,910.0000);D(1,728.0000,909.0000,949.0000,909.0000,949.0000,921.0000,728.0000,921.0000)"
+					},
+					"ContainsAllergens": {
+						"type": "string",
+						"valueString": "gluten, wheat",
+						"spans": [
+							{
+								"offset": 2465,
+								"length": 13
+							}
+						],
+						"confidence": 0.903,
+						"source": "D(1,766.0000,927.0000,821.0000,927.0000,821.0000,938.0000,766.0000,938.0000)"
+					},
+					"MayContainAllergens": {
+						"type": "string",
+						"valueString": "peanut, tree nuts",
+						"spans": [
+							{
+								"offset": 2492,
+								"length": 17
+							}
+						],
+						"confidence": 0.936,
+						"source": "D(1,779.0000,938.0000,848.0000,938.0000,848.0000,949.0000,779.0000,949.0000)"
+					},
+					"NutritionInformation": {
+						"type": "object",
+						"valueObject": {
+							"EnergyPerServing": {
+								"type": "string",
+								"valueString": "740 kJ",
+								"spans": [
+									{
+										"offset": 833,
+										"length": 6
+									}
+								],
+								"confidence": 0.914,
+								"source": "D(1,556.1052,913.6866,585.4990,915.0227,584.9402,927.3155,555.5464,925.9794)"
+							},
+							"EnergyPer100g": {
+								"type": "string",
+								"valueString": "1650 kJ",
+								"spans": [
+									{
+										"offset": 861,
+										"length": 7
+									}
+								],
+								"confidence": 0.91,
+								"source": "D(1,654.1803,913.0164,687.9016,916.0820,686.7295,928.9754,653.0082,925.9098)"
+							},
+							"ProteinPer100g": {
+								"type": "string",
+								"valueString": "28.3 g",
+								"spans": [
+									{
+										"offset": 935,
+										"length": 6
+									}
+								],
+								"confidence": 0.927,
+								"source": "D(1,660.0000,928.0000,687.0000,928.0000,687.0000,939.0000,660.0000,939.0000)"
+							},
+							"FatTotalPerServing": {
+								"type": "string",
+								"valueString": "1.6 g",
+								"spans": [
+									{
+										"offset": 982,
+										"length": 5
+									}
+								],
+								"confidence": 0.955,
+								"source": "D(1,564.0471,939.3882,585.8412,941.0647,584.9529,952.6118,563.1588,950.9353)"
+							},
+							"FatTotalPer100g": {
+								"type": "string",
+								"valueString": "3.6 g",
+								"spans": [
+									{
+										"offset": 1009,
+										"length": 5
+									}
+								],
+								"confidence": 0.938,
+								"source": "D(1,665.0000,941.0000,687.0000,941.0000,687.0000,952.0000,665.0000,952.0000)"
+							},
+							"FatSaturatedPerServing": {
+								"type": "string",
+								"valueString": "0.4 g",
+								"spans": [
+									{
+										"offset": 1056,
+										"length": 5
+									}
+								],
+								"confidence": 0.939,
+								"source": "D(1,563.0280,953.2153,585.3567,954.0127,584.9898,964.2854,562.6611,963.4879)"
+							},
+							"FatSaturatedPer100g": {
+								"type": "string",
+								"valueString": "0.8 g",
+								"spans": [
+									{
+										"offset": 1083,
+										"length": 5
+									}
+								],
+								"confidence": 0.956,
+								"source": "D(1,664.0354,952.4690,687.6637,954.0442,686.9646,964.5310,663.3363,962.9558)"
+							},
+							"CarbohydratePerServing": {
+								"type": "string",
+								"valueString": "26.2g",
+								"spans": [
+									{
+										"offset": 1131,
+										"length": 5
+									}
+								],
+								"confidence": 0.977,
+								"source": "D(1,557.0000,965.0000,585.0000,966.0000,585.0000,976.0000,557.0000,975.0000)"
+							},
+							"CarbohydratePer100g": {
+								"type": "string",
+								"valueString": "58.3 g",
+								"spans": [
+									{
+										"offset": 1158,
+										"length": 6
+									}
+								],
+								"confidence": 0.939,
+								"source": "D(1,660.0221,964.5801,687.5249,966.0276,686.9779,976.4199,659.4751,974.9724)"
+							},
+							"SugarsPerServing": {
+								"type": "string",
+								"valueString": "9.4 g",
+								"spans": [
+									{
+										"offset": 1203,
+										"length": 5
+									}
+								],
+								"confidence": 0.962,
+								"source": "D(1,563.0000,979.0000,585.0000,979.0000,585.0000,989.0000,563.0000,989.0000)"
+							},
+							"SugarsPer100g": {
+								"type": "string",
+								"valueString": "20.9 g",
+								"spans": [
+									{
+										"offset": 1231,
+										"length": 6
+									}
+								],
+								"confidence": 0.958,
+								"source": "D(1,660.0000,978.0000,687.3123,978.7587,686.9946,990.1943,659.6823,989.4356)"
+							},
+							"DietaryFibrePerServing": {
+								"type": "string",
+								"valueString": "2.3 g",
+								"spans": [
+									{
+										"offset": 1281,
+										"length": 5
+									}
+								],
+								"confidence": 0.938,
+								"source": "D(1,562.0255,990.2342,585.3663,991.0122,584.9911,1002.2664,561.6504,1001.4883)"
+							},
+							"DietaryFibrePer100g": {
+								"type": "string",
+								"valueString": "5.1 g",
+								"spans": [
+									{
+										"offset": 1308,
+										"length": 5
+									}
+								],
+								"confidence": 0.976,
+								"source": "D(1,666.0000,991.0000,687.0000,991.0000,687.0000,1002.0000,666.0000,1002.0000)"
+							},
+							"SodiumPerServing": {
+								"type": "string",
+								"valueString": "159 mg",
+								"spans": [
+									{
+										"offset": 1350,
+										"length": 6
+									}
+								],
+								"confidence": 0.937,
+								"source": "D(1,553.0189,1002.4340,585.3496,1003.5117,584.9645,1015.0655,552.6337,1013.9878)"
+							},
+							"SodiumPer100g": {
+								"type": "string",
+								"valueString": "355 mg",
+								"spans": [
+									{
+										"offset": 1378,
+										"length": 6
+									}
+								],
+								"confidence": 0.917,
+								"source": "D(1,654.0200,1002.4007,687.3496,1003.5117,686.9634,1015.0988,653.6337,1013.9878)"
+							},
+							"RiboflavinPerServing": {
+								"type": "string",
+								"valueString": "0.42 mg",
+								"spans": [
+									{
+										"offset": 1467,
+										"length": 7
+									}
+								],
+								"confidence": 0.963,
+								"source": "D(1,548.0000,1037.0000,585.0000,1037.0000,585.0000,1048.0000,548.0000,1048.0000)"
+							},
+							"RiboflavinPer100g": {
+								"type": "string",
+								"valueString": "0.94 mg",
+								"spans": [
+									{
+										"offset": 1541,
+										"length": 7
+									}
+								],
+								"confidence": 0.976,
+								"source": "D(1,651.0399,1035.2020,687.5486,1037.0274,686.9601,1048.7980,650.4514,1046.9726)"
+							},
+							"NiacinPerServing": {
+								"type": "string",
+								"valueString": "2.5 mg",
+								"spans": [
+									{
+										"offset": 1478,
+										"length": 6
+									}
+								],
+								"confidence": 0.978,
+								"source": "D(1,554.0000,1050.0000,585.0000,1050.0000,585.0000,1060.0000,554.0000,1060.0000)"
+							},
+							"NiacinPer100g": {
+								"type": "string",
+								"valueString": "5.6 mg",
+								"spans": [
+									{
+										"offset": 1552,
+										"length": 6
+									}
+								],
+								"confidence": 0.963,
+								"source": "D(1,656.0000,1051.0000,687.0000,1051.0000,687.0000,1060.0000,656.0000,1060.0000)"
+							},
+							"VitaminB6PerServing": {
+								"type": "string",
+								"valueString": "0.4 mg",
+								"spans": [
+									{
+										"offset": 1488,
+										"length": 6
+									}
+								],
+								"confidence": 0.972,
+								"source": "D(1,555.0561,1061.4306,585.3389,1062.5121,584.9618,1073.0701,554.6790,1071.9885)"
+							},
+							"VitaminB6Per100g": {
+								"type": "string",
+								"valueString": "0.9 mg",
+								"spans": [
+									{
+										"offset": 1562,
+										"length": 6
+									}
+								],
+								"confidence": 0.962,
+								"source": "D(1,656.0038,1061.8930,687.3210,1063.0115,686.9605,1073.1057,655.6433,1071.9873)"
+							},
+							"FolatePerServing": {
+								"type": "string",
+								"valueString": "50 μg",
+								"spans": [
+									{
+										"offset": 1605,
+										"length": 5
+									}
+								],
+								"confidence": 0.707,
+								"source": "D(1,559.0000,1075.0000,585.0000,1075.0000,585.0000,1086.0000,559.0000,1086.0000)"
+							},
+							"FolatePer100g": {
+								"type": "string",
+								"valueString": "111 μg",
+								"spans": [
+									{
+										"offset": 1633,
+										"length": 6
+									}
+								],
+								"confidence": 0.979,
+								"source": "D(1,658.1173,1072.9054,688.0593,1076.1135,686.8827,1087.0946,656.9407,1083.8865)"
+							},
+							"CalciumPerServing": {
+								"type": "string",
+								"valueString": "80 mg",
+								"spans": [
+									{
+										"offset": 1677,
+										"length": 5
+									}
+								],
+								"confidence": 0.978,
+								"source": "D(1,557.0069,1086.8336,585.4159,1088.0173,584.9931,1098.1664,556.5841,1096.9827)"
+							},
+							"CalciumPer100g": {
+								"type": "string",
+								"valueString": "177 mg",
+								"spans": [
+									{
+										"offset": 1705,
+										"length": 6
+									}
+								],
+								"confidence": 0.981,
+								"source": "D(1,655.0022,1086.9334,687.2997,1088.0100,686.9645,1098.0655,654.6670,1096.9889)"
+							},
+							"IronPerServing": {
+								"type": "string",
+								"valueString": "3.0 mg",
+								"spans": [
+									{
+										"offset": 1746,
+										"length": 6
+									}
+								],
+								"confidence": 0.975,
+								"source": "D(1,554.0000,1100.0000,585.0000,1100.0000,585.0000,1110.0000,554.0000,1110.0000)"
+							},
+							"IronPer100g": {
+								"type": "string",
+								"valueString": "6.7 mg",
+								"spans": [
+									{
+										"offset": 1775,
+										"length": 6
+									}
+								],
+								"confidence": 0.975,
+								"source": "D(1,657.0443,1098.8479,687.3840,1100.0148,686.9749,1110.6529,656.6352,1109.4860)"
+							},
+							"ZincPerServing": {
+								"type": "string",
+								"valueString": "1.8 mg",
+								"spans": [
+									{
+										"offset": 1816,
+										"length": 6
+									}
+								],
+								"confidence": 0.975,
+								"source": "D(1,555.1000,1110.7000,585.7647,1113.0588,584.9765,1123.3059,554.3118,1120.9471)"
+							},
+							"ZincPer100g": {
+								"type": "string",
+								"valueString": "4.0 mg",
+								"spans": [
+									{
+										"offset": 1845,
+										"length": 6
+									}
+								],
+								"confidence": 0.975,
+								"source": "D(1,657.1000,1110.7000,687.7647,1113.0588,686.9765,1123.3059,656.3118,1120.9471)"
+							}
+						}
+					}
+				}
+			}
+		]
+	}
+}

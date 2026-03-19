@@ -282,7 +282,7 @@ if $DO_DEPLOY; then
       usdaApiKey="$USDA_KEY" \
       ghcrUsername="$GH_USER" \
       ghcrPassword="$GH_TOKEN" \
-      azureOpenAIEndpoint="https://ai-misc-proj-resource.openai.azure.com/" \
+      azureOpenAIEndpoint="https://ai-misc-proj-resource.services.ai.azure.com/" \
       azureOpenAIDeploymentName="gpt-4o-mini"
 
   API_URL=$(az deployment group show \

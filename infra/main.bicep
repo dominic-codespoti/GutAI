@@ -95,6 +95,9 @@ var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${stor
 @description('Azure OpenAI (AI Foundry) endpoint URL')
 param azureOpenAIEndpoint string = ''
 
+@description('Azure Content Understanding endpoint URL')
+param azureContentUnderstandingEndpoint string = ''
+
 @description('Azure OpenAI deployment name')
 param azureOpenAIDeploymentName string = 'gpt-4o-mini'
 
@@ -158,6 +161,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'Jwt__ExpiryMinutes', value: '60' }
             { name: 'ExternalApis__UsdaApiKey', secretRef: 'usda-api-key' }
             { name: 'AzureOpenAI__Endpoint', value: azureOpenAIEndpoint }
+            { name: 'AzureOpenAI__ContentUnderstandingEndpoint', value: azureContentUnderstandingEndpoint }
             { name: 'AzureOpenAI__DeploymentName', value: azureOpenAIDeploymentName }
           ]
           probes: [

@@ -1,6 +1,7 @@
 #pragma warning disable OPENAI001
 
 using Azure.AI.OpenAI;
+using Azure.AI.ContentUnderstanding;
 using Azure.Data.Tables;
 using Azure.Identity;
 using GutAI.Application.Common.Interfaces;
@@ -94,6 +95,7 @@ public static class DependencyInjection
 
         // Azure OpenAI Assistants for chat
         var aiEndpoint = configuration["AzureOpenAI:Endpoint"];
+        var cuEndpoint = configuration["AzureOpenAI:ContentUnderstandingEndpoint"] ?? configuration["AzureOpenAI:Endpoint"];
         var aiDeployment = configuration["AzureOpenAI:DeploymentName"] ?? "gpt-5-nano";
 
         if (!string.IsNullOrEmpty(aiEndpoint))
@@ -102,6 +104,12 @@ public static class DependencyInjection
             var assistantClient = azureClient.GetAssistantClient();
             services.AddSingleton(assistantClient);
             services.AddSingleton(azureClient);
+
+            if (!string.IsNullOrEmpty(cuEndpoint))
+            {
+                var cuClient = new ContentUnderstandingClient(new Uri(cuEndpoint), new DefaultAzureCredential());
+                services.AddSingleton(cuClient);
+            }
 
             // Lazy assistant creation — created on first use, not at startup
             var assistantIdTask = new Lazy<Task<string>>(async () =>
