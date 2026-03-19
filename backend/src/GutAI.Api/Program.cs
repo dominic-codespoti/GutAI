@@ -12,6 +12,9 @@ using Scalar.AspNetCore;
 using System.Text.Json;
 using Microsoft.AspNetCore.ResponseCompression;
 using ModelContextProtocol.AspNetCore;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.ApplicationInsights.Extensibility;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -85,6 +88,19 @@ builder.Services.AddApplicationInsightsTelemetry();
 var app = builder.Build();
 
 // Middleware pipeline
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/health")
+    {
+        var activity = System.Diagnostics.Activity.Current;
+        if (activity != null)
+        {
+            activity.ActivityTraceFlags &= ~System.Diagnostics.ActivityTraceFlags.Recorded;
+            activity.IsAllDataRequested = false;
+        }
+    }
+    await next();
+});
 app.UseResponseCompression();
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors();

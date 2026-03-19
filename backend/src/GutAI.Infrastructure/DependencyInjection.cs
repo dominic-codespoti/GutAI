@@ -98,18 +98,23 @@ public static class DependencyInjection
         var cuEndpoint = configuration["AzureOpenAI:ContentUnderstandingEndpoint"] ?? configuration["AzureOpenAI:Endpoint"];
         var aiDeployment = configuration["AzureOpenAI:DeploymentName"] ?? "gpt-5-nano";
 
+        services.AddSingleton(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var endpoint = config["AzureOpenAI:ContentUnderstandingEndpoint"] ?? config["AzureOpenAI:Endpoint"];
+            if (string.IsNullOrEmpty(endpoint))
+            {
+                throw new InvalidOperationException("AzureOpenAI:ContentUnderstandingEndpoint or AzureOpenAI:Endpoint must be configured.");
+            }
+            return new ContentUnderstandingClient(new Uri(endpoint), new DefaultAzureCredential());
+        });
+
         if (!string.IsNullOrEmpty(aiEndpoint))
         {
             var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), new DefaultAzureCredential());
             var assistantClient = azureClient.GetAssistantClient();
             services.AddSingleton(assistantClient);
             services.AddSingleton(azureClient);
-
-            if (!string.IsNullOrEmpty(cuEndpoint))
-            {
-                var cuClient = new ContentUnderstandingClient(new Uri(cuEndpoint), new DefaultAzureCredential());
-                services.AddSingleton(cuClient);
-            }
 
             // Lazy assistant creation — created on first use, not at startup
             var assistantIdTask = new Lazy<Task<string>>(async () =>

@@ -585,7 +585,7 @@ public static class FoodEndpoints
         await store.DeleteFavoriteFoodAsync(userId, id);
         return Results.NoContent();
     }
-    static FoodProductDto MapCustomToFoodProductDto(CustomFood customFood, IEnumerable<FoodAdditive> additives = null)
+    static FoodProductDto MapCustomToFoodProductDto(CustomFood customFood, IEnumerable<FoodAdditive>? additives = null)
     {
         var ratio = customFood.ServingSize > 0 ? (100m / customFood.ServingSize) : 1m;
         var f = new FoodProduct
