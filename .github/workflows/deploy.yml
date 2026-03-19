@@ -108,7 +108,8 @@ jobs:
               usdaApiKey='${{ secrets.USDA_API_KEY }}' \
               ghcrUsername='${{ steps.owner.outputs.owner }}' \
               ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}' \
-              azureOpenAIEndpoint='https://ai-misc-proj-resource.services.ai.azure.com/' \
+              azureOpenAIEndpoint='https://ai-misc-proj-resource.openai.azure.com/' \
+              azureContentUnderstandingEndpoint='https://ai-misc-proj-resource.services.ai.azure.com/' \
               azureOpenAIDeploymentName='gpt-4o-mini'
 
           API_URL=$(az deployment group show \
