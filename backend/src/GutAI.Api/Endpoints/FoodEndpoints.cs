@@ -30,7 +30,8 @@ public static class FoodEndpoints
         group.MapPost("/custom", CreateCustomFood);
         group.MapPut("/custom/{id:guid}", UpdateCustomFood);
         group.MapDelete("/custom/{id:guid}", DeleteCustomFood);
-        group.MapPost("/parse-label", ParseNutritionLabel).DisableAntiforgery();
+        group.MapPost("/parse-label", ParseNutritionLabel)
+            .DisableAntiforgery();
 
         group.MapPost("/", CreateFoodProduct).AddEndpointFilter<AdminKeyFilter>();
         group.MapPut("/{id:guid}", UpdateFoodProduct).AddEndpointFilter<AdminKeyFilter>();
@@ -216,7 +217,7 @@ public static class FoodEndpoints
     static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store)
     {
         var product = await store.GetFoodProductAsync(id);
-        if (product != null) 
+        if (product != null)
         {
             var additives = await store.GetAllFoodAdditivesAsync();
             return MapToDto(product, additives);
@@ -295,7 +296,7 @@ public static class FoodEndpoints
         });
     }
 
-    
+
 
     static async Task<IResult> GetFoodProduct(Guid id, ClaimsPrincipal user, ITableStore store)
     {
@@ -682,6 +683,7 @@ public static class FoodEndpoints
         return Results.NoContent();
     }
 
+    [Microsoft.AspNetCore.Mvc.DisableRequestSizeLimit]
     static async Task<IResult> ParseNutritionLabel(Microsoft.AspNetCore.Http.HttpRequest request, ClaimsPrincipal principal, ITableStore store, IContentUnderstandingService aiService)
     {
         var uid = Guid.Parse(principal.FindFirstValue("sub")!);
