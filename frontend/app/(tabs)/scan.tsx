@@ -11,6 +11,7 @@ import {
   Platform,
   Keyboard,
   KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -111,6 +112,25 @@ export default function ScanScreen() {
     queryFn: () => foodApi.lookupBarcode(barcode).then((r) => r.data),
     enabled: barcode.length >= 8,
   });
+
+  useEffect(() => {
+    if (barcodeQuery.isError) {
+      Alert.alert(
+        "Product Not Found",
+        "We couldn't find a product for this barcode. Would you like to create a custom item?",
+        [
+          { text: "Cancel", style: "cancel", onPress: () => setBarcode("") },
+          {
+            text: "Create Custom Item",
+            onPress: () => {
+              setBarcode("");
+              router.push("/food/create");
+            },
+          },
+        ],
+      );
+    }
+  }, [barcodeQuery.isError]);
 
   const searchResults = useQuery({
     queryKey: ["food-search", debouncedSearch],
@@ -396,11 +416,17 @@ export default function ScanScreen() {
               </View>
               {barcodeQuery.isLoading && <SearchResultSkeleton count={1} />}
               {barcodeQuery.isError && (
-                <Text
-                  style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
-                >
-                  Product not found for this barcode
-                </Text>
+                <View style={{ marginTop: 8 }}>
+                  <Text
+                    style={{
+                      color: colors.danger,
+                      fontSize: 13,
+                      marginBottom: 8,
+                    }}
+                  >
+                    Product not found for this barcode
+                  </Text>
+                </View>
               )}
               {barcodeQuery.data && (
                 <TouchableOpacity

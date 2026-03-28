@@ -1,8 +1,38 @@
-# AGENTS.md — GutAI Guardrail Rules
+# AGENTS.md — GutAI Master Guide & Guardrails
 
-This document codifies the rules that prevent recurring bug categories discovered during audit passes. Every contributor (human or AI) MUST follow these rules.
+You are an expert full-stack AI developer working on **GutAI**.
+Your goal is to write clean, correct, and bug-free code. Think step-by-step and DO NOT guess implementations.
+The tech stack is **React Native (Expo)** on the frontend and **.NET 8 Minimal APIs** (with Azure Table Storage) on the backend.
+
+## 📚 Knowledge Base Routing (Progressive Disclosure)
+
+DO NOT guess architectural details, domain logic, or test arrangements. If your task involves any of the following topics, you **MUST** read the corresponding documentation file using your file reading tool BEFORE writing code or making system changes:
+
+- **System Architecture & Setup**: `docs/ARCHITECTURE.md`
+- **End-to-End Testing (Playwright)**: `docs/PLAYWRIGHT_E2E_ANALYSIS.md`
+- **Deployment**: `docs/DEPLOYMENT.md`
+- **Scoring & Algorithms**: `docs/SCORING_ANALYSIS_REPORT.md`
+- **FODMAP Domain Logic**: `docs/FODMAP_SERVICE_ANALYSIS.md`
+- **Glycemic Index Logic**: `docs/GLYCEMIC_INDEX_SERVICE_ANALYSIS.md`
+- **GutRisk Integrations**: `docs/GUTRISK_SERVICE_ANALYSIS.md`
+- **Meals & UX**: `docs/MEALS_UX_ANALYSIS.md` and `docs/MEAL_LOGGING_BUG_ANALYSIS.md`
+- **Database & Data Files**: `docs/DATA_FILES_AUDIT_REPORT.md`
+- **Food Database Integrations**: `docs/global-branded-food-data-analysis.md`
+- **Historical Bugs & Analytics**: `docs/BUG_AUDIT_REPORT.md`
+
+## 📝 Documentation Maintenance
+
+As GutAI evolves, it is your responsibility to keep the system knowledge base current. If you implement a new architectural pattern, add a new service, change deployment steps, or discover a new pattern/bug:
+
+- You **MUST** update the relevant file in the `docs/` folder.
+- If you add a completely new category of documentation, you **MUST** update this `AGENTS.md` file to add the new doc to the **Knowledge Base Routing** list above.
+- If you establish a new universal rule to prevent a category of bugs, you **MUST** add it to the **Strict Project Guardrails** section below.
 
 ---
+
+## 🚨 Strict Project Guardrails
+
+This document codifies the rules that prevent recurring bug categories discovered during audit passes. Every contributor (human or AI) MUST follow these rules.
 
 ## 1. Entity ↔ Table Storage Roundtrip
 
@@ -60,7 +90,9 @@ Never use `Lazy<Task<T>>` for faulting resources. A faulted `Lazy` permanently c
 
 ---
 
-## CI Pipeline (`make ci`)
+## ⚙️ Development Workflow & Commands
+
+### CI Pipeline (`make ci`)
 
 The full CI pipeline runs these checks in order:
 
@@ -74,7 +106,7 @@ All must pass before merging.
 
 ---
 
-## Test Organization
+### Test Organization
 
 | Project                      | What it tests                                                    | Framework                                                 |
 | ---------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------- |
@@ -84,7 +116,7 @@ All must pass before merging.
 
 ---
 
-## Adding a New Endpoint Checklist
+### Adding a New Endpoint Checklist
 
 1. Add the endpoint in `XxxEndpoints.cs`
 2. If it returns data: add/update DTO in the appropriate DTOs file OR document the anonymous object shape
@@ -98,8 +130,3 @@ All must pass before merging.
 1. Add field to entity in `Domain/Entities/`
 2. Add field to `UpsertXxx` in `TableStorageStore.cs`
 3. Add field to `MapToXxx` in `TableStorageStore.cs`
-4. Add field to DTO in the appropriate DTOs file (if exposed via API)
-5. Add field to TypeScript interface in `frontend/src/types/index.ts`
-6. Update `INTERFACE_TO_DTO` in `scripts/check-contracts.js` if new DTO
-7. Add roundtrip test in `GutAI.IntegrationTests/TableStorageCrudTests.cs`
-8. Run `make ci`

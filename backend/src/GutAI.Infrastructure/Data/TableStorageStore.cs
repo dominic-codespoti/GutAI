@@ -1048,6 +1048,9 @@ public class TableStorageStore : ITableStore
 
     public async Task UpsertCustomFoodAsync(CustomFood food, CancellationToken ct = default)
     {
+        // Update timestamp before saving
+        food.UpdatedAt = DateTime.UtcNow;
+        
         var e = new TableEntity(food.UserId.ToString(), $"CUSTOMFOOD|{food.Id}")
         {
             { "Name", food.Name },
