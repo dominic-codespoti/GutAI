@@ -7,6 +7,7 @@ using Azure.Identity;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
 
 namespace GutAI.Infrastructure.Services;
@@ -16,21 +17,24 @@ public class ContentUnderstandingService : IContentUnderstandingService
     private readonly ContentUnderstandingClient _client;
     private readonly AzureOpenAIClient? _openAiClient;
     private readonly IConfiguration? _config;
+    private readonly ILogger<ContentUnderstandingService>? _logger;
 
     public ContentUnderstandingService(
         ContentUnderstandingClient client,
         AzureOpenAIClient? openAiClient = null,
-        IConfiguration? config = null)
+        IConfiguration? config = null,
+        ILogger<ContentUnderstandingService>? logger = null)
     {
         _client = client;
         _openAiClient = openAiClient;
         _config = config;
+        _logger = logger;
     }
 
     public async Task<CustomFoodDto?> ParseNutritionLabelAsync(Stream imageStream, string contentType, CancellationToken ct)
     {
-        // Copy stream so we can re-read it if the primary operation fails
-        using var memoryStream = new MemoryStream();
+        // Use await using for proper async disposal
+        await using var memoryStream = new MemoryStream();
         await imageStream.CopyToAsync(memoryStream, ct);
 
         try
@@ -39,14 +43,16 @@ public class ContentUnderstandingService : IContentUnderstandingService
             var primaryResult = await ParseWithAnalyzerAsync(memoryStream, contentType, "prebuilt-documentFields", ct);
 
             // Validate the result: if we got at least some nutritional data, consider it successful
-            if (primaryResult != null && (primaryResult.Calories > 0 || primaryResult.ProteinG > 0 || primaryResult.FatG > 0 || primaryResult.CarbG > 0))
+            if (primaryResult != null && HasNutritionalData(primaryResult))
             {
                 return primaryResult;
             }
+            
+            _logger?.LogWarning("Azure Content Understanding returned insufficient data, attempting LLM fallback");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Primary extraction failed or threw an error
+            _logger?.LogWarning(ex, "Azure Content Understanding failed, attempting LLM fallback");
         }
 
         // Fallback to LLM Vision model
@@ -54,20 +60,37 @@ public class ContentUnderstandingService : IContentUnderstandingService
         {
             try
             {
+                // Create new stream for LLM to avoid potential position issues
+                await using var llmStream = new MemoryStream();
                 memoryStream.Position = 0;
-                var fallbackResult = await ParseWithLlmVisionAsync(memoryStream, contentType, ct);
-                if (fallbackResult != null)
+                await memoryStream.CopyToAsync(llmStream, ct);
+                llmStream.Position = 0;
+                
+                var fallbackResult = await ParseWithLlmVisionAsync(llmStream, contentType, ct);
+                if (fallbackResult != null && HasNutritionalData(fallbackResult))
                 {
                     return fallbackResult;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Fallback also failed
+                _logger?.LogError(ex, "LLM Vision fallback also failed");
             }
         }
 
         return null;
+    }
+    
+    /// <summary>
+    /// Validates that the extracted data contains at least some nutritional information
+    /// </summary>
+    private static bool HasNutritionalData(CustomFoodDto dto)
+    {
+        return dto.Calories > 0 || 
+               dto.ProteinG > 0 || 
+               dto.FatG > 0 || 
+               dto.CarbG > 0 ||
+               dto.SodiumMg > 0;
     }
 
     private async Task<CustomFoodDto?> ParseWithLlmVisionAsync(Stream memoryStream, string contentType, CancellationToken ct)
@@ -81,6 +104,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
             new SystemChatMessage("""
                 You are a nutrition extraction AI. Analyze the image of a food label or product and extract the nutritional information and ingredients.
                 If energy is explicitly stated in kJ without Calories, convert it to calories (kcal) by dividing by 4.184.
+                Extract all available nutrients including vitamins and minerals when present.
                 """),
             new UserChatMessage(
                 ChatMessageContentPart.CreateTextPart("Extract the nutritional label data."),
@@ -106,6 +130,20 @@ public class ContentUnderstandingService : IContentUnderstandingService
                     "FiberG": { "type": ["number", "null"] },
                     "SugarG": { "type": ["number", "null"] },
                     "SodiumMg": { "type": ["number", "null"] },
+                    "SaturatedFatG": { "type": ["number", "null"] },
+                    "TransFatG": { "type": ["number", "null"] },
+                    "CholesterolMg": { "type": ["number", "null"] },
+                    "PotassiumMg": { "type": ["number", "null"] },
+                    "CalciumMg": { "type": ["number", "null"] },
+                    "IronMg": { "type": ["number", "null"] },
+                    "MagnesiumMg": { "type": ["number", "null"] },
+                    "ZincMg": { "type": ["number", "null"] },
+                    "VitaminA_IU": { "type": ["number", "null"] },
+                    "VitaminC_Mg": { "type": ["number", "null"] },
+                    "VitaminD_Mcg": { "type": ["number", "null"] },
+                    "VitaminB12_Mcg": { "type": ["number", "null"] },
+                    "Omega3G": { "type": ["number", "null"] },
+                    "CaffeineMg": { "type": ["number", "null"] },
                     "Ingredients": { "type": ["string", "null"] }
                   },
                   "required": ["Name", "ServingSize", "ServingSizeUnit", "Calories", "ProteinG", "CarbG", "FatG"],
@@ -174,20 +212,10 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 var serveSizeStr = ExtractString(serveSizeField.Value);
                 if (!string.IsNullOrWhiteSpace(serveSizeStr))
                 {
-                    var numStr = new string(serveSizeStr.Where(c => char.IsDigit(c) || c == '.').ToArray());
-                    if (decimal.TryParse(numStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var amt))
-                    {
-                        dto.ServingSize = amt;
-                        var unitStr = new string(serveSizeStr.Where(c => char.IsLetter(c)).ToArray());
-                        if (!string.IsNullOrWhiteSpace(unitStr))
-                        {
-                            dto.ServingSizeUnit = unitStr;
-                        }
-                    }
-                    else
-                    {
-                        dto.ServingSizeUnit = serveSizeStr;
-                    }
+                    // Use unit normalization service for better parsing
+                    var (amount, rawUnit, normalizedUnit) = UnitNormalizationService.ParseServingSize(serveSizeStr);
+                    dto.ServingSize = amount;
+                    dto.ServingSizeUnit = normalizedUnit;
                 }
             }
 
@@ -201,6 +229,11 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 dto.BrandName = ExtractString(barcodeField.Value);
             }
 
+            if (TryGetField(documentContent.Fields, out var barcodeValueField, "Barcode", "Upc", "Ean", "BarcodeValue"))
+            {
+                dto.Barcode = ExtractString(barcodeValueField.Value);
+            }
+
             var fieldsJson = JsonSerializer.Serialize(documentContent.Fields);
             var flatFields = new Dictionary<string, string>();
             using (var doc = JsonDocument.Parse(fieldsJson))
@@ -208,6 +241,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 FlattenJson(doc.RootElement, "", flatFields);
             }
 
+            // Basic macronutrients
             dto.Calories = dto.Calories > 0 ? dto.Calories : ExtractNutrientFromFlat(flatFields, "calories", "energy");
             dto.ProteinG = dto.ProteinG > 0 ? dto.ProteinG : ExtractNutrientFromFlat(flatFields, "protein");
             dto.FatG = dto.FatG > 0 ? dto.FatG : ExtractNutrientFromFlat(flatFields, "totalfat", "fat");
@@ -215,11 +249,43 @@ public class ContentUnderstandingService : IContentUnderstandingService
             dto.SugarG = dto.SugarG > 0 ? dto.SugarG : ExtractNutrientFromFlat(flatFields, "sugar", "sugars");
             dto.FiberG = dto.FiberG > 0 ? dto.FiberG : ExtractNutrientFromFlat(flatFields, "dietaryfibre", "fibre", "fiber");
             dto.SodiumMg = dto.SodiumMg > 0 ? dto.SodiumMg : ExtractNutrientFromFlat(flatFields, "sodium");
+            
+            // Extended macronutrients
+            dto.SaturatedFatG = ExtractNutrientFromFlat(flatFields, "saturatedfat", "satfat");
+            dto.TransFatG = ExtractNutrientFromFlat(flatFields, "transfat", "transfatty");
+            dto.CholesterolMg = ExtractNutrientFromFlat(flatFields, "cholesterol");
+            dto.PotassiumMg = ExtractNutrientFromFlat(flatFields, "potassium", "k");
+            
+            // Minerals
+            dto.CalciumMg = ExtractNutrientFromFlat(flatFields, "calcium", "ca");
+            dto.IronMg = ExtractNutrientFromFlat(flatFields, "iron", "fe");
+            dto.MagnesiumMg = ExtractNutrientFromFlat(flatFields, "magnesium", "mg");
+            dto.ZincMg = ExtractNutrientFromFlat(flatFields, "zinc", "zn");
+            
+            // Vitamins
+            dto.VitaminA_IU = ExtractNutrientFromFlat(flatFields, "vitamina", "vitamin a", "retinol");
+            dto.VitaminC_Mg = ExtractNutrientFromFlat(flatFields, "vitaminc", "vitamin c", "ascorbic");
+            dto.VitaminD_Mcg = ExtractNutrientFromFlat(flatFields, "vitamind", "vitamin d", "cholecalciferol");
+            dto.VitaminB12_Mcg = ExtractNutrientFromFlat(flatFields, "vitaminb12", "vitamin b12", "cobalamin");
+            
+            // Special nutrients
+            dto.Omega3G = ExtractNutrientFromFlat(flatFields, "omega3", "omega-3", "ala", "dha", "epa");
+            dto.CaffeineMg = ExtractNutrientFromFlat(flatFields, "caffeine");
 
             if (string.IsNullOrWhiteSpace(dto.Ingredients))
             {
                 var ingMatch = flatFields.FirstOrDefault(k => k.Key.Contains("ingredient", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(k.Value));
                 if (ingMatch.Key != null) dto.Ingredients = ingMatch.Value;
+            }
+            
+            // Set extraction confidence if available
+            if (TryGetField(documentContent.Fields, out var confidenceField, "Confidence", "OverallConfidence"))
+            {
+                var confStr = ExtractString(confidenceField.Value);
+                if (decimal.TryParse(confStr, out var conf))
+                {
+                    dto.ExtractionConfidence = conf;
+                }
             }
         }
         catch (Exception)
@@ -372,15 +438,12 @@ public static class Utilities
     {
         if (string.IsNullOrWhiteSpace(input)) return 0m;
 
-        // Handle negative numbers or less than gracefully (e.g. "<1g" or "< 1g" translates accurately enough as 0m or 1m, let's just let regex take the numbers)
-        // Ensure CultureInfo.InvariantCulture for bulletproof parsing of decimals to prevent culture specific crashing
         var culture = System.Globalization.CultureInfo.InvariantCulture;
         var style = System.Globalization.NumberStyles.Any;
 
         // Handle variations like "1200kJ 287Cal" or "1200 kJ 287 kcal"
         if (input.Contains("cal", StringComparison.OrdinalIgnoreCase))
         {
-            // Regex to find a number immediately preceding "cal" or "kcal" with optional space
             var match = System.Text.RegularExpressions.Regex.Match(input, @"(\d+(?:\.\d+)?)\s*(?:k)?cal", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (match.Success && decimal.TryParse(match.Groups[1].Value, style, culture, out var num))
             {
@@ -395,6 +458,26 @@ public static class Utilities
             if (kjMatch.Success && decimal.TryParse(kjMatch.Groups[1].Value, style, culture, out var kjNum))
             {
                 return Math.Round(kjNum / 4.184m, 1);
+            }
+        }
+        
+        // Handle IU (International Units) for vitamins
+        if (input.Contains("iu", StringComparison.OrdinalIgnoreCase))
+        {
+            var iuMatch = System.Text.RegularExpressions.Regex.Match(input, @"(\d+(?:\.\d+)?)\s*iu", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (iuMatch.Success && decimal.TryParse(iuMatch.Groups[1].Value, style, culture, out var iuNum))
+            {
+                return iuNum;
+            }
+        }
+        
+        // Handle mcg/µg (micrograms)
+        if (input.Contains("mcg", StringComparison.OrdinalIgnoreCase) || input.Contains("µg"))
+        {
+            var mcgMatch = System.Text.RegularExpressions.Regex.Match(input, @"(\d+(?:\.\d+)?)\s*(?:mcg|µg)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (mcgMatch.Success && decimal.TryParse(mcgMatch.Groups[1].Value, style, culture, out var mcgNum))
+            {
+                return mcgNum;
             }
         }
 

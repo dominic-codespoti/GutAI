@@ -7,9 +7,7 @@ using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Jpeg;
+using GutAI.Api.Imaging;
 
 public static class FoodEndpoints
 {
@@ -711,27 +709,20 @@ public static class FoodEndpoints
             logger.LogInformation("Processing nutrition label image {FileName} of original size {Size} bytes for user {UserId}.", file.FileName, file.Length, uid);
 
             using var originalStream = file.OpenReadStream();
-            using var image = await Image.LoadAsync(originalStream);
+            using var preprocessed = await NutritionLabelImagePreprocessor.PreprocessAsync(originalStream);
 
-            // Resize proportionally if the width or height exceeds 1500px
-            const int MaxDimension = 1500;
-            if (image.Width > MaxDimension || image.Height > MaxDimension)
-            {
-                var resizeOptions = new ResizeOptions
-                {
-                    Mode = ResizeMode.Max,
-                    Size = new Size(MaxDimension, MaxDimension)
-                };
-                image.Mutate(x => x.Resize(resizeOptions));
-            }
+            var reduction = file.Length > 0
+                ? 100.0 * (1.0 - (double)preprocessed.OutputBytes / file.Length)
+                : 0.0;
 
-            using var compressedStream = new MemoryStream();
-            await image.SaveAsJpegAsync(compressedStream, new JpegEncoder { Quality = 80 });
-            compressedStream.Position = 0;
+            logger.LogInformation(
+                "Successfully preprocessed image from {OriginalSize} bytes to {ProcessedSize} bytes ({Reduction:F1}% reduction) in {ElapsedMs} ms.",
+                file.Length,
+                preprocessed.OutputBytes,
+                reduction,
+                preprocessed.ElapsedMilliseconds);
 
-            logger.LogInformation("Successfully resized image to {CompressedSize} bytes.", compressedStream.Length);
-
-            var result = await aiService.ParseNutritionLabelAsync(compressedStream, "image/jpeg");
+            var result = await aiService.ParseNutritionLabelAsync(preprocessed.Stream, preprocessed.ContentType);
 
             if (result == null)
             {
