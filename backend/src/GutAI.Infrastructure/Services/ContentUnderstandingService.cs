@@ -40,19 +40,33 @@ public class ContentUnderstandingService : IContentUnderstandingService
         try
         {
             memoryStream.Position = 0;
+            _logger?.LogInformation("Nutrition label parse starting with analyzer {AnalyzerId}.", "prebuilt-documentFields");
             var primaryResult = await ParseWithAnalyzerAsync(memoryStream, contentType, "prebuilt-documentFields", ct);
 
-            // Validate the result: if we got at least some nutritional data, consider it successful
-            if (primaryResult != null && HasNutritionalData(primaryResult))
+            // Accept partial extractions as long as we got any meaningful label data.
+            if (primaryResult != null && HasMeaningfulExtraction(primaryResult))
             {
                 return primaryResult;
             }
             
-            _logger?.LogWarning("Azure Content Understanding returned insufficient data, attempting LLM fallback");
+            if (primaryResult != null)
+            {
+                _logger?.LogWarning(
+                    "Analyzer returned incomplete nutrition data (cal={Calories}, protein={ProteinG}, carbs={CarbG}, fat={FatG}, sodium={SodiumMg}); attempting LLM fallback.",
+                    primaryResult.Calories,
+                    primaryResult.ProteinG,
+                    primaryResult.CarbG,
+                    primaryResult.FatG,
+                    primaryResult.SodiumMg);
+            }
+            else
+            {
+                _logger?.LogWarning("Analyzer returned no nutrition data; attempting LLM fallback.");
+            }
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Azure Content Understanding failed, attempting LLM fallback");
+            _logger?.LogWarning(ex, "Analyzer failed; attempting LLM fallback. {Details}", DescribeException(ex));
         }
 
         // Fallback to LLM Vision model
@@ -60,6 +74,9 @@ public class ContentUnderstandingService : IContentUnderstandingService
         {
             try
             {
+                var modelName = _config["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
+                _logger?.LogInformation("LLM fallback starting with deployment {DeploymentName}.", modelName);
+
                 // Create new stream for LLM to avoid potential position issues
                 await using var llmStream = new MemoryStream();
                 memoryStream.Position = 0;
@@ -67,35 +84,99 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 llmStream.Position = 0;
                 
                 var fallbackResult = await ParseWithLlmVisionAsync(llmStream, contentType, ct);
-                if (fallbackResult != null && HasNutritionalData(fallbackResult))
+                if (fallbackResult != null && HasMeaningfulExtraction(fallbackResult))
                 {
+                    _logger?.LogInformation("LLM fallback succeeded.");
                     return fallbackResult;
                 }
+
+                _logger?.LogWarning("LLM fallback returned no usable nutrition data.");
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "LLM Vision fallback also failed");
+                _logger?.LogError(ex, "LLM fallback failed. {Details}", DescribeException(ex));
             }
+        }
+        else
+        {
+            _logger?.LogWarning("LLM fallback unavailable because Azure OpenAI is not configured.");
         }
 
         return null;
     }
     
     /// <summary>
-    /// Validates that the extracted data contains at least some nutritional information
+    /// Validates that the extracted data contains any meaningful label information
     /// </summary>
-    private static bool HasNutritionalData(CustomFoodDto dto)
+    internal static bool HasMeaningfulExtraction(CustomFoodDto dto)
     {
-        return dto.Calories > 0 || 
-               dto.ProteinG > 0 || 
-               dto.FatG > 0 || 
-               dto.CarbG > 0 ||
-               dto.SodiumMg > 0;
+        return !string.IsNullOrWhiteSpace(dto.Name) ||
+               !string.IsNullOrWhiteSpace(dto.BrandName) ||
+               dto.ServingSize > 0 ||
+               !string.IsNullOrWhiteSpace(dto.ServingSizeUnit) && dto.ServingSize > 0 ||
+               !string.IsNullOrWhiteSpace(dto.Ingredients) ||
+               !string.IsNullOrWhiteSpace(dto.Barcode) ||
+               HasMeaningfulNumericValue(dto.Calories) ||
+               HasMeaningfulNumericValue(dto.ProteinG) ||
+               HasMeaningfulNumericValue(dto.FatG) ||
+               HasMeaningfulNumericValue(dto.CarbG) ||
+               HasMeaningfulNullableValue(dto.FiberG) ||
+               HasMeaningfulNullableValue(dto.SugarG) ||
+               HasMeaningfulNullableValue(dto.SodiumMg) ||
+               HasMeaningfulNullableValue(dto.SaturatedFatG) ||
+               HasMeaningfulNullableValue(dto.TransFatG) ||
+               HasMeaningfulNullableValue(dto.CholesterolMg) ||
+               HasMeaningfulNullableValue(dto.PotassiumMg) ||
+               HasMeaningfulNullableValue(dto.CalciumMg) ||
+               HasMeaningfulNullableValue(dto.IronMg) ||
+               HasMeaningfulNullableValue(dto.MagnesiumMg) ||
+               HasMeaningfulNullableValue(dto.ZincMg) ||
+               HasMeaningfulNullableValue(dto.VitaminA_IU) ||
+               HasMeaningfulNullableValue(dto.VitaminC_Mg) ||
+               HasMeaningfulNullableValue(dto.VitaminD_Mcg) ||
+               HasMeaningfulNullableValue(dto.VitaminB12_Mcg) ||
+               HasMeaningfulNullableValue(dto.Omega3G) ||
+               HasMeaningfulNullableValue(dto.CaffeineMg) ||
+               dto.ExtractionConfidence.HasValue;
     }
+
+    private static bool HasMeaningfulNumericValue(decimal value) => value > 0m;
+
+    private static bool HasMeaningfulNullableValue(decimal? value) => value.HasValue;
+
+    private static bool IsRecognizedExtractionProperty(string name)
+        => name.Equals("Name", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("BrandName", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("ServingSize", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("ServingSizeUnit", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("Calories", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("ProteinG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("CarbG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("FatG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("FiberG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("SugarG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("SodiumMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("SaturatedFatG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("TransFatG", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("CholesterolMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("PotassiumMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("CalciumMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("IronMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("MagnesiumMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("ZincMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("VitaminA_IU", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("VitaminC_Mg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("VitaminD_Mcg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("VitaminB12_Mcg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("Omega3G", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("CaffeineMg", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("Ingredients", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("Barcode", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("ExtractionConfidence", StringComparison.OrdinalIgnoreCase);
 
     private async Task<CustomFoodDto?> ParseWithLlmVisionAsync(Stream memoryStream, string contentType, CancellationToken ct)
     {
-        var modelName = _config?["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
+        var modelName = ResolveVisionDeploymentName(_config);
         var chatClient = _openAiClient!.GetChatClient(modelName);
         var imageBytes = BinaryData.FromStream(memoryStream);
 
@@ -113,59 +194,267 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
         var options = new ChatCompletionOptions
         {
-            ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
-                "nutrition_label_extraction",
-                BinaryData.FromString("""
-                {
-                  "type": "object",
-                  "properties": {
-                    "Name": { "type": "string" },
-                    "BrandName": { "type": ["string", "null"] },
-                    "ServingSize": { "type": "number" },
-                    "ServingSizeUnit": { "type": "string" },
-                    "Calories": { "type": "number" },
-                    "ProteinG": { "type": "number" },
-                    "CarbG": { "type": "number" },
-                    "FatG": { "type": "number" },
-                    "FiberG": { "type": ["number", "null"] },
-                    "SugarG": { "type": ["number", "null"] },
-                    "SodiumMg": { "type": ["number", "null"] },
-                    "SaturatedFatG": { "type": ["number", "null"] },
-                    "TransFatG": { "type": ["number", "null"] },
-                    "CholesterolMg": { "type": ["number", "null"] },
-                    "PotassiumMg": { "type": ["number", "null"] },
-                    "CalciumMg": { "type": ["number", "null"] },
-                    "IronMg": { "type": ["number", "null"] },
-                    "MagnesiumMg": { "type": ["number", "null"] },
-                    "ZincMg": { "type": ["number", "null"] },
-                    "VitaminA_IU": { "type": ["number", "null"] },
-                    "VitaminC_Mg": { "type": ["number", "null"] },
-                    "VitaminD_Mcg": { "type": ["number", "null"] },
-                    "VitaminB12_Mcg": { "type": ["number", "null"] },
-                    "Omega3G": { "type": ["number", "null"] },
-                    "CaffeineMg": { "type": ["number", "null"] },
-                    "Ingredients": { "type": ["string", "null"] }
-                  },
-                  "required": ["Name", "ServingSize", "ServingSizeUnit", "Calories", "ProteinG", "CarbG", "FatG"],
-                  "additionalProperties": false
-                }
-                """),
-                jsonSchemaIsStrict: true
-            )
+            ResponseFormat = CreateFallbackResponseFormat()
         };
 
         var response = await chatClient.CompleteChatAsync(messages, options, ct);
-        var jsonResponse = response.Value.Content?.FirstOrDefault()?.Text;
+        var textResponse = string.Concat(response.Value.Content?.Select(part => part.Text) ?? Enumerable.Empty<string>());
 
-        if (string.IsNullOrWhiteSpace(jsonResponse)) return null;
-
-        var dto = JsonSerializer.Deserialize<CustomFoodDto>(jsonResponse, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
-
-        return dto;
+        return TryParseFallbackResponse(textResponse, out var dto) ? dto : null;
     }
+
+    private static ChatResponseFormat CreateFallbackResponseFormat()
+        => ChatResponseFormat.CreateJsonSchemaFormat(
+            jsonSchemaFormatName: "custom_food_extraction",
+            jsonSchema: BinaryData.FromString("""
+            {
+              "type": "object",
+              "properties": {
+                "Name": { "type": "string" },
+                "BrandName": { "type": ["string", "null"] },
+                "ServingSize": { "type": "number" },
+                "ServingSizeUnit": { "type": "string" },
+                "Calories": { "type": "number" },
+                "ProteinG": { "type": "number" },
+                "CarbG": { "type": "number" },
+                "FatG": { "type": "number" },
+                "FiberG": { "type": ["number", "null"] },
+                "SugarG": { "type": ["number", "null"] },
+                "SodiumMg": { "type": ["number", "null"] },
+                "SaturatedFatG": { "type": ["number", "null"] },
+                "TransFatG": { "type": ["number", "null"] },
+                "CholesterolMg": { "type": ["number", "null"] },
+                "PotassiumMg": { "type": ["number", "null"] },
+                "CalciumMg": { "type": ["number", "null"] },
+                "IronMg": { "type": ["number", "null"] },
+                "MagnesiumMg": { "type": ["number", "null"] },
+                "ZincMg": { "type": ["number", "null"] },
+                "VitaminA_IU": { "type": ["number", "null"] },
+                "VitaminC_Mg": { "type": ["number", "null"] },
+                "VitaminD_Mcg": { "type": ["number", "null"] },
+                "VitaminB12_Mcg": { "type": ["number", "null"] },
+                "Omega3G": { "type": ["number", "null"] },
+                "CaffeineMg": { "type": ["number", "null"] },
+                "Ingredients": { "type": ["string", "null"] },
+                "Barcode": { "type": ["string", "null"] },
+                "ExtractionConfidence": { "type": ["number", "null"] }
+              },
+              "required": ["Name", "ServingSize", "ServingSizeUnit", "Calories", "ProteinG", "CarbG", "FatG"],
+              "additionalProperties": false
+            }
+            """),
+            jsonSchemaIsStrict: false);
+
+    internal static string ResolveVisionDeploymentName(IConfiguration? config)
+        => config?["AzureOpenAI:VisionDeploymentName"] ?? "gpt-4o";
+
+    internal static bool TryParseFallbackResponse(string? responseText, out CustomFoodDto? dto)
+    {
+        dto = null;
+
+        var jsonText = ExtractJsonObject(responseText);
+        if (string.IsNullOrWhiteSpace(jsonText))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonText);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.EnumerateObject().Any())
+            {
+                return false;
+            }
+
+            dto = JsonSerializer.Deserialize<CustomFoodDto>(jsonText, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (dto != null)
+            {
+                dto.ExtractionConfidence ??= 0m;
+            }
+
+            return dto != null;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    internal static string? ExtractJsonObject(string? responseText)
+    {
+        if (string.IsNullOrWhiteSpace(responseText)) return null;
+
+        var trimmed = responseText.Trim();
+        if (trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            trimmed = StripMarkdownJsonFence(trimmed);
+        }
+
+        if (TryParseWholeJson(trimmed, out var json))
+        {
+            return json;
+        }
+
+        var balancedJson = ExtractBalancedJsonObject(trimmed);
+        if (balancedJson != null)
+        {
+            return balancedJson;
+        }
+
+        if (TryUnwrapJsonString(trimmed, out var unwrapped) && unwrapped != null)
+        {
+            return ExtractJsonObject(unwrapped);
+        }
+
+        return null;
+    }
+
+    private static string StripMarkdownJsonFence(string text)
+    {
+        var trimmed = text.Trim();
+        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        trimmed = trimmed[3..].TrimStart();
+        if (trimmed.StartsWith("json", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[4..].TrimStart();
+        }
+
+        return trimmed.EndsWith("```", StringComparison.Ordinal)
+            ? trimmed[..^3].Trim()
+            : trimmed;
+    }
+
+    private static bool TryParseWholeJson(string text, out string? json)
+    {
+        json = null;
+
+        if (!text.StartsWith('{') || !text.EndsWith('}'))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                json = text;
+                return true;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryUnwrapJsonString(string text, out string? unwrapped)
+    {
+        unwrapped = null;
+
+        try
+        {
+            if (text.Length > 1 && text.StartsWith('"') && text.EndsWith('"'))
+            {
+                unwrapped = JsonSerializer.Deserialize<string>(text);
+                return !string.IsNullOrWhiteSpace(unwrapped);
+            }
+        }
+        catch (JsonException)
+        {
+            // ignored
+        }
+
+        return false;
+    }
+
+    private static string? ExtractBalancedJsonObject(string text)
+    {
+        var start = text.IndexOf('{');
+        if (start < 0)
+        {
+            return null;
+        }
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+
+        for (var i = start; i < text.Length; i++)
+        {
+            var ch = text[i];
+
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (ch == '\\')
+            {
+                escaped = inString;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+            {
+                continue;
+            }
+
+            if (ch == '{')
+            {
+                depth++;
+            }
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return text.Substring(start, i - start + 1);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    internal static string DescribeException(Exception ex)
+    {
+        var parts = new List<string> { ex.GetType().Name };
+
+        var statusValue = ex.GetType().GetProperty("Status")?.GetValue(ex);
+        if (statusValue is not null)
+        {
+            parts.Add($"status={statusValue}");
+        }
+
+        var message = ex.Message.ReplaceLineEndings(" ").Trim();
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            parts.Add($"message={Truncate(message, 350)}");
+        }
+
+        return string.Join("; ", parts);
+    }
+
+    private static string Truncate(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength] + "…";
 
     private async Task<CustomFoodDto?> ParseWithAnalyzerAsync(Stream imageStream, string contentType, string analyzerId, CancellationToken ct)
     {
@@ -189,26 +478,35 @@ public class ContentUnderstandingService : IContentUnderstandingService
     internal static CustomFoodDto MapDocumentContentToDto(DocumentContent documentContent)
     {
         var dto = new CustomFoodDto();
+        decimal? maxExtractionConfidence = null;
+        var hasAnyMappedField = false;
 
         try
         {
             if (TryGetField(documentContent.Fields, out var nameField, "ProductName", "ProductTitle", "Name", "Title"))
             {
+                hasAnyMappedField = true;
                 dto.Name = ExtractString(nameField.Value) ?? "";
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(nameField));
             }
 
             if (TryGetField(documentContent.Fields, out var caloriesField, "CaloriesPerServing", "Calories", "Energy"))
             {
+                hasAnyMappedField = true;
                 dto.Calories = Utilities.ExtractNumber(ExtractString(caloriesField.Value) ?? "");
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(caloriesField));
             }
 
             if (TryGetField(documentContent.Fields, out var ingredientsField, "Ingredients", "IngredientsList"))
             {
+                hasAnyMappedField = true;
                 dto.Ingredients = ExtractString(ingredientsField.Value) ?? "";
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(ingredientsField));
             }
 
             if (TryGetField(documentContent.Fields, out var serveSizeField, "ServeSize", "ServingSize", "PortionSize", "Portion"))
             {
+                hasAnyMappedField = true;
                 var serveSizeStr = ExtractString(serveSizeField.Value);
                 if (!string.IsNullOrWhiteSpace(serveSizeStr))
                 {
@@ -217,21 +515,29 @@ public class ContentUnderstandingService : IContentUnderstandingService
                     dto.ServingSize = amount;
                     dto.ServingSizeUnit = normalizedUnit;
                 }
+
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(serveSizeField));
             }
 
             if (TryGetField(documentContent.Fields, out var manufacturerField, "ManufacturerName", "Manufacturer", "Brand", "BrandName", "MadeBy"))
             {
+                hasAnyMappedField = true;
                 dto.BrandName = ExtractString(manufacturerField.Value);
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(manufacturerField));
             }
             else if (TryGetField(documentContent.Fields, out var barcodeField, "Barcode", "Upc", "Ean"))
             {
                 // Fallback to barcode for BrandName if missing
+                hasAnyMappedField = true;
                 dto.BrandName = ExtractString(barcodeField.Value);
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(barcodeField));
             }
 
             if (TryGetField(documentContent.Fields, out var barcodeValueField, "Barcode", "Upc", "Ean", "BarcodeValue"))
             {
+                hasAnyMappedField = true;
                 dto.Barcode = ExtractString(barcodeValueField.Value);
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(barcodeValueField));
             }
 
             var fieldsJson = JsonSerializer.Serialize(documentContent.Fields);
@@ -242,40 +548,78 @@ public class ContentUnderstandingService : IContentUnderstandingService
             }
 
             // Basic macronutrients
-            dto.Calories = dto.Calories > 0 ? dto.Calories : ExtractNutrientFromFlat(flatFields, "calories", "energy");
-            dto.ProteinG = dto.ProteinG > 0 ? dto.ProteinG : ExtractNutrientFromFlat(flatFields, "protein");
-            dto.FatG = dto.FatG > 0 ? dto.FatG : ExtractNutrientFromFlat(flatFields, "totalfat", "fat");
-            dto.CarbG = dto.CarbG > 0 ? dto.CarbG : ExtractNutrientFromFlat(flatFields, "carbohydrate", "carb");
-            dto.SugarG = dto.SugarG > 0 ? dto.SugarG : ExtractNutrientFromFlat(flatFields, "sugar", "sugars");
-            dto.FiberG = dto.FiberG > 0 ? dto.FiberG : ExtractNutrientFromFlat(flatFields, "dietaryfibre", "fibre", "fiber");
-            dto.SodiumMg = dto.SodiumMg > 0 ? dto.SodiumMg : ExtractNutrientFromFlat(flatFields, "sodium");
+            if (TryExtractNutrientFromFlat(flatFields, out var calories, "calories", "energy"))
+            {
+                hasAnyMappedField = true;
+                dto.Calories = calories;
+            }
+
+            if (TryExtractNutrientFromFlat(flatFields, out var protein, "protein"))
+            {
+                hasAnyMappedField = true;
+                dto.ProteinG = protein;
+            }
+
+            if (TryExtractNutrientFromFlat(flatFields, out var fat, "totalfat", "fat"))
+            {
+                hasAnyMappedField = true;
+                dto.FatG = fat;
+            }
+
+            if (TryExtractNutrientFromFlat(flatFields, out var carbs, "carbohydrate", "carb"))
+            {
+                hasAnyMappedField = true;
+                dto.CarbG = carbs;
+            }
+
+            if (TryExtractNutrientFromFlat(flatFields, out var sugar, "sugar", "sugars"))
+            {
+                hasAnyMappedField = true;
+                dto.SugarG = sugar;
+            }
+
+            if (TryExtractNutrientFromFlat(flatFields, out var fiber, "dietaryfibre", "fibre", "fiber"))
+            {
+                hasAnyMappedField = true;
+                dto.FiberG = fiber;
+            }
+
+            if (TryExtractNutrientFromFlat(flatFields, out var sodium, "sodium"))
+            {
+                hasAnyMappedField = true;
+                dto.SodiumMg = sodium;
+            }
             
             // Extended macronutrients
-            dto.SaturatedFatG = ExtractNutrientFromFlat(flatFields, "saturatedfat", "satfat");
-            dto.TransFatG = ExtractNutrientFromFlat(flatFields, "transfat", "transfatty");
-            dto.CholesterolMg = ExtractNutrientFromFlat(flatFields, "cholesterol");
-            dto.PotassiumMg = ExtractNutrientFromFlat(flatFields, "potassium", "k");
+            if (TryExtractNutrientFromFlat(flatFields, out var saturatedFat, "saturatedfat", "satfat")) { hasAnyMappedField = true; dto.SaturatedFatG = saturatedFat; }
+            if (TryExtractNutrientFromFlat(flatFields, out var transFat, "transfat", "transfatty")) { hasAnyMappedField = true; dto.TransFatG = transFat; }
+            if (TryExtractNutrientFromFlat(flatFields, out var cholesterol, "cholesterol")) { hasAnyMappedField = true; dto.CholesterolMg = cholesterol; }
+            if (TryExtractNutrientFromFlat(flatFields, out var potassium, "potassium", "k")) { hasAnyMappedField = true; dto.PotassiumMg = potassium; }
             
             // Minerals
-            dto.CalciumMg = ExtractNutrientFromFlat(flatFields, "calcium", "ca");
-            dto.IronMg = ExtractNutrientFromFlat(flatFields, "iron", "fe");
-            dto.MagnesiumMg = ExtractNutrientFromFlat(flatFields, "magnesium", "mg");
-            dto.ZincMg = ExtractNutrientFromFlat(flatFields, "zinc", "zn");
+            if (TryExtractNutrientFromFlat(flatFields, out var calcium, "calcium", "ca")) { hasAnyMappedField = true; dto.CalciumMg = calcium; }
+            if (TryExtractNutrientFromFlat(flatFields, out var iron, "iron", "fe")) { hasAnyMappedField = true; dto.IronMg = iron; }
+            if (TryExtractNutrientFromFlat(flatFields, out var magnesium, "magnesium", "mg")) { hasAnyMappedField = true; dto.MagnesiumMg = magnesium; }
+            if (TryExtractNutrientFromFlat(flatFields, out var zinc, "zinc", "zn")) { hasAnyMappedField = true; dto.ZincMg = zinc; }
             
             // Vitamins
-            dto.VitaminA_IU = ExtractNutrientFromFlat(flatFields, "vitamina", "vitamin a", "retinol");
-            dto.VitaminC_Mg = ExtractNutrientFromFlat(flatFields, "vitaminc", "vitamin c", "ascorbic");
-            dto.VitaminD_Mcg = ExtractNutrientFromFlat(flatFields, "vitamind", "vitamin d", "cholecalciferol");
-            dto.VitaminB12_Mcg = ExtractNutrientFromFlat(flatFields, "vitaminb12", "vitamin b12", "cobalamin");
+            if (TryExtractNutrientFromFlat(flatFields, out var vitaminA, "vitamina", "vitamin a", "retinol")) { hasAnyMappedField = true; dto.VitaminA_IU = vitaminA; }
+            if (TryExtractNutrientFromFlat(flatFields, out var vitaminC, "vitaminc", "vitamin c", "ascorbic")) { hasAnyMappedField = true; dto.VitaminC_Mg = vitaminC; }
+            if (TryExtractNutrientFromFlat(flatFields, out var vitaminD, "vitamind", "vitamin d", "cholecalciferol")) { hasAnyMappedField = true; dto.VitaminD_Mcg = vitaminD; }
+            if (TryExtractNutrientFromFlat(flatFields, out var vitaminB12, "vitaminb12", "vitamin b12", "cobalamin")) { hasAnyMappedField = true; dto.VitaminB12_Mcg = vitaminB12; }
             
             // Special nutrients
-            dto.Omega3G = ExtractNutrientFromFlat(flatFields, "omega3", "omega-3", "ala", "dha", "epa");
-            dto.CaffeineMg = ExtractNutrientFromFlat(flatFields, "caffeine");
+            if (TryExtractNutrientFromFlat(flatFields, out var omega3, "omega3", "omega-3", "ala", "dha", "epa")) { hasAnyMappedField = true; dto.Omega3G = omega3; }
+            if (TryExtractNutrientFromFlat(flatFields, out var caffeine, "caffeine")) { hasAnyMappedField = true; dto.CaffeineMg = caffeine; }
 
             if (string.IsNullOrWhiteSpace(dto.Ingredients))
             {
                 var ingMatch = flatFields.FirstOrDefault(k => k.Key.Contains("ingredient", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(k.Value));
-                if (ingMatch.Key != null) dto.Ingredients = ingMatch.Value;
+                if (ingMatch.Key != null)
+                {
+                    hasAnyMappedField = true;
+                    dto.Ingredients = ingMatch.Value;
+                }
             }
             
             // Set extraction confidence if available
@@ -286,7 +630,17 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 {
                     dto.ExtractionConfidence = conf;
                 }
+
+                maxExtractionConfidence = MaxConfidence(maxExtractionConfidence, GetConfidence(confidenceField));
+                hasAnyMappedField = true;
             }
+
+            if (hasAnyMappedField && dto.ExtractionConfidence is null && maxExtractionConfidence is null)
+            {
+                dto.ExtractionConfidence = 0m;
+            }
+
+            dto.ExtractionConfidence ??= maxExtractionConfidence;
         }
         catch (Exception)
         {
@@ -296,8 +650,9 @@ public class ContentUnderstandingService : IContentUnderstandingService
         return dto;
     }
 
-    private static decimal ExtractNutrientFromFlat(Dictionary<string, string> flatFields, params string[] keywords)
+    private static bool TryExtractNutrientFromFlat(Dictionary<string, string> flatFields, out decimal value, params string[] keywords)
     {
+        value = 0m;
         var matches = flatFields
             .Where(kvp => keywords.Any(k => kvp.Key.Contains(k, StringComparison.OrdinalIgnoreCase)) &&
                           (kvp.Key.EndsWith(".Value", StringComparison.OrdinalIgnoreCase) ||
@@ -306,18 +661,24 @@ public class ContentUnderstandingService : IContentUnderstandingService
                            kvp.Key.EndsWith(".valueNumber", StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
-        if (matches.Count == 0) return 0m;
+        if (matches.Count == 0) return false;
 
-        decimal FindFirstValidMatch(IEnumerable<KeyValuePair<string, string>> candidates)
+        bool TryFindFirstValidMatch(IEnumerable<KeyValuePair<string, string>> candidates, out decimal matched)
         {
             // Prefer keys that are explicitly at a top level or clearly defined
             var ordered = candidates.OrderBy(x => x.Key.Length);
             foreach (var match in ordered)
             {
                 var val = Utilities.ExtractNumber(match.Value);
-                if (val > 0) return val;
+                if (!string.IsNullOrWhiteSpace(match.Value))
+                {
+                    matched = val;
+                    return true;
+                }
             }
-            return 0m;
+
+            matched = 0m;
+            return false;
         }
 
         // 1. Try "per serve" explicitly
@@ -328,8 +689,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
         if (serveMatches.Any())
         {
-            var val = FindFirstValidMatch(serveMatches);
-            if (val > 0) return val;
+            if (TryFindFirstValidMatch(serveMatches, out value)) return true;
         }
 
         // 2. Try matches that don't explicitly say 100g/100ml
@@ -340,13 +700,36 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
         if (non100gMatches.Any())
         {
-            var val = FindFirstValidMatch(non100gMatches);
-            if (val > 0) return val;
+            if (TryFindFirstValidMatch(non100gMatches, out value)) return true;
         }
 
         // 3. Fallback to any valid match
-        return FindFirstValidMatch(matches);
+        return TryFindFirstValidMatch(matches, out value);
     }
+
+    private static decimal? GetConfidence(ContentField field)
+    {
+        var confidenceProperty = field.GetType().GetProperty("Confidence");
+        if (confidenceProperty?.GetValue(field) is null)
+        {
+            return null;
+        }
+
+        var value = confidenceProperty.GetValue(field);
+        return value switch
+        {
+            decimal d => d,
+            double db => (decimal)db,
+            float f => (decimal)f,
+            int i => i,
+            long l => l,
+            _ when decimal.TryParse(value.ToString(), out var parsed) => parsed,
+            _ => null
+        };
+    }
+
+    private static decimal? MaxConfidence(decimal? current, decimal? candidate)
+        => candidate is null ? current : current is null ? candidate : Math.Max(current.Value, candidate.Value);
 
     private static void FlattenJson(JsonElement element, string prefix, Dictionary<string, string> dict)
     {

@@ -83,7 +83,7 @@ export function BottomSheet({
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <KeyboardAvoidingView
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, { justifyContent: "flex-end" }]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
         pointerEvents="box-none"
@@ -105,33 +105,30 @@ export function BottomSheet({
         </Animated.View>
 
         {/* Sheet */}
-        <Animated.View
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            transform: [{ translateY: translateY.current }],
-            backgroundColor: colors.card,
-            borderTopLeftRadius: radius.xl,
-            borderTopRightRadius: radius.xl,
-            padding: spacing.xxl,
-            maxHeight: maxHeight as any,
-          }}
-        >
+        <Animated.View style={{ transform: [{ translateY: translateY.current }] }}>
           <View
             style={{
-              width: 36,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: colors.borderLight,
-              alignSelf: "center",
-              marginBottom: spacing.lg,
+              backgroundColor: colors.card,
+              borderTopLeftRadius: radius.xl,
+              borderTopRightRadius: radius.xl,
+              padding: spacing.xxl,
+              maxHeight: maxHeight as any,
             }}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          />
-          {children}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: colors.borderLight,
+                alignSelf: "center",
+                marginBottom: spacing.lg,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            />
+            {children}
+          </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </View>

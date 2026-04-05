@@ -3,6 +3,8 @@ using Azure.AI.ContentUnderstanding;
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
 using GutAI.Infrastructure.Services;
+using Azure;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace GutAI.Infrastructure.Tests;
@@ -40,6 +42,18 @@ public class ContentUnderstandingServiceExtendedTests
         
         // Assert
         result.Should().Be(expected);
+    }
+
+    [Fact]
+    public void DescribeException_IncludesStatusAndMessage_WhenAvailable()
+    {
+        var ex = new RequestFailedException(400, "Bad Request: payload rejected");
+
+        var details = ContentUnderstandingService.DescribeException(ex);
+
+        details.Should().Contain("RequestFailedException");
+        details.Should().Contain("status=400");
+        details.Should().Contain("payload rejected");
     }
 
     #endregion
@@ -218,6 +232,66 @@ public class ContentUnderstandingServiceExtendedTests
         dto.VitaminD_Mcg.Should().Be(5);
     }
 
+    [Fact]
+    public void ExtractJsonObject_WithFencedJson_ReturnsInnerObject()
+    {
+        var input = "```json\n{\"Name\":\"Test\",\"Calories\":100,\"ProteinG\":5,\"CarbG\":10,\"FatG\":1}\n```";
+
+        var result = ContentUnderstandingService.ExtractJsonObject(input);
+
+        result.Should().Be("{\"Name\":\"Test\",\"Calories\":100,\"ProteinG\":5,\"CarbG\":10,\"FatG\":1}");
+    }
+
+    [Fact]
+    public void ExtractJsonObject_WithSurroundingTextAndNestedBraces_ReturnsBalancedObject()
+    {
+        var input = "Here you go: ```json\n{\"Name\":\"Test\",\"Ingredients\":\"{water, salt}\",\"Calories\":100}\n``` thanks";
+
+        var result = ContentUnderstandingService.ExtractJsonObject(input);
+
+        result.Should().Be("{\"Name\":\"Test\",\"Ingredients\":\"{water, salt}\",\"Calories\":100}");
+    }
+
+    [Fact]
+    public void TryParseFallbackResponse_WithEscapedJsonString_DeserializesDto()
+    {
+        var input = "\"{\\\"Name\\\":\\\"Test\\\",\\\"Calories\\\":100,\\\"ProteinG\\\":5,\\\"CarbG\\\":10,\\\"FatG\\\":1}\"";
+
+        var parsed = ContentUnderstandingService.TryParseFallbackResponse(input, out var dto);
+
+        parsed.Should().BeTrue();
+        dto.Should().NotBeNull();
+        dto!.Name.Should().Be("Test");
+        dto.Calories.Should().Be(100);
+    }
+
+    [Fact]
+    public void TryParseFallbackResponse_WithPlainJson_DeserializesDto()
+    {
+        var input = "{\"Name\":\"Test\",\"Calories\":100,\"ProteinG\":5,\"CarbG\":10,\"FatG\":1}";
+
+        var parsed = ContentUnderstandingService.TryParseFallbackResponse(input, out var dto);
+
+        parsed.Should().BeTrue();
+        dto.Should().NotBeNull();
+        dto!.Name.Should().Be("Test");
+        dto.Calories.Should().Be(100);
+    }
+
+    [Fact]
+    public void ResolveVisionDeploymentName_UsesDedicatedVisionConfig_WhenPresent()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AzureOpenAI:VisionDeploymentName"] = "gpt-4o-mini"
+            })
+            .Build();
+
+        var result = ContentUnderstandingService.ResolveVisionDeploymentName(config);
+
+        result.Should().Be("gpt-4o-mini");
+    }
+
     #endregion
 }
-
