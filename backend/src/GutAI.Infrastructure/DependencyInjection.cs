@@ -20,6 +20,26 @@ namespace GutAI.Infrastructure;
 
 public static class DependencyInjection
 {
+    private static DefaultAzureCredential CreateDefaultAzureCredential(IConfiguration configuration)
+    {
+        var options = new DefaultAzureCredentialOptions();
+
+        if (string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase))
+        {
+            // In local/dev containers we mount the host Azure profile. Excluding shared/IDE
+            // caches makes the active Azure CLI login the source of truth instead of stale
+            // cached tokens from a different tenant.
+#pragma warning disable CS0618
+            options.ExcludeSharedTokenCacheCredential = true;
+#pragma warning restore CS0618
+            options.ExcludeVisualStudioCredential = true;
+            options.ExcludeVisualStudioCodeCredential = true;
+            options.ExcludeInteractiveBrowserCredential = true;
+        }
+
+        return new DefaultAzureCredential(options);
+    }
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Azure Table Storage
@@ -106,12 +126,12 @@ public static class DependencyInjection
             {
                 throw new InvalidOperationException("AzureOpenAI:ContentUnderstandingEndpoint or AzureOpenAI:Endpoint must be configured.");
             }
-            return new ContentUnderstandingClient(new Uri(endpoint), new DefaultAzureCredential());
+            return new ContentUnderstandingClient(new Uri(endpoint), CreateDefaultAzureCredential(config));
         });
 
         if (!string.IsNullOrEmpty(aiEndpoint))
         {
-            var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), new DefaultAzureCredential());
+            var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), CreateDefaultAzureCredential(configuration));
             var assistantClient = azureClient.GetAssistantClient();
             services.AddSingleton(assistantClient);
             services.AddSingleton(azureClient);

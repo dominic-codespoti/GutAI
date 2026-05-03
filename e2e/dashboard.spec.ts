@@ -77,11 +77,11 @@ test.describe("Dashboard (Home Tab)", () => {
   });
 
   test("quick actions section exists in DOM", async ({ authedPage: page }) => {
-    // Quick action buttons (Food Lookup, Log Symptom, Log Meal) are
+    // Quick action buttons (Add Food, Log Symptom, Log Meal) are
     // rendered as animated cards that may be position:absolute/hidden
     // Verify they exist in the DOM even if not 'visible' per Playwright
     await page.waitForTimeout(2000);
-    const count = await page.getByText("Food Lookup").count();
+    const count = await page.getByText("Add Food").count();
     expect(count).toBeGreaterThan(0);
     const count2 = await page.getByText("Log Meal").count();
     expect(count2).toBeGreaterThan(0);

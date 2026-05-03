@@ -17,7 +17,7 @@ import { mapEditItemToRequest } from "../../src/utils/mealMappers";
 import {
   shiftDate,
   formatDateLabel,
-  redateLoggedAt,
+  buildLoggedAt,
 } from "../../src/utils/date";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { toast } from "../../src/stores/toast";
@@ -37,6 +37,8 @@ export function EditMealSheet() {
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
   const [editMealType, setEditMealType] = useState("Lunch");
   const [editMealDate, setEditMealDate] = useState("");
+  const [editHour, setEditHour] = useState("12");
+  const [editMinute, setEditMinute] = useState("00");
   const [editItems, setEditItems] = useState<MealItem[]>([]);
   const [editConfigs, setEditConfigs] = useState<
     Record<number, { servingG: number; multiplier: number; customText: string }>
@@ -49,6 +51,9 @@ export function EditMealSheet() {
     if (editingMeal) {
       setEditMealType(editingMeal.mealType);
       setEditMealDate(editingMeal.loggedAt.split("T")[0]);
+      const t = new Date(editingMeal.loggedAt);
+      setEditHour(String(t.getHours()).padStart(2, "0"));
+      setEditMinute(String(t.getMinutes()).padStart(2, "0"));
       setEditItems(editingMeal.items.map((it) => ({ ...it })));
       const configs: typeof editConfigs = {};
       editingMeal.items.forEach((it, idx) => {
@@ -110,7 +115,7 @@ export function EditMealSheet() {
       id: editingMeal.id,
       data: {
         mealType: editMealType,
-        loggedAt: redateLoggedAt(editingMeal.loggedAt, editMealDate),
+        loggedAt: buildLoggedAt(editMealDate, Number(editHour), Number(editMinute)),
         items: editItems.map((it, idx) =>
           mapEditItemToRequest(it, editConfigs[idx]),
         ),
@@ -177,7 +182,7 @@ export function EditMealSheet() {
             })}
           </View>
 
-          {/* Date picker */}
+          {/* Date & time picker */}
           <View
             style={{
               flexDirection: "row",
@@ -237,6 +242,60 @@ export function EditMealSheet() {
                 color={colors.textMuted}
               />
             </TouchableOpacity>
+            <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+              <TextInput
+                value={editHour}
+                onChangeText={(t) => {
+                  const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                  const num = Number(cleaned);
+                  if (cleaned.length <= 1 || (num >= 0 && num <= 23)) {
+                    setEditHour(cleaned);
+                  }
+                }}
+                keyboardType="number-pad"
+                maxLength={2}
+                selectTextOnFocus
+                style={{
+                  width: 30,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.sm,
+                  padding: 2,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: colors.text,
+                  textAlign: "center",
+                  backgroundColor: colors.card,
+                }}
+              />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.textSecondary }}>:</Text>
+              <TextInput
+                value={editMinute}
+                onChangeText={(t) => {
+                  const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                  const num = Number(cleaned);
+                  if (cleaned.length <= 1 || (num >= 0 && num <= 59)) {
+                    setEditMinute(cleaned);
+                  }
+                }}
+                keyboardType="number-pad"
+                maxLength={2}
+                selectTextOnFocus
+                style={{
+                  width: 30,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.sm,
+                  padding: 2,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: colors.text,
+                  textAlign: "center",
+                  backgroundColor: colors.card,
+                }}
+              />
+            </View>
           </View>
 
           {/* Item list */}

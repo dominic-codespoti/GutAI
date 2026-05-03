@@ -104,6 +104,69 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
         return null;
     }
+
+    public async Task<CustomFoodDto?> DescribeFoodFromTextAsync(string description, CancellationToken ct)
+    {
+        var trimmedDescription = description?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedDescription))
+        {
+            return null;
+        }
+
+        if (_openAiClient == null || _config == null)
+        {
+            _logger?.LogWarning("Text food description is unavailable because Azure OpenAI is not configured.");
+            return null;
+        }
+
+        try
+        {
+            var modelName = ResolveTextDeploymentName(_config);
+            var chatClient = _openAiClient.GetChatClient(modelName);
+
+            var messages = new List<ChatMessage>
+            {
+                new SystemChatMessage("""
+                    You are a nutrition estimation AI for a food logging app.
+                    Convert a user's plain-language food description into a single reusable custom food entry.
+
+                    Return one JSON object matching the schema.
+                    Rules:
+                    - Infer a concise food name from the description.
+                    - Only include a brand when the user explicitly mentioned one.
+                    - Estimate nutrition for one typical serving of the described food.
+                    - Use grams for serving size when no better unit is obvious.
+                    - Ingredients must be a concise comma-separated ingredient list for the described dish or product, not a transcript of the prompt.
+                    - Do not invent a barcode.
+                    - ExtractionConfidence must be a number between 0 and 1 representing how confident you are in the estimate.
+                    - Prefer realistic, internally consistent nutrition values.
+                    """),
+                new UserChatMessage($"Describe this food: {trimmedDescription}")
+            };
+
+            var options = new ChatCompletionOptions
+            {
+                ResponseFormat = CreateFallbackResponseFormat()
+            };
+
+            var response = await chatClient.CompleteChatAsync(messages, options, ct);
+            var textResponse = string.Concat(response.Value.Content?.Select(part => part.Text) ?? Enumerable.Empty<string>());
+
+            if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
+            {
+                _logger?.LogWarning("Text food description returned unparseable JSON for prompt '{Prompt}'.", Truncate(trimmedDescription, 120));
+                return null;
+            }
+
+            FinalizeGeneratedFood(dto, trimmedDescription);
+            return dto;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Text food description failed. {Details}", DescribeException(ex));
+            return null;
+        }
+    }
     
     /// <summary>
     /// Validates that the extracted data contains any meaningful label information
@@ -200,7 +263,13 @@ public class ContentUnderstandingService : IContentUnderstandingService
         var response = await chatClient.CompleteChatAsync(messages, options, ct);
         var textResponse = string.Concat(response.Value.Content?.Select(part => part.Text) ?? Enumerable.Empty<string>());
 
-        return TryParseFallbackResponse(textResponse, out var dto) ? dto : null;
+        if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
+        {
+            return null;
+        }
+
+        FinalizeGeneratedFood(dto);
+        return dto;
     }
 
     private static ChatResponseFormat CreateFallbackResponseFormat()
@@ -239,14 +308,33 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 "Barcode": { "type": ["string", "null"] },
                 "ExtractionConfidence": { "type": ["number", "null"] }
               },
-              "required": ["Name", "ServingSize", "ServingSizeUnit", "Calories", "ProteinG", "CarbG", "FatG"],
+              "required": ["Name", "ServingSize", "ServingSizeUnit", "Calories", "ProteinG", "CarbG", "FatG", "ExtractionConfidence"],
               "additionalProperties": false
             }
             """),
             jsonSchemaIsStrict: false);
 
+    internal static string ResolveTextDeploymentName(IConfiguration? config)
+        => config?["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
+
     internal static string ResolveVisionDeploymentName(IConfiguration? config)
         => config?["AzureOpenAI:VisionDeploymentName"] ?? "gpt-4o";
+
+    internal static void FinalizeGeneratedFood(CustomFoodDto dto, string? fallbackName = null)
+    {
+        dto.Name = string.IsNullOrWhiteSpace(dto.Name)
+            ? (fallbackName ?? string.Empty)
+            : dto.Name.Trim();
+        dto.BrandName = string.IsNullOrWhiteSpace(dto.BrandName) ? null : dto.BrandName.Trim();
+        dto.ServingSizeUnit = string.IsNullOrWhiteSpace(dto.ServingSizeUnit) ? "g" : dto.ServingSizeUnit.Trim();
+        dto.Ingredients = string.IsNullOrWhiteSpace(dto.Ingredients) ? null : dto.Ingredients.Trim();
+        dto.Barcode = string.IsNullOrWhiteSpace(dto.Barcode) ? null : dto.Barcode.Trim();
+
+        if (dto.ExtractionConfidence.HasValue)
+        {
+            dto.ExtractionConfidence = Math.Clamp(dto.ExtractionConfidence.Value, 0m, 1m);
+        }
+    }
 
     internal static bool TryParseFallbackResponse(string? responseText, out CustomFoodDto? dto)
     {

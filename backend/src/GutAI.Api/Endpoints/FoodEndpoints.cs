@@ -31,6 +31,7 @@ public static class FoodEndpoints
         group.MapPost("/custom", CreateCustomFood);
         group.MapPut("/custom/{id:guid}", UpdateCustomFood);
         group.MapDelete("/custom/{id:guid}", DeleteCustomFood);
+        group.MapPost("/describe", DescribeFoodFromText);
         group.MapPost("/parse-label", ParseNutritionLabel)
             .DisableAntiforgery();
 
@@ -682,6 +683,34 @@ public static class FoodEndpoints
 
         await store.DeleteCustomFoodAsync(uid, id);
         return Results.NoContent();
+    }
+
+    static async Task<IResult> DescribeFoodFromText(DescribeCustomFoodRequest request, IContentUnderstandingService aiService, ILogger<Program> logger, CancellationToken ct)
+    {
+        var text = request.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return Results.BadRequest(new { error = "Description is required." });
+        }
+
+        if (text.Length < 8)
+        {
+            return Results.BadRequest(new { error = "Description must be at least 8 characters." });
+        }
+
+        if (text.Length > 2000)
+        {
+            return Results.BadRequest(new { error = "Description must not exceed 2000 characters." });
+        }
+
+        var result = await aiService.DescribeFoodFromTextAsync(text, ct);
+        if (result is null)
+        {
+            logger.LogWarning("AI food description returned no usable data for prompt '{Prompt}'.", text[..Math.Min(text.Length, 120)]);
+            return Results.BadRequest(new { error = "Could not generate food details from that description." });
+        }
+
+        return Results.Ok(result);
     }
 
     [Microsoft.AspNetCore.Mvc.DisableRequestSizeLimit]

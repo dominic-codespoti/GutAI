@@ -123,6 +123,11 @@ export const foodApi = {
   addFavorite: (id: string) => api.post(`/api/food/${id}/favorite`),
   removeFavorite: (id: string) => api.delete(`/api/food/${id}/favorite`),
   customFoods: () => api.get<FoodProduct[]>("/api/food/custom"),
+  describeFood: (text: string) =>
+    api.post<CustomFood & { extractionConfidence?: number | null }>(
+      "/api/food/describe",
+      { text },
+    ),
   createCustomFood: (data: CustomFood) =>
     api.post<CustomFood>("/api/food/custom", data),
   updateCustomFood: (id: string, data: CustomFood) =>

@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Interfaces;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 
 namespace GutAI.Api.Tests;
@@ -9,6 +14,67 @@ namespace GutAI.Api.Tests;
 [Collection("WebApi")]
 public class FoodContractTests(GutAiWebFactory factory)
 {
+    [Fact]
+    public async Task DescribeFoodFromText_ReturnsCorrectShape()
+    {
+        var client = await CreateClientWithContentUnderstandingAsync(new StubContentUnderstandingService
+        {
+            DescribeResult = new CustomFoodDto
+            {
+                Name = "Berry Smoothie",
+                BrandName = null,
+                ServingSize = 320,
+                ServingSizeUnit = "g",
+                Calories = 240,
+                ProteinG = 12,
+                CarbG = 34,
+                FatG = 6,
+                FiberG = 5,
+                SugarG = 24,
+                SodiumMg = 110,
+                Ingredients = "banana, yogurt, blueberries, strawberries",
+                ExtractionConfidence = 0.82m
+            }
+        });
+
+        var response = await client.PostAsJsonAsync("/api/food/describe", new
+        {
+            text = "homemade berry smoothie with banana and yogurt"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        json.AssertHasStringProperty("name");
+        json.AssertHasStringProperty("brandName");
+        json.AssertHasNumberProperty("servingSize");
+        json.AssertHasStringProperty("servingSizeUnit");
+        json.AssertHasNumberProperty("calories");
+        json.AssertHasNumberProperty("proteinG");
+        json.AssertHasNumberProperty("carbG");
+        json.AssertHasNumberProperty("fatG");
+        json.AssertHasNumberProperty("fiberG");
+        json.AssertHasNumberProperty("sugarG");
+        json.AssertHasNumberProperty("sodiumMg");
+        json.AssertHasStringProperty("ingredients");
+        json.AssertHasStringProperty("barcode");
+        json.AssertHasNumberProperty("extractionConfidence");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("short")]
+    public async Task DescribeFoodFromText_InvalidInput_Returns400(string text)
+    {
+        var client = await CreateClientWithContentUnderstandingAsync(new StubContentUnderstandingService());
+
+        var response = await client.PostAsJsonAsync("/api/food/describe", new { text });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("error");
+    }
+
     [Fact]
     public async Task SearchFoodProducts_ReturnsArray()
     {
@@ -248,5 +314,43 @@ public class FoodContractTests(GutAiWebFactory factory)
 
         var deleteResp = await client.DeleteAsync($"/api/food/{productId}");
         deleteResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    private async Task<HttpClient> CreateClientWithContentUnderstandingAsync(IContentUnderstandingService contentUnderstandingService)
+    {
+        var app = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll(typeof(IContentUnderstandingService));
+                services.AddScoped(_ => contentUnderstandingService);
+            });
+        });
+
+        var client = app.CreateClient();
+        var email = $"test-{Guid.NewGuid():N}@test.com";
+        var response = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            email,
+            password = "TestPass123",
+            displayName = "Test User"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = json.GetProperty("accessToken").GetString()!;
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
+    private sealed class StubContentUnderstandingService : IContentUnderstandingService
+    {
+        public CustomFoodDto? DescribeResult { get; init; }
+
+        public Task<CustomFoodDto?> ParseNutritionLabelAsync(Stream imageStream, string contentType, CancellationToken ct = default)
+            => Task.FromResult<CustomFoodDto?>(null);
+
+        public Task<CustomFoodDto?> DescribeFoodFromTextAsync(string description, CancellationToken ct = default)
+            => Task.FromResult(DescribeResult);
     }
 }

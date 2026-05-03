@@ -5,8 +5,8 @@ test.describe("Food Search & Scan", () => {
     await page.goto("http://localhost:8081/(tabs)/scan");
     await page.waitForTimeout(3000);
 
-    // Should see the food lookup heading
-    await expect(page.getByText("Food Lookup")).toBeVisible({ timeout: 10000 });
+    // Should see the add food heading
+    await expect(page.getByText("Add Food")).toBeVisible({ timeout: 10000 });
 
     // Should see search input and barcode input
     await expect(page.getByPlaceholder("Search by name...")).toBeVisible({

@@ -110,3 +110,8 @@ public class CustomFoodDto
     /// </summary>
     public decimal? ExtractionConfidence { get; set; }
 }
+
+public record DescribeCustomFoodRequest
+{
+    public string Text { get; init; } = default!;
+}

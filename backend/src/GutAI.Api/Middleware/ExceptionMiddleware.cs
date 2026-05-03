@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GutAI.Api.Middleware;
 
@@ -8,13 +9,13 @@ public class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionMiddleware> _logger;
-    private readonly Microsoft.ApplicationInsights.TelemetryClient _telemetryClient;
+    private readonly IServiceProvider _serviceProvider;
 
-    public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger, Microsoft.ApplicationInsights.TelemetryClient telemetryClient)
+    public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger, IServiceProvider serviceProvider)
     {
         _next = next;
         _logger = logger;
-        _telemetryClient = telemetryClient;
+        _serviceProvider = serviceProvider;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -26,7 +27,7 @@ public class ExceptionMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception on {Method} {Path}", context.Request.Method, context.Request.Path);
-            _telemetryClient.TrackException(ex);
+            _serviceProvider.GetService<Microsoft.ApplicationInsights.TelemetryClient>()?.TrackException(ex);
 
             if (context.Response.HasStarted)
             {

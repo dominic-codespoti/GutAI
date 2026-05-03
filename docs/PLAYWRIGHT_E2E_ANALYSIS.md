@@ -126,7 +126,7 @@ Custom Tab Bar (5 visible tabs + 2 hidden)
 ├── insights  → "Insights"  (correlations, trends, trigger foods)
 ├── chat      → "Coach"     (AI chat with SSE streaming)
 ├── profile   → (hidden, accessed via settings icon in header)
-└── scan      → (hidden, "Food Lookup" with barcode + search)
+└── scan      → (hidden, "Add Food" with barcode + search)
 ```
 
 ### URL paths on web
@@ -142,7 +142,7 @@ Custom Tab Bar (5 visible tabs + 2 hidden)
 | Insights tab | `http://localhost:8081/(tabs)/insights`                    |
 | Coach tab    | `http://localhost:8081/(tabs)/chat`                        |
 | Profile      | `http://localhost:8081/(tabs)/profile`                     |
-| Food Lookup  | `http://localhost:8081/(tabs)/scan`                        |
+| Add Food     | `http://localhost:8081/(tabs)/scan`                        |
 | Food Detail  | `http://localhost:8081/food/[id]`                          |
 | Settings     | `http://localhost:8081/settings`                           |
 
@@ -165,18 +165,18 @@ Since there are no testIDs, Playwright tests should use this priority:
 
 ### Key UI text anchors by screen
 
-| Screen      | Identifiable Text / Placeholders                                                                                                   |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Login       | Placeholders: "Email", "Password". Buttons: "Log In". Links: "Sign Up", "Sources & Disclaimer", "Privacy Policy". Title: "GutLens" |
-| Register    | Placeholders: "Display Name", "Email", "Password (min 8 characters)", "Confirm password". Button: "Create Account". Link: "Log In" |
-| Onboarding  | Steps with "Next" / "Finish" buttons, allergy chips, goal input fields                                                             |
-| Home        | Calorie ring, greeting text, daily summary                                                                                         |
-| Meals       | Date navigation, meal type chips ("Breakfast", "Lunch", etc.), FAB button, meal cards                                              |
-| Symptoms    | Symptom type list, severity dots (1-10), "Log Symptom" button                                                                      |
-| Insights    | Period selector, correlation cards, trend data                                                                                     |
-| Coach       | Chat input, message bubbles, streaming indicator                                                                                   |
-| Profile     | Display name, allergies, dietary preferences, goals                                                                                |
-| Food Lookup | Placeholders: search text input. Barcode scanner. Food search results                                                              |
+| Screen     | Identifiable Text / Placeholders                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Login      | Placeholders: "Email", "Password". Buttons: "Log In". Links: "Sign Up", "Sources & Disclaimer", "Privacy Policy". Title: "GutLens" |
+| Register   | Placeholders: "Display Name", "Email", "Password (min 8 characters)", "Confirm password". Button: "Create Account". Link: "Log In" |
+| Onboarding | Steps with "Next" / "Finish" buttons, allergy chips, goal input fields                                                             |
+| Home       | Calorie ring, greeting text, daily summary                                                                                         |
+| Meals      | Date navigation, meal type chips ("Breakfast", "Lunch", etc.), FAB button, meal cards                                              |
+| Symptoms   | Symptom type list, severity dots (1-10), "Log Symptom" button                                                                      |
+| Insights   | Period selector, correlation cards, trend data                                                                                     |
+| Coach      | Chat input, message bubbles, streaming indicator                                                                                   |
+| Profile    | Display name, allergies, dietary preferences, goals                                                                                |
+| Add Food   | Placeholders: search text input. Barcode scanner. Food search results                                                              |
 
 ### Recommendation: Add testIDs incrementally
 
@@ -225,7 +225,7 @@ For long-term maintainability, `testID` attributes should be added to key intera
 
 ### Flow 5: Food Search & Detail
 
-1. Navigate to Scan/Food Lookup tab
+1. Navigate to the Add Food screen
 2. Type food name in search
 3. Verify search results appear
 4. Click a result

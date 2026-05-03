@@ -11,7 +11,7 @@
 | ---------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
 | **Auth**               | ✅     | Register (with transaction safety), Login, Refresh token rotation, Logout, **Change Password**                 |
 | **Meal Endpoints**     | ✅     | CRUD, natural language parsing, daily summary, **data export**, negative value validation                      |
-| **Food Endpoints**     | ✅     | Search (local + composite API fan-out), barcode lookup, safety report, additives catalog                       |
+| **Food Endpoints**     | ✅     | Search (local + composite API fan-out), barcode lookup, safety report, additives catalog, AI custom-food describe |
 | **Symptom Endpoints**  | ✅     | CRUD with severity/type validation, **RelatedMealLogId ownership validation**, history filtering               |
 | **Insight Endpoints**  | ✅     | Correlations (food + additive), nutrition trends, additive exposure — all in-memory cached                     |
 | **User Endpoints**     | ✅     | Profile CRUD, goals, alerts watchlist, **account deletion**                                                    |

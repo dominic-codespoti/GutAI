@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useThemeColors } from "../../src/stores/theme";
+import { useMealSheetStore } from "../../src/stores/mealSheet";
 import * as haptics from "../../src/utils/haptics";
 import Svg, { Path, Defs, Filter, FeDropShadow } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -74,6 +75,11 @@ function CustomTabBar({
 }) {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const mealSheetMode = useMealSheetStore((s) => s.mode);
+
+  if (mealSheetMode === "add-describe" || mealSheetMode === "add-manual") {
+    return null;
+  }
 
   return (
     <View
@@ -365,7 +371,7 @@ export default function TabLayout() {
         name="scan"
         options={{
           href: null,
-          title: "Food Lookup",
+          title: "Add Food",
           headerLeft: () => (
             <TouchableOpacity
               onPress={handleBack}

@@ -125,7 +125,7 @@ export default function MealsScreen() {
   const fabActions = [
     {
       icon: "chatbubble-outline" as const,
-      label: "Describe",
+      label: "Describe Meal",
       color: colors.primary,
       onPress: () => {
         closeFab();
@@ -134,7 +134,7 @@ export default function MealsScreen() {
     },
     {
       icon: "create-outline" as const,
-      label: "Manual",
+      label: "Quick Macros",
       color: colors.secondary,
       onPress: () => {
         closeFab();
@@ -143,7 +143,7 @@ export default function MealsScreen() {
     },
     {
       icon: "search-outline" as const,
-      label: "Search",
+      label: "Add Food",
       color: colors.accent,
       onPress: () => {
         closeFab();

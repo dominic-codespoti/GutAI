@@ -290,7 +290,7 @@ export default function DashboardScreen() {
 
   const fabActions = [
     {
-      label: "Food Lookup",
+      label: "Add Food",
       icon: "search" as const,
       color: c.accent,
       route: "/(tabs)/scan" as const,

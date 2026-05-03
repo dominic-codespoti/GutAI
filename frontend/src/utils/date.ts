@@ -28,21 +28,19 @@ export const today = () => toLocalDateStr();
 
 /**
  * Build a correct UTC ISO-8601 loggedAt timestamp for a given local date.
- * Uses the current local time of day combined with the supplied YYYY-MM-DD,
- * then converts to UTC via toISOString().
+ * Uses the supplied hours:minutes (defaults to current time), combined
+ * with the supplied YYYY-MM-DD, then converts to UTC via toISOString().
  */
-export function buildLoggedAt(dateStr: string): string {
+export function buildLoggedAt(
+  dateStr: string,
+  hours?: number,
+  minutes?: number,
+): string {
   const now = new Date();
   const [y, m, d] = dateStr.split("-").map(Number);
-  const local = new Date(
-    y,
-    m - 1,
-    d,
-    now.getHours(),
-    now.getMinutes(),
-    now.getSeconds(),
-    now.getMilliseconds(),
-  );
+  const h = hours ?? now.getHours();
+  const min = minutes ?? now.getMinutes();
+  const local = new Date(y, m - 1, d, h, min, 0, 0);
   return local.toISOString();
 }
 

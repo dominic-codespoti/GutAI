@@ -6,11 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
-  Keyboard,
 } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import { BottomSheet } from "../BottomSheet";
 import { ServingSizeSelector } from "../ServingSizeSelector";
 import { SwapSearchContent } from "./SwapSearchContent";
@@ -60,7 +58,6 @@ export function AddMealSheet() {
   const selectedMealType = useMealSheetStore((s) => s.selectedMealType);
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
   const close = useMealSheetStore((s) => s.close);
-  const router = useRouter();
 
   const visible = mode === "add-describe" || mode === "add-manual";
   const initialTab: Tab = mode === "add-manual" ? "manual" : "describe";
@@ -68,6 +65,11 @@ export function AddMealSheet() {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [subView, setSubView] = useState<"form" | "swap">("form");
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
+
+  // ── Time state ──
+  const initialDate = new Date();
+  const [mealHour, setMealHour] = useState(String(initialDate.getHours()).padStart(2, "0"));
+  const [mealMinute, setMealMinute] = useState(String(initialDate.getMinutes()).padStart(2, "0"));
 
   // ── Describe state ──
   const [naturalText, setNaturalText] = useState("");
@@ -159,7 +161,7 @@ export function AddMealSheet() {
 
     createMeal.mutate({
       mealType: selectedMealType,
-      loggedAt: buildLoggedAt(selectedDate),
+      loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
       items: [
         {
           foodName: manualName.trim(),
@@ -183,7 +185,7 @@ export function AddMealSheet() {
     if (parsedItems.length === 0) return;
     createMeal.mutate({
       mealType: selectedMealType,
-      loggedAt: buildLoggedAt(selectedDate),
+      loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
       items: parsedItems.map((it, idx) =>
         mapParsedItemToRequest(it, parsedConfigs[idx]),
       ),
@@ -263,6 +265,9 @@ export function AddMealSheet() {
     setManualFoodProductId(undefined);
     setSubView("form");
     setSwapIndex(null);
+    const resetNow = new Date();
+    setMealHour(String(resetNow.getHours()).padStart(2, "0"));
+    setMealMinute(String(resetNow.getMinutes()).padStart(2, "0"));
   };
 
   const handleClose = () => {
@@ -277,7 +282,15 @@ export function AddMealSheet() {
   }, [mode]);
 
   return (
-    <BottomSheet visible={visible} onClose={handleClose} maxHeight="90%">
+    <BottomSheet
+      visible={visible}
+      onClose={handleClose}
+      maxHeight="100%"
+      paddingTop={spacing.lg}
+      paddingHorizontal={spacing.lg}
+      paddingBottom={0}
+      fillHeight
+    >
       {subView === "swap" ? (
         <SwapSearchContent
           initialSearch={
@@ -287,12 +300,12 @@ export function AddMealSheet() {
           onBack={() => setSubView("form")}
         />
       ) : (
-        <View>
+        <View style={{ flex: 1 }}>
           {/* Tab bar */}
           <View
             style={{
               flexDirection: "row",
-              marginBottom: spacing.lg,
+              marginBottom: spacing.sm,
               backgroundColor: colors.bg,
               borderRadius: radius.sm,
               padding: 3,
@@ -302,12 +315,12 @@ export function AddMealSheet() {
               [
                 {
                   key: "describe" as const,
-                  label: "Describe",
+                  label: "Describe Meal",
                   icon: "chatbubble-outline",
                 },
                 {
                   key: "manual" as const,
-                  label: "Manual",
+                  label: "Quick Macros",
                   icon: "create-outline",
                 },
               ] as const
@@ -327,7 +340,7 @@ export function AddMealSheet() {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6,
-                  paddingVertical: 10,
+                  paddingVertical: 8,
                   borderRadius: radius.sm - 2,
                   backgroundColor:
                     activeTab === key ? colors.card : "transparent",
@@ -351,6 +364,99 @@ export function AddMealSheet() {
             ))}
           </View>
 
+          {/* ── Meal time picker ── */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: spacing.md,
+              paddingVertical: spacing.sm,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.borderLight,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: colors.textMuted,
+              }}
+            >
+              {selectedDate} · {selectedMealType}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <TextInput
+                value={mealHour}
+                onChangeText={(t) => {
+                  const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                  const num = Number(cleaned);
+                  if (cleaned.length <= 1 || (num >= 0 && num <= 23)) {
+                    setMealHour(cleaned);
+                  }
+                }}
+                keyboardType="number-pad"
+                maxLength={2}
+                selectTextOnFocus
+                style={{
+                  width: 36,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.sm,
+                  padding: 4,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: colors.text,
+                  textAlign: "center",
+                  backgroundColor: colors.bg,
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "700",
+                  color: colors.textSecondary,
+                }}
+              >
+                :
+              </Text>
+              <TextInput
+                value={mealMinute}
+                onChangeText={(t) => {
+                  const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                  const num = Number(cleaned);
+                  if (cleaned.length <= 1 || (num >= 0 && num <= 59)) {
+                    setMealMinute(cleaned);
+                  }
+                }}
+                keyboardType="number-pad"
+                maxLength={2}
+                selectTextOnFocus
+                style={{
+                  width: 36,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.sm,
+                  padding: 4,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: colors.text,
+                  textAlign: "center",
+                  backgroundColor: colors.bg,
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  marginLeft: 2,
+                }}
+              >
+                {Number(mealHour) >= 12 ? "PM" : "AM"}
+              </Text>
+            </View>
+          </View>
+
           {/* ── Describe tab ── */}
           {activeTab === "describe" && !showReview && (
             <View>
@@ -365,11 +471,11 @@ export function AddMealSheet() {
                 accessibilityLabel="Describe your meal"
                 style={{
                   fontSize: 15,
-                  minHeight: 80,
+                  minHeight: 72,
                   color: colors.text,
                   backgroundColor: colors.bg,
                   borderRadius: radius.sm,
-                  padding: spacing.md,
+                  padding: spacing.sm,
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
@@ -378,7 +484,8 @@ export function AddMealSheet() {
                 style={{
                   flexDirection: "row",
                   justifyContent: "flex-end",
-                  marginTop: spacing.md,
+                  marginTop: spacing.sm,
+                  paddingBottom: spacing.sm,
                   gap: 8,
                 }}
               >
@@ -629,37 +736,10 @@ export function AddMealSheet() {
           {/* ── Manual tab ── */}
           {activeTab === "manual" && (
             <ScrollView
+              contentContainerStyle={{ paddingBottom: 0 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <TouchableOpacity
-                onPress={() => {
-                  close();
-                  router.push("/food/create");
-                }}
-                style={{
-                  backgroundColor: colors.card,
-                  borderColor: colors.primary,
-                  borderWidth: 1,
-                  padding: 12,
-                  borderRadius: radius.md,
-                  marginBottom: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons
-                  name="camera"
-                  size={18}
-                  color={colors.primary}
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={{ color: colors.primary, fontWeight: "600" }}>
-                  Create Custom Food with Label Scanner
-                </Text>
-              </TouchableOpacity>
-
               <TextInput
                 placeholder="Food name (e.g. Chicken breast)"
                 placeholderTextColor={colors.textLight}
@@ -736,7 +816,8 @@ export function AddMealSheet() {
                 style={{
                   flexDirection: "row",
                   justifyContent: "flex-end",
-                  marginTop: spacing.md,
+                  marginTop: spacing.sm,
+                  paddingBottom: spacing.sm,
                   gap: 8,
                 }}
               >

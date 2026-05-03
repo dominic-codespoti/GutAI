@@ -82,8 +82,12 @@ builder.Services.AddMcpServer()
 // Health checks
 builder.Services.AddHealthChecks();
 
-// Application Insights
-builder.Services.AddApplicationInsightsTelemetry();
+// Application Insights (only when configured; local dev should boot without it)
+var appInsightsConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+{
+    builder.Services.AddApplicationInsightsTelemetry();
+}
 
 var app = builder.Build();
 

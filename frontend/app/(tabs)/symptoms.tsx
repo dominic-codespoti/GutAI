@@ -138,7 +138,12 @@ export default function SymptomsScreen() {
   const [editSeverity, setEditSeverity] = useState(5);
   const [editNotes, setEditNotes] = useState("");
   const [editLinkedMealId, setEditLinkedMealId] = useState<string | null>(null);
+  const [editHour, setEditHour] = useState("12");
+  const [editMinute, setEditMinute] = useState("00");
   const [selectedDate, setSelectedDate] = useState(toLocalDateStr());
+  const now = new Date();
+  const [symptomHour, setSymptomHour] = useState(String(now.getHours()).padStart(2, "0"));
+  const [symptomMinute, setSymptomMinute] = useState(String(now.getMinutes()).padStart(2, "0"));
   const queryClient = useQueryClient();
   const isToday = selectedDate === toLocalDateStr();
 
@@ -183,7 +188,7 @@ export default function SymptomsScreen() {
       return symptomApi.create({
         symptomTypeId: selectedType!.id,
         severity,
-        occurredAt: buildLoggedAt(selectedDate),
+        occurredAt: buildLoggedAt(selectedDate, Number(symptomHour), Number(symptomMinute)),
         notes: notes.trim() || undefined,
         relatedMealLogId: linkedMealId ?? undefined,
         duration: parseDurationToTimeSpan(duration),
@@ -199,6 +204,9 @@ export default function SymptomsScreen() {
       setNotes("");
       setDuration("");
       setLinkedMealId(null);
+      const resetNow = new Date();
+      setSymptomHour(String(resetNow.getHours()).padStart(2, "0"));
+      setSymptomMinute(String(resetNow.getMinutes()).padStart(2, "0"));
       toast.success("Symptom recorded");
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -274,16 +282,20 @@ export default function SymptomsScreen() {
     setEditSeverity(log.severity);
     setEditNotes(log.notes ?? "");
     setEditLinkedMealId(log.relatedMealLogId ?? null);
+    const t = new Date(log.occurredAt);
+    setEditHour(String(t.getHours()).padStart(2, "0"));
+    setEditMinute(String(t.getMinutes()).padStart(2, "0"));
   };
 
   const saveEdit = () => {
     if (!editingSymptom) return;
+    const origDate = toLocalDateStr(new Date(editingSymptom.occurredAt));
     updateMutation.mutate({
       id: editingSymptom.id,
       data: {
         symptomTypeId: editingSymptom.symptomTypeId,
         severity: editSeverity,
-        occurredAt: editingSymptom.occurredAt,
+        occurredAt: buildLoggedAt(origDate, Number(editHour), Number(editMinute)),
         notes: editNotes.trim() || undefined,
         relatedMealLogId: editLinkedMealId ?? undefined,
         duration: parseDurationToTimeSpan(editingSymptom?.duration || ""),
@@ -558,6 +570,87 @@ export default function SymptomsScreen() {
                   </Text>
                   <Text style={{ fontSize: 11, color: colors.textMuted }}>
                     Severe
+                  </Text>
+                </View>
+
+                <Text style={{ ...fonts.h4, marginBottom: spacing.sm }}>
+                  Time occurred
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    marginBottom: spacing.lg,
+                  }}
+                >
+                  <TextInput
+                    value={symptomHour}
+                    onChangeText={(t) => {
+                      const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                      const num = Number(cleaned);
+                      if (cleaned.length <= 1 || (num >= 0 && num <= 23)) {
+                        setSymptomHour(cleaned);
+                      }
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    selectTextOnFocus
+                    style={{
+                      width: 48,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: radius.sm,
+                      padding: spacing.sm,
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: colors.text,
+                      textAlign: "center",
+                      backgroundColor: colors.bg,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: "700",
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    :
+                  </Text>
+                  <TextInput
+                    value={symptomMinute}
+                    onChangeText={(t) => {
+                      const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                      const num = Number(cleaned);
+                      if (cleaned.length <= 1 || (num >= 0 && num <= 59)) {
+                        setSymptomMinute(cleaned);
+                      }
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    selectTextOnFocus
+                    style={{
+                      width: 48,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: radius.sm,
+                      padding: spacing.sm,
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: colors.text,
+                      textAlign: "center",
+                      backgroundColor: colors.bg,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.textMuted,
+                      marginLeft: 4,
+                    }}
+                  >
+                    {Number(symptomHour) >= 12 ? "PM" : "AM"}
                   </Text>
                 </View>
 
@@ -944,6 +1037,87 @@ export default function SymptomsScreen() {
         >
           <Text style={{ fontSize: 11, color: colors.textMuted }}>Mild</Text>
           <Text style={{ fontSize: 11, color: colors.textMuted }}>Severe</Text>
+        </View>
+
+        <Text style={{ ...fonts.h4, marginBottom: spacing.sm }}>
+          Time occurred
+        </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            marginBottom: spacing.lg,
+          }}
+        >
+          <TextInput
+            value={editHour}
+            onChangeText={(t) => {
+              const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+              const num = Number(cleaned);
+              if (cleaned.length <= 1 || (num >= 0 && num <= 23)) {
+                setEditHour(cleaned);
+              }
+            }}
+            keyboardType="number-pad"
+            maxLength={2}
+            selectTextOnFocus
+            style={{
+              width: 48,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.sm,
+              padding: spacing.sm,
+              fontSize: 16,
+              fontWeight: "700",
+              color: colors.text,
+              textAlign: "center",
+              backgroundColor: colors.bg,
+            }}
+          />
+          <Text
+            style={{
+              fontSize: 18,
+              fontWeight: "700",
+              color: colors.textSecondary,
+            }}
+          >
+            :
+          </Text>
+          <TextInput
+            value={editMinute}
+            onChangeText={(t) => {
+              const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+              const num = Number(cleaned);
+              if (cleaned.length <= 1 || (num >= 0 && num <= 59)) {
+                setEditMinute(cleaned);
+              }
+            }}
+            keyboardType="number-pad"
+            maxLength={2}
+            selectTextOnFocus
+            style={{
+              width: 48,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.sm,
+              padding: spacing.sm,
+              fontSize: 16,
+              fontWeight: "700",
+              color: colors.text,
+              textAlign: "center",
+              backgroundColor: colors.bg,
+            }}
+          />
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.textMuted,
+              marginLeft: 4,
+            }}
+          >
+            {Number(editHour) >= 12 ? "PM" : "AM"}
+          </Text>
         </View>
 
         <Text style={{ ...fonts.h4, marginBottom: 6 }}>Notes</Text>

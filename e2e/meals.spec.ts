@@ -18,7 +18,7 @@ test.describe("Meals Tab", () => {
     });
   });
 
-  test("FAB opens with three options: Describe, Manual, Search", async ({
+  test("FAB opens with three options: Describe Meal, Quick Macros, Add Food", async ({
     authedPage: page,
   }) => {
     await page.goto("http://localhost:8081/(tabs)/meals");
@@ -32,9 +32,11 @@ test.describe("Meals Tab", () => {
     await page.waitForTimeout(1000);
 
     // Should see 3 FAB action labels
-    await expect(page.getByText("Describe")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Manual")).toBeVisible();
-    await expect(page.getByText("Search")).toBeVisible();
+    await expect(page.getByText("Describe Meal")).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByText("Quick Macros")).toBeVisible();
+    await expect(page.getByText("Add Food")).toBeVisible();
   });
 
   test("can open the describe meal sheet", async ({ authedPage: page }) => {
@@ -48,13 +50,13 @@ test.describe("Meals Tab", () => {
       .click({ force: true });
     await page.waitForTimeout(1000);
 
-    // Click Describe action label
-    await page.getByText("Describe").click({ force: true });
+    // Click Describe Meal action label
+    await page.getByText("Describe Meal").click({ force: true });
     await page.waitForTimeout(1500);
 
     // Should see the AddMealSheet in describe mode
     await expect(
-      page.getByText(/Describe|What did you eat|Log Meal/i).first(),
+      page.getByText(/Describe Meal|Parse & Log|Log Meal/i).first(),
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -69,13 +71,13 @@ test.describe("Meals Tab", () => {
       .click({ force: true });
     await page.waitForTimeout(1000);
 
-    // Click Manual action label
-    await page.getByText("Manual").click({ force: true });
+    // Click Quick Macros action label
+    await page.getByText("Quick Macros").click({ force: true });
     await page.waitForTimeout(1500);
 
     // Should see manual entry mode
     await expect(
-      page.getByText(/Manual|Search foods|Add Food|Log Meal/i).first(),
+      page.getByText(/Quick Macros|Food name|Log Meal/i).first(),
     ).toBeVisible({ timeout: 5000 });
   });
 
