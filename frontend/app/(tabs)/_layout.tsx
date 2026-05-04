@@ -48,17 +48,6 @@ function TabBarBackground() {
       height={shadowH}
       style={{ position: "absolute", top: -CURVE_DEPTH - 10, left: 0 }}
     >
-      <Defs>
-        <Filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
-          <FeDropShadow
-            dx={0}
-            dy={-3}
-            stdDeviation={4}
-            floodColor="#000"
-            floodOpacity={0.08}
-          />
-        </Filter>
-      </Defs>
       <Path d={d} fill={colors.card} filter="url(#shadow)" translateY={10} />
     </Svg>
   );

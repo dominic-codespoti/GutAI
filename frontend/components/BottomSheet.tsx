@@ -11,7 +11,6 @@ import {
   BackHandler,
   Easing,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -78,6 +77,7 @@ export function BottomSheet({
 
   const translateY = useRef(new Animated.Value(windowHeight)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
 
   const [isMounted, setIsMounted] = useState(visible);
 
@@ -125,7 +125,6 @@ export function BottomSheet({
         paddingHorizontal,
 
         /**
-         * Critical bit:
          * Keep the caller's intended padding, then add the safe-area bottom.
          */
         paddingBottom: paddingBottom + bottomInset,
@@ -154,10 +153,19 @@ export function BottomSheet({
     () => [
       styles.animatedSheet,
       {
-        transform: [{ translateY }],
+        transform: [
+          { translateY },
+          {
+            translateY: keyboardOffset.interpolate({
+              inputRange: [0, windowHeight],
+              outputRange: [0, -windowHeight],
+              extrapolate: "clamp",
+            }),
+          },
+        ],
       },
     ],
-    [translateY],
+    [keyboardOffset, translateY, windowHeight],
   );
 
   const animatedBackdropStyle = useMemo<StyleProp<ViewStyle>>(
@@ -176,6 +184,7 @@ export function BottomSheet({
     const stopAnimations = () => {
       translateY.stopAnimation();
       backdropOpacity.stopAnimation();
+      keyboardOffset.stopAnimation();
     };
 
     if (visible) {
@@ -185,6 +194,7 @@ export function BottomSheet({
 
       translateY.setValue(windowHeight);
       backdropOpacity.setValue(0);
+      keyboardOffset.setValue(0);
 
       Animated.parallel([
         Animated.timing(backdropOpacity, {
@@ -218,8 +228,14 @@ export function BottomSheet({
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]).start(({ finished }) => {
-        if (finished && !cancelled) {
+        Animated.timing(keyboardOffset, {
+          toValue: 0,
+          duration: CLOSE_DURATION_MS,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        if (!cancelled) {
           setIsMounted(false);
         }
       });
@@ -235,7 +251,48 @@ export function BottomSheet({
     windowHeight,
     translateY,
     backdropOpacity,
+    keyboardOffset,
   ]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS === "web") {
+      keyboardOffset.setValue(0);
+      return;
+    }
+
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      const nextKeyboardOffset = Math.max(
+        event.endCoordinates.height - bottomInset,
+        0,
+      );
+
+      Animated.timing(keyboardOffset, {
+        toValue: nextKeyboardOffset,
+        duration: Platform.OS === "ios" ? event.duration || 250 : 180,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, (event) => {
+      Animated.timing(keyboardOffset, {
+        toValue: 0,
+        duration: Platform.OS === "ios" ? event.duration || 250 : 180,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [visible, bottomInset, keyboardOffset]);
 
   useEffect(() => {
     if (
@@ -263,14 +320,31 @@ export function BottomSheet({
     return null;
   }
 
+  const sheetContent = (
+    <Animated.View style={animatedSheetStyle}>
+      <View style={sheetContainerStyle}>
+        <View
+          style={[
+            styles.handle,
+            {
+              backgroundColor: colors.borderLight,
+            },
+          ]}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+
+        <View style={[fillHeight && styles.contentFill, contentStyle]}>
+          {children}
+        </View>
+      </View>
+    </Animated.View>
+  );
+
   const content = (
     <View
       style={[
         styles.root,
-        /**
-         * Critical for fill-height sheets:
-         * prevent the sheet from rendering under the status bar / dynamic island.
-         */
         {
           paddingTop: topInset,
         },
@@ -295,22 +369,7 @@ export function BottomSheet({
         />
       </Animated.View>
 
-      <Animated.View style={animatedSheetStyle}>
-        <View style={sheetContainerStyle}>
-          <View
-            style={[
-              styles.handle,
-              {
-                backgroundColor: colors.borderLight,
-              },
-            ]}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
-
-          <View style={contentStyle}>{children}</View>
-        </View>
-      </Animated.View>
+      {sheetContent}
     </View>
   );
 
@@ -323,26 +382,12 @@ export function BottomSheet({
       presentationStyle="overFullScreen"
       onRequestClose={closeSheet}
     >
-      {Platform.OS === "web" ? (
-        content
-      ) : (
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoidingView}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          pointerEvents="box-none"
-        >
-          {content}
-        </KeyboardAvoidingView>
-      )}
+      {content}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-
   root: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
@@ -366,5 +411,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: "center",
     marginBottom: spacing.lg,
+  },
+
+  contentFill: {
+    flex: 1,
+    minHeight: 0,
   },
 });

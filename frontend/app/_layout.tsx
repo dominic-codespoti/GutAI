@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { View, TouchableOpacity } from "react-native";
+import { TouchableOpacity } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -197,10 +198,10 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <StatusBar style={resolved === "dark" ? "light" : "dark"} />
-          <View style={{ flex: 1, backgroundColor: c.bg }}>
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.bg }}>
             <AuthGate />
             <ToastContainer />
-          </View>
+          </GestureHandlerRootView>
         </QueryClientProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

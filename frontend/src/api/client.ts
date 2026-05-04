@@ -8,7 +8,7 @@ const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   Constants.expoConfig?.extra?.apiUrl ||
   Platform.select({
-    android: "http://10.0.2.2:5000",
+    android: "https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io",
     ios: "http://localhost:5000",
     default: "http://localhost:5000",
   });

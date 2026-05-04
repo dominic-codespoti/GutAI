@@ -34,7 +34,12 @@ export function CopyMealSheet() {
   const emoji = mealTypeEmoji[copyingMeal.mealType] ?? "🍽️";
 
   return (
-    <BottomSheet visible={visible} onClose={close}>
+    <BottomSheet
+      maxHeight="100%"
+      contentStyle={{ minHeight: 256 }}
+      visible={visible}
+      onClose={close}
+    >
       <View>
         <Text style={{ ...fonts.h3, marginBottom: spacing.md }}>Copy Meal</Text>
 

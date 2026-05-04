@@ -1,11 +1,10 @@
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -18,8 +17,6 @@ import { MEAL_TYPES } from "../../src/utils/constants";
 import { radius, spacing } from "../../src/utils/theme";
 import {
   useThemeColors,
-  useThemeFonts,
-  useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { MealCardSkeleton } from "../../components/SkeletonLoader";
@@ -32,41 +29,17 @@ import { AddMealSheet } from "../../components/meals/AddMealSheet";
 import { EditMealSheet } from "../../components/meals/EditMealSheet";
 import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
 import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
+import { MealGroup } from "../../components/meals/MealGroup";
+import { MealFab } from "../../components/meals/MealFab";
 import * as haptics from "../../src/utils/haptics";
 import type { MealLog } from "../../src/types";
-import { MealGroup } from "../../components/meals/MealGroup";
 
 export default function MealsScreen() {
   const colors = useThemeColors();
-  const fonts = useThemeFonts();
-  const { shadow, shadowMd } = useThemeShadow();
   const router = useRouter();
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
-  const selectedMealType = useMealSheetStore((s) => s.selectedMealType);
-  const { deleteMeal, removeItem } = useMealMutations();
 
-  /* ---- FAB state ---- */
-  const [fabOpen, setFabOpen] = useState(false);
-  const fabAnim = useRef(new Animated.Value(0)).current;
-  const toggleFab = () => {
-    haptics.medium();
-    const toValue = fabOpen ? 0 : 1;
-    Animated.spring(fabAnim, {
-      toValue,
-      useNativeDriver: true,
-      friction: 6,
-    }).start();
-    setFabOpen(!fabOpen);
-  };
-  const closeFab = () => {
-    if (!fabOpen) return;
-    Animated.spring(fabAnim, {
-      toValue: 0,
-      useNativeDriver: true,
-      friction: 6,
-    }).start();
-    setFabOpen(false);
-  };
+  const { deleteMeal, removeItem } = useMealMutations();
 
   /* ---- Data ---- */
   const {
@@ -86,17 +59,21 @@ export default function MealsScreen() {
 
   /* ---- Filtering & grouping ---- */
   const [filterType, setFilterType] = useState<string | null>(null);
+
   const filtered = filterType
     ? (meals ?? []).filter((m) => m.mealType === filterType)
     : meals;
 
   const grouped = (() => {
     const map: Record<string, MealLog[]> = {};
-    for (const m of filtered ?? []) {
-      const key = m.mealType || "Other";
-      (map[key] ??= []).push(m);
+
+    for (const meal of filtered ?? []) {
+      const key = meal.mealType || "Other";
+      (map[key] ??= []).push(meal);
     }
+
     const order = ["Breakfast", "Lunch", "Dinner", "Snack"];
+
     return Object.entries(map).sort(
       ([a], [b]) =>
         (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
@@ -106,6 +83,7 @@ export default function MealsScreen() {
 
   /* ---- Pull-to-refresh ---- */
   const [refreshing, setRefreshing] = useState(false);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
@@ -114,10 +92,14 @@ export default function MealsScreen() {
 
   /* ---- Callbacks passed to MealGroup ---- */
   const handleEdit = (meal: MealLog) => mealSheet.openEdit(meal);
+
   const handleCopy = (meal: MealLog) => mealSheet.openCopy(meal);
+
   const handleDelete = (mealId: string) => deleteMeal.mutate(mealId);
+
   const handleSwapItem = (meal: MealLog, idx: number) =>
     mealSheet.openSwap(meal, idx, "edit");
+
   const handleDeleteItem = (meal: MealLog, idx: number) =>
     removeItem(meal, idx);
 
@@ -127,28 +109,19 @@ export default function MealsScreen() {
       icon: "chatbubble-outline" as const,
       label: "Describe Meal",
       color: colors.primary,
-      onPress: () => {
-        closeFab();
-        mealSheet.openAdd("add-describe");
-      },
+      onPress: () => mealSheet.openAdd("add-describe"),
     },
     {
       icon: "create-outline" as const,
       label: "Quick Macros",
       color: colors.secondary,
-      onPress: () => {
-        closeFab();
-        mealSheet.openAdd("add-manual");
-      },
+      onPress: () => mealSheet.openAdd("add-manual"),
     },
     {
       icon: "search-outline" as const,
       label: "Add Food",
       color: colors.accent,
-      onPress: () => {
-        closeFab();
-        router.push("/(tabs)/scan");
-      },
+      onPress: () => router.push("/(tabs)/scan"),
     },
   ];
 
@@ -177,7 +150,11 @@ export default function MealsScreen() {
 
           {/* Filter chips */}
           <View
-            style={{ flexDirection: "row", marginBottom: spacing.md, gap: 6 }}
+            style={{
+              flexDirection: "row",
+              marginBottom: spacing.md,
+              gap: 6,
+            }}
           >
             <TouchableOpacity
               onPress={() => {
@@ -210,23 +187,24 @@ export default function MealsScreen() {
                 All
               </Text>
             </TouchableOpacity>
-            {MEAL_TYPES.map((t) => (
+
+            {MEAL_TYPES.map((type) => (
               <TouchableOpacity
-                key={t}
+                key={type}
                 onPress={() => {
                   haptics.selection();
-                  setFilterType(filterType === t ? null : t);
+                  setFilterType(filterType === type ? null : type);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Filter by ${t}`}
-                accessibilityState={{ selected: filterType === t }}
+                accessibilityLabel={`Filter by ${type}`}
+                accessibilityState={{ selected: filterType === type }}
                 style={{
                   paddingVertical: 10,
                   paddingHorizontal: 14,
                   borderRadius: radius.full,
                   backgroundColor:
-                    filterType === t ? colors.primary : colors.borderLight,
-                  borderWidth: filterType === t ? 0 : 1,
+                    filterType === type ? colors.primary : colors.borderLight,
+                  borderWidth: filterType === type ? 0 : 1,
                   borderColor: colors.border,
                 }}
               >
@@ -235,18 +213,18 @@ export default function MealsScreen() {
                     fontSize: 12,
                     fontWeight: "600",
                     color:
-                      filterType === t
+                      filterType === type
                         ? colors.textOnPrimary
                         : colors.textMuted,
                   }}
                 >
-                  {t}
+                  {type}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Swipe hint (shown once) */}
+          {/* Swipe hint, shown once */}
           <SwipeHint />
 
           {/* Meal list */}
@@ -263,6 +241,7 @@ export default function MealsScreen() {
                 size={48}
                 color={colors.danger}
               />
+
               <Text
                 style={{
                   color: colors.danger,
@@ -272,6 +251,7 @@ export default function MealsScreen() {
               >
                 Failed to load meals
               </Text>
+
               <TouchableOpacity
                 onPress={() => refetch()}
                 accessibilityRole="button"
@@ -285,7 +265,10 @@ export default function MealsScreen() {
                 }}
               >
                 <Text
-                  style={{ color: colors.textOnPrimary, fontWeight: "600" }}
+                  style={{
+                    color: colors.textOnPrimary,
+                    fontWeight: "600",
+                  }}
                 >
                   Retry
                 </Text>
@@ -298,7 +281,7 @@ export default function MealsScreen() {
                 type={type}
                 meals={mealsInGroup}
                 totalCalories={mealsInGroup.reduce(
-                  (s, m) => s + m.totalCalories,
+                  (sum, meal) => sum + meal.totalCalories,
                   0,
                 )}
                 onEdit={handleEdit}
@@ -315,6 +298,7 @@ export default function MealsScreen() {
                 size={48}
                 color={colors.textLight}
               />
+
               <Text
                 style={{
                   color: colors.textMuted,
@@ -326,6 +310,7 @@ export default function MealsScreen() {
                   ? "No meals found"
                   : "No meals logged for this date"}
               </Text>
+
               <Text
                 style={{
                   color: colors.textLight,
@@ -340,138 +325,7 @@ export default function MealsScreen() {
         </View>
       </ScrollView>
 
-      {/* FAB overlay backdrop */}
-      {fabOpen && (
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={closeFab}
-          accessibilityLabel="Close menu"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: colors.overlay,
-          }}
-        />
-      )}
-
-      {/* FAB actions */}
-      {fabActions.map((action, i) => {
-        const offset = (fabActions.length - i) * 64;
-        return (
-          <Animated.View
-            key={action.label}
-            style={{
-              position: "absolute",
-              bottom: 28,
-              right: 24,
-              opacity: fabAnim,
-              transform: [
-                {
-                  translateY: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -offset],
-                  }),
-                },
-                {
-                  scale: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.4, 1],
-                  }),
-                },
-              ],
-            }}
-            pointerEvents={fabOpen ? "auto" : "none"}
-          >
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-            >
-              <View
-                style={{
-                  backgroundColor: colors.card,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: radius.sm,
-                  ...shadow,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color: colors.text,
-                  }}
-                >
-                  {action.label}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.medium();
-                  action.onPress();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={action.label}
-                activeOpacity={0.85}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: action.color,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  ...shadowMd,
-                }}
-              >
-                <Ionicons
-                  name={action.icon}
-                  size={22}
-                  color={colors.textOnPrimary}
-                />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        );
-      })}
-
-      {/* Main FAB */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={toggleFab}
-        accessibilityRole="button"
-        accessibilityLabel={fabOpen ? "Close meal options" : "Add meal"}
-        accessibilityState={{ expanded: fabOpen }}
-        style={{
-          position: "absolute",
-          bottom: 28,
-          right: 24,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: colors.primary,
-          alignItems: "center",
-          justifyContent: "center",
-          ...shadowMd,
-          elevation: 6,
-        }}
-      >
-        <Animated.View
-          style={{
-            transform: [
-              {
-                rotate: fabAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ["0deg", "45deg"],
-                }),
-              },
-            ],
-          }}
-        >
-          <Ionicons name="add" size={30} color={colors.textOnPrimary} />
-        </Animated.View>
-      </TouchableOpacity>
+      <MealFab actions={fabActions} />
 
       {/* Bottom sheets */}
       <AddMealSheet />

@@ -48,7 +48,12 @@ export function ItemSwapSheet() {
     swapContext?.meal.items[swapContext.itemIndex]?.foodName ?? "";
 
   return (
-    <BottomSheet visible={visible} onClose={close} maxHeight="80%">
+    <BottomSheet
+      maxHeight="100%"
+      contentStyle={{ minHeight: 512 }}
+      visible={visible}
+      onClose={close}
+    >
       <SwapSearchContent
         initialSearch={initialSearch}
         onSelect={handleSelect}

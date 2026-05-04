@@ -289,7 +289,7 @@ export function AddMealSheet() {
       paddingTop={spacing.lg}
       paddingHorizontal={spacing.lg}
       paddingBottom={0}
-      fillHeight
+      contentStyle={{ minHeight: 256 }}
     >
       {subView === "swap" ? (
         <SwapSearchContent
