@@ -18,6 +18,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public const string TestAdminKey = "test-admin-key-for-integration-tests";
     private IContainer _azurite = default!;
     private string _connectionString = default!;
+    internal string ConnectionString => _connectionString;
 
     public async Task InitializeAsync()
     {
