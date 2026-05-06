@@ -318,12 +318,15 @@ public class FoodContractTests(GutAiWebFactory factory)
 
     private async Task<HttpClient> CreateClientWithContentUnderstandingAsync(IContentUnderstandingService contentUnderstandingService)
     {
+        var connStr = GutAiWebFactory.ConnectionString
+            ?? throw new InvalidOperationException("GutAiWebFactory.ConnectionString is null. Ensure InitializeAsync ran.");
         var app = factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll(typeof(IContentUnderstandingService));
                 services.AddScoped(_ => contentUnderstandingService);
+                GutAiWebFactory.ReplaceStorage(services, connStr);
             });
         });
 

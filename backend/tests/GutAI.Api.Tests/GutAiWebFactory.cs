@@ -16,13 +16,18 @@ namespace GutAI.Api.Tests;
 public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string TestAdminKey = "test-admin-key-for-integration-tests";
-    private const string EnvKey = "GUTAI_TEST_AZURITE_CONNECTION";
     private IContainer _azurite = default!;
+
+    static GutAiWebFactory()
+    {
+        Environment.SetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED", "true");
+    }
+
+    /// <summary>Set by InitializeAsync, read by ConfigureWebHost (including inner factories via WithWebHostBuilder).</summary>
+    internal static string? ConnectionString { get; private set; }
 
     public async Task InitializeAsync()
     {
-        Environment.SetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED", "true");
-
         _azurite = new ContainerBuilder("mcr.microsoft.com/azure-storage/azurite")
             .WithCommand("azurite-table", "--tableHost", "0.0.0.0", "--tablePort", "10002")
             .WithPortBinding(10002, true)
@@ -31,36 +36,39 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         await _azurite.StartAsync();
         var port = _azurite.GetMappedPublicPort(10002);
-        var connStr = $"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://localhost:{port}/devstoreaccount1;";
-        Environment.SetEnvironmentVariable(EnvKey, connStr);
+        ConnectionString = $"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://localhost:{port}/devstoreaccount1;";
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        var connectionString = Environment.GetEnvironmentVariable(EnvKey)
-            ?? throw new InvalidOperationException($"Environment variable {EnvKey} not set. Ensure InitializeAsync ran.");
+        var connStr = ConnectionString
+            ?? throw new InvalidOperationException("ConnectionString not set. Ensure InitializeAsync ran.");
 
         builder.UseEnvironment("Development");
         builder.UseSetting("AdminKey", TestAdminKey);
         builder.UseSetting("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://centralus-0.in.applicationinsights.azure.com/;LiveEndpoint=https://centralus.livediagnostics.monitor.azure.com/");
         builder.ConfigureServices(services =>
         {
-            var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(TableServiceClient));
-            if (descriptor != null) services.Remove(descriptor);
-            var storeDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(ITableStore));
-            if (storeDescriptor != null) services.Remove(storeDescriptor);
-
-            var client = new TableServiceClient(connectionString);
-            services.AddSingleton(client);
-            services.AddSingleton<ITableStore>(new TableStorageStore(client));
+            ReplaceStorage(services, connStr);
         });
+    }
+
+    internal static void ReplaceStorage(IServiceCollection services, string connectionString)
+    {
+        var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(TableServiceClient));
+        if (descriptor != null) services.Remove(descriptor);
+        var storeDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(ITableStore));
+        if (storeDescriptor != null) services.Remove(storeDescriptor);
+
+        var client = new TableServiceClient(connectionString);
+        services.AddSingleton(client);
+        services.AddSingleton<ITableStore>(new TableStorageStore(client));
     }
 
     public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
         await _azurite.DisposeAsync();
-        Environment.SetEnvironmentVariable(EnvKey, null);
     }
 
     public async Task<(HttpClient Client, string Token)> CreateAuthenticatedClientAsync()
