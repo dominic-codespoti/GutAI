@@ -16,6 +16,7 @@ import { useThemeColors } from "../../src/stores/theme";
 import { foodApi } from "../../src/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "../../src/stores/toast";
+import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
 import type { CustomFood } from "../../src/types";
 
 type AiSource = "describe" | "photo" | "library";
@@ -115,6 +116,7 @@ export default function CreateCustomFoodScreen() {
   const t = useThemeColors();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
 
   const [form, setForm] = useState<CustomFood>({
     name: "",
@@ -303,6 +305,66 @@ export default function CreateCustomFoodScreen() {
       setForm((prev) => ({ ...prev, [field]: value }));
     }
   };
+
+  if (!subLoaded) {
+    return (
+      <SafeScreen edges={["top"]}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator size="large" color={t.primary} />
+        </View>
+      </SafeScreen>
+    );
+  }
+
+  if (!isPro) {
+    return (
+      <SafeScreen edges={["top"]}>
+        <View style={{ flexDirection: "row", alignItems: "center", padding: 16 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ paddingRight: 16 }}
+          >
+            <Ionicons name="arrow-back" size={24} color={t.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: t.text }}>
+              AI Food Creation
+            </Text>
+          </View>
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: t.primaryBg, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+            <Ionicons name="sparkles" size={36} color={t.primary} />
+          </View>
+          <Text style={{ fontSize: 22, fontWeight: "bold", color: t.text, textAlign: "center", marginBottom: 12 }}>
+            Unlock AI Food Creation
+          </Text>
+          <Text style={{ fontSize: 15, color: t.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
+            Describe a food or snap a photo and let AI instantly generate complete nutrition details — no manual entry needed.
+          </Text>
+          <TouchableOpacity
+            onPress={() => presentPaywall()}
+            accessibilityRole="button"
+            accessibilityLabel="Subscribe to Gut Lens Pro"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: t.primary,
+              paddingVertical: 16,
+              paddingHorizontal: 32,
+              borderRadius: 12,
+            }}
+          >
+            <Ionicons name="diamond-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
+              Subscribe to Gut Lens Pro
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeScreen>
+    );
+  }
 
   return (
     <SafeScreen edges={["top"]}>

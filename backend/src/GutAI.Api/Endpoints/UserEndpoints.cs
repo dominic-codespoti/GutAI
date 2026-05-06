@@ -42,6 +42,7 @@ public static class UserEndpoints
             gutConditions = user.GutConditions,
             onboardingCompleted = user.OnboardingCompleted,
             timezoneId = user.TimezoneId,
+            isPremium = user.IsPremium,
             createdAt = user.CreatedAt
         });
     }

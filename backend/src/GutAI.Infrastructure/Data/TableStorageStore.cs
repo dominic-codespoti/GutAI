@@ -138,7 +138,8 @@ public class TableStorageStore : ITableStore
             { "GutConditions", StringArrayToJson(user.GutConditions) },
             { "OnboardingCompleted", user.OnboardingCompleted },
             { "TimezoneId", user.TimezoneId },
-            { "AgentThreadId", user.AgentThreadId }
+            { "AgentThreadId", user.AgentThreadId },
+            { "IsPremium", user.IsPremium }
         };
         await UpsertAsync(e, ct);
     }
@@ -165,7 +166,8 @@ public class TableStorageStore : ITableStore
         GutConditions = JsonToStringArray(e.GetString("GutConditions")),
         OnboardingCompleted = e.GetBoolean("OnboardingCompleted") ?? false,
         TimezoneId = e.GetString("TimezoneId"),
-        AgentThreadId = e.GetString("AgentThreadId")
+        AgentThreadId = e.GetString("AgentThreadId"),
+        IsPremium = e.GetBoolean("IsPremium") ?? false
     };
 
     // ═══════════════════════════════════════════════════════════

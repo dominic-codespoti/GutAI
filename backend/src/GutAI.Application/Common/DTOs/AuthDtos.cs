@@ -41,6 +41,7 @@ public record UserProfileDto
     public string[] GutConditions { get; init; } = [];
     public bool OnboardingCompleted { get; init; }
     public string? TimezoneId { get; init; }
+    public bool IsPremium { get; init; }
 }
 
 public record UpdateProfileRequest
