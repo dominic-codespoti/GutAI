@@ -29,7 +29,6 @@ public class UserContractTests(GutAiWebFactory factory)
         json.AssertHasProperty("dietaryPreferences", JsonValueKind.Array);
         json.AssertHasProperty("gutConditions", JsonValueKind.Array);
         json.AssertHasBoolProperty("onboardingCompleted");
-        json.AssertHasBoolProperty("isPremium");
     }
 
     [Fact]

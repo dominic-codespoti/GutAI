@@ -14,7 +14,6 @@ export interface UserProfile {
   gutConditions: string[];
   onboardingCompleted: boolean;
   timezoneId?: string;
-  isPremium: boolean;
 }
 
 export interface AuthResponse {

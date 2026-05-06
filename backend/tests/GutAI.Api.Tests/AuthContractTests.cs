@@ -37,7 +37,6 @@ public class AuthContractTests(GutAiWebFactory factory)
         user.AssertHasNumberProperty("dailyFatGoalG");
         user.AssertHasNumberProperty("dailyFiberGoalG");
         user.AssertHasBoolProperty("onboardingCompleted");
-        user.AssertHasBoolProperty("isPremium");
         user.AssertHasProperty("allergies", JsonValueKind.Array);
         user.AssertHasProperty("dietaryPreferences", JsonValueKind.Array);
         user.AssertHasProperty("gutConditions", JsonValueKind.Array);

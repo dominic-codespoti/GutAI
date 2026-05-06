@@ -685,14 +685,8 @@ public static class FoodEndpoints
         return Results.NoContent();
     }
 
-    static async Task<IResult> DescribeFoodFromText(DescribeCustomFoodRequest request, ITableStore store, ClaimsPrincipal principal, IContentUnderstandingService aiService, ILogger<Program> logger, CancellationToken ct)
+    static async Task<IResult> DescribeFoodFromText(DescribeCustomFoodRequest request, IContentUnderstandingService aiService, ILogger<Program> logger, CancellationToken ct)
     {
-        var userId = Guid.Parse(principal.FindFirstValue("sub")!);
-        var user = await store.GetUserAsync(userId, ct);
-        if (user is null) return Results.NotFound();
-        if (!user.IsPremium)
-            return Results.BadRequest(new { error = "Premium subscription required. Upgrade to Gut Lens Pro to use AI food creation." });
-
         var text = request.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text))
         {
