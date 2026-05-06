@@ -1,11 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Azure.Data.Tables;
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
-using GutAI.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -326,10 +324,6 @@ public class FoodContractTests(GutAiWebFactory factory)
             {
                 services.RemoveAll(typeof(IContentUnderstandingService));
                 services.AddScoped(_ => contentUnderstandingService);
-                services.RemoveAll(typeof(TableServiceClient));
-                services.RemoveAll(typeof(ITableStore));
-                services.AddSingleton(new TableServiceClient(factory.ConnectionString));
-                services.AddSingleton<ITableStore>(new TableStorageStore(new TableServiceClient(factory.ConnectionString)));
             });
         });
 

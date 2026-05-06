@@ -16,9 +16,8 @@ namespace GutAI.Api.Tests;
 public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string TestAdminKey = "test-admin-key-for-integration-tests";
+    private const string EnvKey = "GUTAI_TEST_AZURITE_CONNECTION";
     private IContainer _azurite = default!;
-    private string _connectionString = default!;
-    internal string ConnectionString => _connectionString;
 
     public async Task InitializeAsync()
     {
@@ -32,11 +31,15 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         await _azurite.StartAsync();
         var port = _azurite.GetMappedPublicPort(10002);
-        _connectionString = $"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://localhost:{port}/devstoreaccount1;";
+        var connStr = $"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://localhost:{port}/devstoreaccount1;";
+        Environment.SetEnvironmentVariable(EnvKey, connStr);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        var connectionString = Environment.GetEnvironmentVariable(EnvKey)
+            ?? throw new InvalidOperationException($"Environment variable {EnvKey} not set. Ensure InitializeAsync ran.");
+
         builder.UseEnvironment("Development");
         builder.UseSetting("AdminKey", TestAdminKey);
         builder.UseSetting("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://centralus-0.in.applicationinsights.azure.com/;LiveEndpoint=https://centralus.livediagnostics.monitor.azure.com/");
@@ -47,7 +50,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
             var storeDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(ITableStore));
             if (storeDescriptor != null) services.Remove(storeDescriptor);
 
-            var client = new TableServiceClient(_connectionString);
+            var client = new TableServiceClient(connectionString);
             services.AddSingleton(client);
             services.AddSingleton<ITableStore>(new TableStorageStore(client));
         });
@@ -57,6 +60,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await base.DisposeAsync();
         await _azurite.DisposeAsync();
+        Environment.SetEnvironmentVariable(EnvKey, null);
     }
 
     public async Task<(HttpClient Client, string Token)> CreateAuthenticatedClientAsync()
