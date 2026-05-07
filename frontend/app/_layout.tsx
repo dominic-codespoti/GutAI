@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -19,7 +19,7 @@ import {
 } from "../src/stores/subscription";
 
 function AuthGate() {
-  const { isAuthenticated, isLoading, hydrate, user } = useAuthStore();
+  const { isAuthenticated, isLoading, isReconnecting, hydrate, connect, user } = useAuthStore();
   const c = useThemeColors();
   const segments = useSegments();
   const router = useRouter();
@@ -58,6 +58,8 @@ function AuthGate() {
     const inOnboarding = segments[0] === "onboarding";
     const inPrivacy = segments[0] === "privacy";
     const inSources = segments[0] === "sources";
+    // When reconnecting, stay on current screen — don't push to login
+    if (isReconnecting) return;
     if (!isAuthenticated && !inAuthGroup && !inPrivacy && !inSources) {
       router.replace("/(auth)/login");
     } else if (isAuthenticated && inAuthGroup) {
@@ -79,6 +81,7 @@ function AuthGate() {
   }, [isAuthenticated, isLoading, segments, user]);
 
   return (
+    <>
     <Stack
       screenOptions={{
         headerShown: false,
@@ -186,6 +189,60 @@ function AuthGate() {
         }}
       />
     </Stack>
+      {isReconnecting && !isAuthenticated && (
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: c.bg,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 32,
+        }}
+      >
+        <ActivityIndicator size="large" color={c.primary} />
+        <Text
+          style={{
+            color: c.text,
+            fontSize: 16,
+            fontWeight: "600",
+            marginTop: 20,
+          }}
+        >
+          Reconnecting…
+        </Text>
+        <Text
+          style={{
+            color: c.textSecondary,
+            fontSize: 14,
+            marginTop: 8,
+            textAlign: "center",
+          }}
+        >
+          The server is waking up. This should only take a few seconds.
+        </Text>
+        <TouchableOpacity
+          onPress={() => connect()}
+          style={{
+            marginTop: 24,
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+            borderRadius: 8,
+            backgroundColor: c.primary,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Retry connection"
+        >
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
+            Retry
+          </Text>
+        </TouchableOpacity>
+      </View>
+      )}
+    </>
   );
 }
 
