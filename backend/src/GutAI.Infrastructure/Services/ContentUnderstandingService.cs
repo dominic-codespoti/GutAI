@@ -24,7 +24,6 @@ public class ContentUnderstandingService : IContentUnderstandingService
     private readonly ILogger<ContentUnderstandingService>? _logger;
     private readonly AIProjectClient? _projectClient;
     private readonly string _agentName;
-    private readonly string _agentVersion = "1";
 
     public ContentUnderstandingService(
         ContentUnderstandingClient client,
@@ -145,7 +144,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
         {
             _logger?.LogInformation("Invoking Foundry agent '{AgentName}' for food description.", _agentName);
 
-            var agentRef = new AgentReference(name: _agentName, version: _agentVersion);
+            var agentRef = new AgentReference(name: _agentName);
             var responsesClient = _projectClient!.OpenAI.GetProjectResponsesClientForAgent(agentRef);
             var result = responsesClient.CreateResponse(description);
 
