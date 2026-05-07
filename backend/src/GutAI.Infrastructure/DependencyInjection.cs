@@ -2,6 +2,7 @@
 
 using Azure.AI.OpenAI;
 using Azure.AI.ContentUnderstanding;
+using Azure.AI.Projects;
 using Azure.Data.Tables;
 using Azure.Identity;
 using GutAI.Application.Common.Interfaces;
@@ -111,7 +112,22 @@ public static class DependencyInjection
         services.AddSingleton<IGlycemicIndexService>(sp => sp.GetRequiredService<GlycemicIndexService>());
         services.AddScoped<PersonalizedScoringService>();
         services.AddScoped<IFoodDiaryAnalysisService, FoodDiaryAnalysisService>();
-        services.AddScoped<IContentUnderstandingService, ContentUnderstandingService>();
+        // Foundry Agent Service — optional, used by ContentUnderstandingService for nutrition estimation
+        var foundryEndpoint = configuration["Foundry:ProjectEndpoint"];
+        if (!string.IsNullOrEmpty(foundryEndpoint))
+        {
+            services.AddSingleton(new AIProjectClient(new Uri(foundryEndpoint), CreateDefaultAzureCredential(configuration)));
+        }
+
+        services.AddScoped<IContentUnderstandingService>(sp =>
+        {
+            var client = sp.GetRequiredService<ContentUnderstandingClient>();
+            var openAiClient = sp.GetService<AzureOpenAIClient>();
+            var config = sp.GetService<IConfiguration>();
+            var logger = sp.GetService<ILogger<ContentUnderstandingService>>();
+            var projectClient = sp.GetService<AIProjectClient>();
+            return new ContentUnderstandingService(client, openAiClient, config, logger, projectClient);
+        });
 
         // Azure OpenAI Assistants for chat
         var aiEndpoint = configuration["AzureOpenAI:Endpoint"];

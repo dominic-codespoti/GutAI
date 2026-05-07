@@ -101,6 +101,9 @@ param azureContentUnderstandingEndpoint string = ''
 @description('Azure OpenAI deployment name')
 param azureOpenAIDeploymentName string = 'gpt-4o-mini'
 
+@description('Azure AI Foundry project endpoint URL')
+param foundryProjectEndpoint string = ''
+
 resource api 'Microsoft.App/containerApps@2024-03-01' = {
   name: '${prefix}-api'
   location: location
@@ -163,6 +166,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AzureOpenAI__Endpoint', value: azureOpenAIEndpoint }
             { name: 'AzureOpenAI__ContentUnderstandingEndpoint', value: azureContentUnderstandingEndpoint }
             { name: 'AzureOpenAI__DeploymentName', value: azureOpenAIDeploymentName }
+            { name: 'Foundry__ProjectEndpoint', value: foundryProjectEndpoint }
           ]
           probes: [
             {

@@ -252,7 +252,37 @@ public static class FoodEndpoints
         var externalDto = await foodApi.LookupBarcodeAsync(barcode);
         if (externalDto is null) return Results.NotFound();
 
-        return Results.Ok(externalDto);
+        // Persist to local store so the product has a real GUID and can be favorited
+        var newProduct = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = externalDto.Name,
+            Barcode = externalDto.Barcode,
+            Brand = externalDto.Brand,
+            Ingredients = externalDto.Ingredients,
+            NovaGroup = externalDto.NovaGroup,
+            ServingSize = externalDto.ServingSize,
+            NutritionInfo = externalDto.NutritionInfo,
+            Calories100g = externalDto.Calories100g,
+            Protein100g = externalDto.Protein100g,
+            Carbs100g = externalDto.Carbs100g,
+            Fat100g = externalDto.Fat100g,
+            Fiber100g = externalDto.Fiber100g,
+            Sugar100g = externalDto.Sugar100g,
+            Sodium100g = externalDto.Sodium100g,
+            DataSource = externalDto.DataSource,
+            SourceUrl = externalDto.SourceUrl,
+            ExternalId = externalDto.ExternalId,
+            ImageUrl = externalDto.ImageUrl,
+            NutriScore = externalDto.NutriScore,
+            ServingQuantity = externalDto.ServingQuantity,
+            AllergensTags = externalDto.AllergensTags,
+            FoodKind = externalDto.FoodKind
+        };
+        await store.UpsertFoodProductAsync(newProduct);
+
+        var allAdditives = await store.GetAllFoodAdditivesAsync();
+        return Results.Ok(MapToDto(newProduct, allAdditives));
     }
 
     static async Task<IResult> GetFoodAdditives(ITableStore store)

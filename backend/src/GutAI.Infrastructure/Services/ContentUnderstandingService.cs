@@ -2,13 +2,17 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure;
 using Azure.AI.ContentUnderstanding;
+using Azure.AI.Extensions.OpenAI;
 using Azure.AI.OpenAI;
+using Azure.AI.Projects;
+using Azure.AI.Projects.Agents;
 using Azure.Identity;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
+using OpenAI.Responses;
 
 namespace GutAI.Infrastructure.Services;
 
@@ -18,17 +22,23 @@ public class ContentUnderstandingService : IContentUnderstandingService
     private readonly AzureOpenAIClient? _openAiClient;
     private readonly IConfiguration? _config;
     private readonly ILogger<ContentUnderstandingService>? _logger;
+    private readonly AIProjectClient? _projectClient;
+    private readonly string _agentName;
+    private readonly string _agentVersion = "1";
 
     public ContentUnderstandingService(
         ContentUnderstandingClient client,
         AzureOpenAIClient? openAiClient = null,
         IConfiguration? config = null,
-        ILogger<ContentUnderstandingService>? logger = null)
+        ILogger<ContentUnderstandingService>? logger = null,
+        AIProjectClient? projectClient = null)
     {
         _client = client;
         _openAiClient = openAiClient;
         _config = config;
         _logger = logger;
+        _projectClient = projectClient;
+        _agentName = config?["Foundry:AgentName"] ?? "nutrition-estimation-agent";
     }
 
     public async Task<CustomFoodDto?> ParseNutritionLabelAsync(Stream imageStream, string contentType, CancellationToken ct)
@@ -48,7 +58,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
             {
                 return primaryResult;
             }
-            
+
             if (primaryResult != null)
             {
                 _logger?.LogWarning(
@@ -82,7 +92,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 memoryStream.Position = 0;
                 await memoryStream.CopyToAsync(llmStream, ct);
                 llmStream.Position = 0;
-                
+
                 var fallbackResult = await ParseWithLlmVisionAsync(llmStream, contentType, ct);
                 if (fallbackResult != null && HasMeaningfulExtraction(fallbackResult))
                 {
@@ -113,16 +123,61 @@ public class ContentUnderstandingService : IContentUnderstandingService
             return null;
         }
 
+        // Prefer Foundry agent if configured
+        if (_projectClient != null)
+        {
+            return await DescribeFoodWithAgentAsync(trimmedDescription, ct);
+        }
+
+        // Fallback to direct chat completions
         if (_openAiClient == null || _config == null)
         {
-            _logger?.LogWarning("Text food description is unavailable because Azure OpenAI is not configured.");
+            _logger?.LogWarning("Text food description is unavailable because neither Foundry agent nor Azure OpenAI is configured.");
             return null;
         }
 
+        return await DescribeFoodWithChatAsync(trimmedDescription, ct);
+    }
+
+    private async Task<CustomFoodDto?> DescribeFoodWithAgentAsync(string description, CancellationToken ct)
+    {
+        try
+        {
+            _logger?.LogInformation("Invoking Foundry agent '{AgentName}' for food description.", _agentName);
+
+            var agentRef = new AgentReference(name: _agentName, version: _agentVersion);
+            var responsesClient = _projectClient!.OpenAI.GetProjectResponsesClientForAgent(agentRef);
+            var result = responsesClient.CreateResponse(description);
+
+            var textResponse = ExtractResponseText(result.Value);
+            if (string.IsNullOrWhiteSpace(textResponse))
+            {
+                _logger?.LogWarning("Agent '{AgentName}' returned empty response.", _agentName);
+                return null;
+            }
+
+            if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
+            {
+                _logger?.LogWarning("Agent '{AgentName}' returned unparseable JSON for '{Prompt}'.", _agentName, Truncate(description, 120));
+                return null;
+            }
+
+            FinalizeGeneratedFood(dto, description);
+            return dto;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Agent '{AgentName}' invocation failed. {Details}", _agentName, DescribeException(ex));
+            return null;
+        }
+    }
+
+    private async Task<CustomFoodDto?> DescribeFoodWithChatAsync(string description, CancellationToken ct)
+    {
         try
         {
             var modelName = ResolveTextDeploymentName(_config);
-            var chatClient = _openAiClient.GetChatClient(modelName);
+            var chatClient = _openAiClient!.GetChatClient(modelName);
 
             var messages = new List<ChatMessage>
             {
@@ -141,7 +196,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
                     - ExtractionConfidence must be a number between 0 and 1 representing how confident you are in the estimate.
                     - Prefer realistic, internally consistent nutrition values.
                     """),
-                new UserChatMessage($"Describe this food: {trimmedDescription}")
+                new UserChatMessage($"Describe this food: {description}")
             };
 
             var options = new ChatCompletionOptions
@@ -154,11 +209,11 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
             if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
             {
-                _logger?.LogWarning("Text food description returned unparseable JSON for prompt '{Prompt}'.", Truncate(trimmedDescription, 120));
+                _logger?.LogWarning("Text food description returned unparseable JSON for prompt '{Prompt}'.", Truncate(description, 120));
                 return null;
             }
 
-            FinalizeGeneratedFood(dto, trimmedDescription);
+            FinalizeGeneratedFood(dto, description);
             return dto;
         }
         catch (Exception ex)
@@ -167,7 +222,41 @@ public class ContentUnderstandingService : IContentUnderstandingService
             return null;
         }
     }
-    
+
+    private static string? ExtractResponseText(object responseValue)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(responseValue);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in output.EnumerateArray())
+                {
+                    if (item.TryGetProperty("type", out var type) && type.GetString() == "message" &&
+                        item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+                    {
+                        var texts = new List<string>();
+                        foreach (var block in content.EnumerateArray())
+                        {
+                            if (block.TryGetProperty("text", out var text))
+                            {
+                                texts.Add(text.GetString() ?? "");
+                            }
+                        }
+                        if (texts.Count > 0)
+                            return string.Concat(texts);
+                    }
+                }
+            }
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Validates that the extracted data contains any meaningful label information
     /// </summary>
@@ -677,25 +766,25 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 hasAnyMappedField = true;
                 dto.SodiumMg = sodium;
             }
-            
+
             // Extended macronutrients
             if (TryExtractNutrientFromFlat(flatFields, out var saturatedFat, "saturatedfat", "satfat")) { hasAnyMappedField = true; dto.SaturatedFatG = saturatedFat; }
             if (TryExtractNutrientFromFlat(flatFields, out var transFat, "transfat", "transfatty")) { hasAnyMappedField = true; dto.TransFatG = transFat; }
             if (TryExtractNutrientFromFlat(flatFields, out var cholesterol, "cholesterol")) { hasAnyMappedField = true; dto.CholesterolMg = cholesterol; }
             if (TryExtractNutrientFromFlat(flatFields, out var potassium, "potassium", "k")) { hasAnyMappedField = true; dto.PotassiumMg = potassium; }
-            
+
             // Minerals
             if (TryExtractNutrientFromFlat(flatFields, out var calcium, "calcium", "ca")) { hasAnyMappedField = true; dto.CalciumMg = calcium; }
             if (TryExtractNutrientFromFlat(flatFields, out var iron, "iron", "fe")) { hasAnyMappedField = true; dto.IronMg = iron; }
             if (TryExtractNutrientFromFlat(flatFields, out var magnesium, "magnesium", "mg")) { hasAnyMappedField = true; dto.MagnesiumMg = magnesium; }
             if (TryExtractNutrientFromFlat(flatFields, out var zinc, "zinc", "zn")) { hasAnyMappedField = true; dto.ZincMg = zinc; }
-            
+
             // Vitamins
             if (TryExtractNutrientFromFlat(flatFields, out var vitaminA, "vitamina", "vitamin a", "retinol")) { hasAnyMappedField = true; dto.VitaminA_IU = vitaminA; }
             if (TryExtractNutrientFromFlat(flatFields, out var vitaminC, "vitaminc", "vitamin c", "ascorbic")) { hasAnyMappedField = true; dto.VitaminC_Mg = vitaminC; }
             if (TryExtractNutrientFromFlat(flatFields, out var vitaminD, "vitamind", "vitamin d", "cholecalciferol")) { hasAnyMappedField = true; dto.VitaminD_Mcg = vitaminD; }
             if (TryExtractNutrientFromFlat(flatFields, out var vitaminB12, "vitaminb12", "vitamin b12", "cobalamin")) { hasAnyMappedField = true; dto.VitaminB12_Mcg = vitaminB12; }
-            
+
             // Special nutrients
             if (TryExtractNutrientFromFlat(flatFields, out var omega3, "omega3", "omega-3", "ala", "dha", "epa")) { hasAnyMappedField = true; dto.Omega3G = omega3; }
             if (TryExtractNutrientFromFlat(flatFields, out var caffeine, "caffeine")) { hasAnyMappedField = true; dto.CaffeineMg = caffeine; }
@@ -709,7 +798,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
                     dto.Ingredients = ingMatch.Value;
                 }
             }
-            
+
             // Set extraction confidence if available
             if (TryGetField(documentContent.Fields, out var confidenceField, "Confidence", "OverallConfidence"))
             {
@@ -931,7 +1020,7 @@ public static class Utilities
                 return Math.Round(kjNum / 4.184m, 1);
             }
         }
-        
+
         // Handle IU (International Units) for vitamins
         if (input.Contains("iu", StringComparison.OrdinalIgnoreCase))
         {
@@ -941,7 +1030,7 @@ public static class Utilities
                 return iuNum;
             }
         }
-        
+
         // Handle mcg/µg (micrograms)
         if (input.Contains("mcg", StringComparison.OrdinalIgnoreCase) || input.Contains("µg"))
         {

@@ -12,7 +12,7 @@ namespace GutAI.Infrastructure.Tests
     {
         private DocumentContent BuildDoc(string jsonContent)
         {
-            return ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonContent));
+            return ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonContent))!;
         }
 
         [Theory]

@@ -17,7 +17,7 @@ namespace GutAI.Infrastructure.Tests
             var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fixtures", "food_label_result.json");
             var jsonContent = File.ReadAllText(filePath);
 
-            var documentContent = ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonContent));
+            var documentContent = ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonContent))!;
 
             // Act
             var result = ContentUnderstandingService.MapDocumentContentToDto(documentContent);
@@ -47,7 +47,7 @@ namespace GutAI.Infrastructure.Tests
             var contentObj = jsonDoc.RootElement.GetProperty("result").GetProperty("contents")[0];
             var jsonToRead = contentObj.GetRawText();
 
-            var documentContent = ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonToRead));
+            var documentContent = ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonToRead))!;
 
             // Act
             var result = ContentUnderstandingService.MapDocumentContentToDto(documentContent);
@@ -76,7 +76,7 @@ namespace GutAI.Infrastructure.Tests
             var contentObj = jsonDoc.RootElement.GetProperty("result").GetProperty("contents")[0];
             var jsonToRead = contentObj.GetRawText();
 
-            var documentContent = ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonToRead));
+            var documentContent = ModelReaderWriter.Read<DocumentContent>(BinaryData.FromString(jsonToRead))!;
 
             // Act
             var result = ContentUnderstandingService.MapDocumentContentToDto(documentContent);
