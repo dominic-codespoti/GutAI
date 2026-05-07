@@ -17,7 +17,8 @@
     "submit:ios": "eas submit --platform ios --profile production",
     "submit:android": "eas submit --platform android --profile production",
     "submit:all": "eas submit --platform all --profile production",
-    "postinstall": "node scripts/patch-navigation-container.js"
+    "postinstall": "node scripts/patch-navigation-container.js",
+    "test:auth-reconnect": "npx tsx --test src/stores/__tests__/auth-reconnect.test.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -56,6 +57,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.10",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.2"
   },
   "private": true

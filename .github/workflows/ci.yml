@@ -24,6 +24,8 @@ jobs:
         run: npm ci
       - name: Type Check
         run: npx tsc --noEmit
+      - name: Auth Reconnect Tests
+        run: npx tsx --test src/stores/__tests__/auth-reconnect.test.ts
 
   docker:
     name: Docker Build
