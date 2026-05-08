@@ -146,7 +146,12 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
             var agentRef = new AgentReference(name: _agentName);
             var responsesClient = _projectClient!.OpenAI.GetProjectResponsesClientForAgent(agentRef);
-            var result = responsesClient.CreateResponse(description);
+
+#pragma warning disable OPENAI001 // Experimental APIs
+            var options = new CreateResponseOptions();
+            options.InputItems.Add(ResponseItem.CreateUserMessageItem(description));
+            var result = await responsesClient.CreateResponseAsync(options, ct);
+#pragma warning restore OPENAI001
 
             var textResponse = ExtractResponseText(result.Value);
             if (string.IsNullOrWhiteSpace(textResponse))
@@ -228,6 +233,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
         {
             var json = JsonSerializer.Serialize(responseValue);
             using var doc = JsonDocument.Parse(json);
+
             if (doc.RootElement.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in output.EnumerateArray())
@@ -239,15 +245,14 @@ public class ContentUnderstandingService : IContentUnderstandingService
                         foreach (var block in content.EnumerateArray())
                         {
                             if (block.TryGetProperty("text", out var text))
-                            {
                                 texts.Add(text.GetString() ?? "");
-                            }
                         }
                         if (texts.Count > 0)
                             return string.Concat(texts);
                     }
                 }
             }
+
             return null;
         }
         catch (JsonException)
