@@ -146,6 +146,45 @@ app.MapGroup("/api/chat").MapChatEndpoints().RequireAuthorization().RequireRateL
 // MCP endpoint for external AI apps
 app.MapMcp().RequireAuthorization();
 
+// ── CLI commands ──────────────────────────────────────────────────────────────
+if (args.Contains("--import-off"))
+{
+    await RunOffImportAsync(app.Services);
+    return;
+}
+
+static async Task RunOffImportAsync(IServiceProvider services)
+{
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var db = services.GetRequiredService<IOfflineFoodDatabase>();
+    if (db is not AzureTableOfflineDatabase offlineDb)
+    {
+        logger.LogError("Offline database is not an AzureTableOfflineDatabase — cannot import");
+        return;
+    }
+
+    logger.LogInformation("Starting OFF data dump import...");
+    logger.LogInformation("Downloading from https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz");
+
+    var progress = new Progress<int>(count =>
+    {
+        if (count % 10000 == 0)
+            logger.LogInformation("Imported {Count} products...", count);
+    });
+
+    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+    http.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0 (contact@gutai.app)");
+
+    var response = await http.GetAsync("https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz",
+        HttpCompletionOption.ResponseHeadersRead);
+    response.EnsureSuccessStatusCode();
+
+    await using var stream = await response.Content.ReadAsStreamAsync();
+    await offlineDb.ImportFromOffDumpAsync(stream, progress);
+
+    logger.LogInformation("OFF data dump import complete.");
+}
+
 // Seed reference data (symptom types, food additives) asynchronously
 _ = Task.Run(async () =>
 {

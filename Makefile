@@ -1,4 +1,4 @@
-.PHONY: up up\:prod down logs api-logs seed test ci check-contracts azure-setup azure-deploy
+.PHONY: up up\:prod down logs api-logs seed test ci check-contracts import-off import-off\:local azure-setup azure-deploy
 
 # ── Start everything (fresh build) ──
 up:
@@ -130,6 +130,13 @@ eas-submit:
 
 eas-update:
 	cd frontend && eas update --channel production
+
+# ── OFF Data Import ──
+import-off:
+	./scripts/import-off.sh $(STORAGE_ACCOUNT)
+
+import-off\:local:
+	AzureStorage__AccountName=$(STORAGE_ACCOUNT) dotnet run --project backend/src/GutAI.Api -- --import-off
 
 # ── Azure Deployment ──
 azure-setup:

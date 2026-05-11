@@ -217,7 +217,7 @@ public static class FoodEndpoints
         return Results.Ok(finalResults);
     }
 
-    static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService? foodApi = null)
+    static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService? foodApi = null, IOfflineFoodDatabase? offlineDb = null)
     {
         var product = await store.GetFoodProductAsync(id);
         if (product != null)
@@ -229,7 +229,7 @@ public static class FoodEndpoints
                 string.IsNullOrEmpty(product.Ingredients) &&
                 !string.IsNullOrEmpty(product.Barcode))
             {
-                await EnrichFromOffBarcodeAsync(product, foodApi, store);
+                await EnrichFromOffBarcodeAsync(product, offlineDb, foodApi, store);
             }
 
             var additives = await store.GetAllFoodAdditivesAsync();
@@ -247,13 +247,11 @@ public static class FoodEndpoints
         return null;
     }
 
-    static async Task EnrichFromOffBarcodeAsync(FoodProduct product, IFoodApiService? foodApi, ITableStore store)
+    static async Task EnrichFromOffBarcodeAsync(FoodProduct product, IOfflineFoodDatabase? offlineDb, IFoodApiService? foodApi, ITableStore store)
     {
-        if (foodApi is null) return;
-
         try
         {
-            var enriched = await foodApi.LookupBarcodeAsync(product.Barcode!);
+            var enriched = await LookupOffProductAsync(product.Barcode!, offlineDb, foodApi);
             if (enriched is null) return;
 
             product.Ingredients = enriched.Ingredients ?? product.Ingredients;
@@ -281,7 +279,24 @@ public static class FoodEndpoints
         }
     }
 
-    static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IFoodApiService foodApi)
+    static async Task<FoodProductDto?> LookupOffProductAsync(string barcode, IOfflineFoodDatabase? offlineDb, IFoodApiService? foodApi)
+    {
+        // 1. Try offline database (Azure Table "offproducts", unlimited lookups)
+        if (offlineDb is not null)
+        {
+            var result = await offlineDb.LookupByBarcodeAsync(barcode);
+            if (result is not null)
+                return result;
+        }
+
+        // 2. Fall back to barcode API (rate-limited to 12 req/min/IP)
+        if (foodApi is not null)
+            return await foodApi.LookupBarcodeAsync(barcode);
+
+        return null;
+    }
+
+    static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb)
     {
         if (string.IsNullOrWhiteSpace(barcode) || barcode.Length > 50)
             return Results.BadRequest(new { error = "Barcode must be between 1 and 50 characters" });
@@ -293,7 +308,7 @@ public static class FoodEndpoints
             if (product.DataSource == DataSources.OpenFoodFacts &&
                 string.IsNullOrEmpty(product.Ingredients))
             {
-                await EnrichFromOffBarcodeAsync(product, foodApi, store);
+                await EnrichFromOffBarcodeAsync(product, offlineDb, foodApi, store);
             }
 
             var additives = await store.GetAllFoodAdditivesAsync();
@@ -382,15 +397,15 @@ public static class FoodEndpoints
 
 
 
-    static async Task<IResult> GetFoodProduct(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi)
+    static async Task<IResult> GetFoodProduct(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         return dto != null ? Results.Ok(dto) : Results.NotFound();
     }
 
-    static async Task<IResult> GetSafetyReport(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, GutRiskService gutRiskService, FodmapService fodmapService, SubstitutionService substitutionService, GlycemicIndexService glycemicService)
+    static async Task<IResult> GetSafetyReport(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, GutRiskService gutRiskService, FodmapService fodmapService, SubstitutionService substitutionService, GlycemicIndexService glycemicService)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
 
         var gutRisk = gutRiskService.Assess(dto);
@@ -414,41 +429,41 @@ public static class FoodEndpoints
         });
     }
 
-    static async Task<IResult> GetGutRisk(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, GutRiskService gutRiskService)
+    static async Task<IResult> GetGutRisk(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, GutRiskService gutRiskService)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
         var result = gutRiskService.Assess(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetFodmap(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, FodmapService fodmapService)
+    static async Task<IResult> GetFodmap(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, FodmapService fodmapService)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
         var result = fodmapService.Assess(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetSubstitutions(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, SubstitutionService substitutionService)
+    static async Task<IResult> GetSubstitutions(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, SubstitutionService substitutionService)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
         var result = substitutionService.GetSubstitutions(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetGlycemic(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, GlycemicIndexService glycemicService)
+    static async Task<IResult> GetGlycemic(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, GlycemicIndexService glycemicService)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
         var result = glycemicService.Assess(dto);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetPersonalizedScore(Guid id, ClaimsPrincipal principal, ITableStore store, IFoodApiService foodApi, PersonalizedScoringService scoringService)
+    static async Task<IResult> GetPersonalizedScore(Guid id, ClaimsPrincipal principal, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, PersonalizedScoringService scoringService)
     {
-        var dto = await GetResolvedFoodProductDtoAsync(id, principal, store, foodApi);
+        var dto = await GetResolvedFoodProductDtoAsync(id, principal, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
         var userId = Guid.Parse(principal.FindFirstValue("sub")!);
         var result = await scoringService.ScoreAsync(dto, userId, store);

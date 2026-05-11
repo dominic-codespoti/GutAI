@@ -11,6 +11,7 @@ using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.ExternalApis;
 using GutAI.Infrastructure.Identity;
 using GutAI.Infrastructure.Services;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -49,10 +50,31 @@ public static class DependencyInjection
         services.AddSingleton(new TableServiceClient(storageConn));
         services.AddSingleton<ITableStore, TableStorageStore>();
 
+        // Offline food database — self-constructs its own TableServiceClient using
+        // DefaultAzureCredential (az login, managed identity) so it doesn't conflict
+        // with the connection-string-based client used by TableStorageStore.
+        var storageAccountName = configuration["AzureStorage:AccountName"];
+        services.AddSingleton<IOfflineFoodDatabase>(sp =>
+        {
+            var cache = sp.GetRequiredService<IMemoryCache>();
+            var logger = sp.GetRequiredService<ILogger<AzureTableOfflineDatabase>>();
+
+            if (!string.IsNullOrEmpty(storageAccountName))
+            {
+                var cred = CreateDefaultAzureCredential(configuration);
+                var endpoint = new Uri($"https://{storageAccountName}.table.core.windows.net");
+                return new AzureTableOfflineDatabase(new TableServiceClient(endpoint, cred), cache, logger);
+            }
+
+            // Fall back to connection string (also used by Azurite in dev)
+            return new AzureTableOfflineDatabase(new TableServiceClient(storageConn), cache, logger);
+        });
+
         // JWT
         services.AddSingleton<IJwtService, JwtService>();
 
-        // In-memory distributed cache
+        // In-memory caches
+        services.AddMemoryCache();
         services.AddDistributedMemoryCache();
         services.AddSingleton<ICacheService, InMemoryCacheService>();
 
