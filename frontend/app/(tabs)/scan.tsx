@@ -30,7 +30,7 @@ import {
 import { useFavorites } from "../../src/hooks/useFavorites";
 import type { FavoriteFood, FoodProduct, RecentFood } from "../../src/types";
 import { useRouter, useGlobalSearchParams } from "expo-router";
-import { ratingColor } from "../../src/utils/colors";
+import { ratingColor, cspiEmoji } from "../../src/utils/colors";
 import { maybeRequestReview } from "../../src/utils/review";
 import { useThemeColors } from "../../src/stores/theme";
 import { SearchResultSkeleton } from "../../components/SkeletonLoader";
@@ -1005,19 +1005,29 @@ export default function ScanScreen() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: "600", color: colors.text }}>
-                        {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: colors.textSecondary,
-                          marginTop: 2,
-                        }}
-                      >
-                        CSPI: {add.cspiRating} · US: {add.usStatus} · EU:{" "}
-                        {add.euStatus}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={{ fontWeight: "600", color: colors.text }}>
+                          {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                        </Text>
+                        <View
+                          style={{
+                            backgroundColor: ratingColor(add.cspiRating) + "18",
+                            paddingHorizontal: 6,
+                            paddingVertical: 1,
+                            borderRadius: 8,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "600",
+                              color: ratingColor(add.cspiRating),
+                            }}
+                          >
+                            {cspiEmoji(add.cspiRating)} {add.cspiRating}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
                     {!alertIds.has(add.id) ? (
                       <TouchableOpacity
@@ -1067,8 +1077,9 @@ export default function ScanScreen() {
                       style={{
                         fontSize: 12,
                         color: colors.danger,
-                        marginTop: 2,
+                        marginTop: 4,
                       }}
+                      numberOfLines={2}
                     >
                       ⚠ {add.healthConcerns}
                     </Text>

@@ -1,4 +1,5 @@
 using GutAI.Application.Common.DTOs;
+using GutAI.Domain.Enums;
 
 namespace GutAI.Infrastructure.Services;
 
@@ -10,14 +11,21 @@ public class SubstitutionService
         var lower = (product.Ingredients ?? "").ToLowerInvariant();
         var name = (product.Name ?? "").ToLowerInvariant();
 
-        foreach (var (pattern, subs) in IngredientSubstitutions)
+        // Ingredient-level substitutions only make sense for whole foods.
+        // For branded/packaged products, you can't swap individual ingredients.
+        bool isWholeFood = product.FoodKind == FoodKind.WholeFood ||
+            (product.DataSource is "USDA" or "AUSNUT" && product.FoodKind != FoodKind.Branded);
+        if (isWholeFood)
         {
-            if (lower.Contains(pattern) || name.Contains(pattern))
+            foreach (var (pattern, subs) in IngredientSubstitutions)
             {
-                foreach (var sub in subs)
+                if (lower.Contains(pattern) || name.Contains(pattern))
                 {
-                    if (!HasSuggestion(suggestions, sub))
-                        suggestions.Add(sub);
+                    foreach (var sub in subs)
+                    {
+                        if (!HasSuggestion(suggestions, sub))
+                            suggestions.Add(sub);
+                    }
                 }
             }
         }

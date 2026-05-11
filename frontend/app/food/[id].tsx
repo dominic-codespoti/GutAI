@@ -21,7 +21,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { MealTypePicker } from "../../components/MealTypePicker";
 import { InfoTooltip } from "../../components/InfoTooltip";
 import { CollapsibleCard } from "../../components/CollapsibleCard";
-import { ratingColor } from "../../src/utils/colors";
+import { ratingColor, riskLevelColor, riskLevelEmoji, cspiEmoji } from "../../src/utils/colors";
 import {
   scaleNutrition,
   nutritionSummaryText,
@@ -902,12 +902,7 @@ export default function FoodDetailScreen() {
                     key={`${flag.code}-${i}`}
                     style={{
                       borderLeftWidth: 3,
-                      borderLeftColor:
-                        flag.riskLevel === "High"
-                          ? colors.danger
-                          : flag.riskLevel === "Medium"
-                            ? colors.warning
-                            : colors.textMuted,
+                      borderLeftColor: riskLevelColor(flag.riskLevel),
                       paddingLeft: 12,
                       paddingVertical: 8,
                       marginBottom: 8,
@@ -942,15 +937,10 @@ export default function FoodDetailScreen() {
                         style={{
                           fontSize: 11,
                           fontWeight: "600",
-                          color:
-                            flag.riskLevel === "High"
-                              ? colors.danger
-                              : flag.riskLevel === "Medium"
-                                ? colors.warning
-                                : colors.textSecondary,
+                          color: riskLevelColor(flag.riskLevel),
                         }}
                       >
-                        {flag.riskLevel} Risk
+                        {riskLevelEmoji(flag.riskLevel)} {flag.riskLevel} Risk
                       </Text>
                       <Text style={{ fontSize: 11, color: colors.textMuted }}>
                         {flag.category}
@@ -1949,26 +1939,37 @@ export default function FoodDetailScreen() {
                       marginBottom: 8,
                     }}
                   >
-                    <Text style={{ fontWeight: "600", color: colors.text }}>
-                      {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: colors.textSecondary,
-                        marginTop: 2,
-                      }}
-                    >
-                      CSPI: {add.cspiRating} · US: {add.usStatus} · EU:{" "}
-                      {add.euStatus}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={{ fontWeight: "600", color: colors.text, flex: 1 }}>
+                        {add.name} {add.eNumber ? `(${add.eNumber})` : ""}
+                      </Text>
+                      <View
+                        style={{
+                          backgroundColor: ratingColor(add.cspiRating) + "18",
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          borderRadius: 10,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: "600",
+                            color: ratingColor(add.cspiRating),
+                          }}
+                        >
+                          {cspiEmoji(add.cspiRating)} {add.cspiRating}
+                        </Text>
+                      </View>
+                    </View>
                     {add.healthConcerns && (
                       <Text
                         style={{
                           fontSize: 12,
                           color: colors.danger,
-                          marginTop: 2,
+                          marginTop: 4,
                         }}
+                        numberOfLines={2}
                       >
                         ⚠ {add.healthConcerns}
                       </Text>
@@ -1981,29 +1982,19 @@ export default function FoodDetailScreen() {
                           marginTop: 2,
                         }}
                       >
-                        Banned in: {add.bannedInCountries.join(", ")}
+                        🚫 Banned in: {add.bannedInCountries.join(", ")}
                       </Text>
                     )}
-                    {add.description && (
+                    {!add.healthConcerns && add.description && (
                       <Text
                         style={{
                           fontSize: 12,
                           color: colors.textSecondary,
                           marginTop: 4,
                         }}
+                        numberOfLines={2}
                       >
                         {add.description}
-                      </Text>
-                    )}
-                    {add.efsaAdiMgPerKgBw != null && (
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.textMuted,
-                          marginTop: 2,
-                        }}
-                      >
-                        EFSA ADI: {add.efsaAdiMgPerKgBw} mg/kg bw
                       </Text>
                     )}
                   </View>

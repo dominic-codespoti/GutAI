@@ -5,6 +5,42 @@ export const severityColor = (n: number) => {
   return n <= 3 ? c.primary : n <= 6 ? c.warning : c.danger;
 };
 
+export const riskLevelColor = (level: string) => {
+  const c = getThemeColors();
+  switch (level) {
+    case "High":
+      return c.danger;
+    case "Medium":
+      return c.warning;
+    default:
+      return c.primary;
+  }
+};
+
+export const riskLevelEmoji = (level: string) => {
+  switch (level) {
+    case "High":
+      return "🔴";
+    case "Medium":
+      return "🟡";
+    default:
+      return "🟢";
+  }
+};
+
+export const cspiEmoji = (rating: string) => {
+  switch (rating) {
+    case "Avoid":
+      return "🔴";
+    case "Caution":
+      return "🟡";
+    case "CutBack":
+      return "🟠";
+    default:
+      return "🟢";
+  }
+};
+
 export const ratingColor = (rating: string | null | undefined) => {
   const c = getThemeColors();
   switch (rating?.toLowerCase()) {

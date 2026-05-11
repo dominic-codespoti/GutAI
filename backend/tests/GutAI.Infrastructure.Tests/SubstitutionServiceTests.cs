@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
+using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
 using Xunit;
 
@@ -19,6 +20,7 @@ public class SubstitutionServiceTests
             NovaGroup = nova,
             Sodium100g = sodium,
             Sugar100g = sugar,
+            FoodKind = FoodKind.WholeFood,
         };
 
     // ─── Dairy Substitutions ────────────────────────────────────────────

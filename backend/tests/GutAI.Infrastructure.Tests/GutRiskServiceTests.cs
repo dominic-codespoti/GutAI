@@ -105,7 +105,7 @@ public class GutRiskServiceTests
     [Fact]
     public void AdditiveTag_UnknownAdditive_NotFlagged()
     {
-        var result = _sut.Assess(MakeProduct(additivesTags: ["en:e300"])); // Vitamin C
+        var result = _sut.Assess(MakeProduct(additivesTags: ["en:e9999"])); // Non-existent additive
 
         result.Flags.Should().BeEmpty();
         result.GutScore.Should().Be(100);
@@ -137,7 +137,7 @@ public class GutRiskServiceTests
     {
         var additives = new List<FoodAdditiveDto>
         {
-            new() { Name = "Sorbitol Syrup", ENumber = "E999", Category = "Sweetener", CspiRating = "Caution" },
+            new() { Name = "Sorbitol Syrup", ENumber = "E000", Category = "Sweetener", CspiRating = "Caution" },
         };
         var result = _sut.Assess(MakeProduct(additives: additives));
 
