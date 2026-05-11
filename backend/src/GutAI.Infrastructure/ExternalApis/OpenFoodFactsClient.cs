@@ -32,6 +32,13 @@ public class OpenFoodFactsClient : IFoodApiService
     private const string BarcodeFields = "product_name,brands,code,nutriments,serving_size,serving_quantity,nova_group,nutriscore_grade,allergens_tags,additives_tags,ingredients_text,image_url";
     private const string SearchFields = "product_name,brands,code,nutriments,nova_group,nutriscore_grade,allergens_tags,image_url,ingredients_tags";
 
+    // Rate limit: 15 req/min/IP for the barcode API per OFF docs.
+    // We use 12/min to leave headroom for other parts of the app.
+    private static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(1);
+    private const int RateLimitMaxRequests = 12;
+    private static readonly object RateLimitLock = new();
+    private static readonly Queue<DateTime> RateLimitTimestamps = new();
+
     public OpenFoodFactsClient(HttpClient http, ILogger<OpenFoodFactsClient> logger)
     {
         _http = http;
@@ -42,6 +49,8 @@ public class OpenFoodFactsClient : IFoodApiService
     {
         try
         {
+            await AcquireRateLimitAsync(ct);
+
             var response = await _http.GetFromJsonAsync<OpenFoodFactsResponse>(
                 $"{BaseUrl}/api/v2/product/{barcode}?fields={BarcodeFields}", JsonOptions, ct);
 
@@ -50,10 +59,43 @@ public class OpenFoodFactsClient : IFoodApiService
 
             return MapProduct(response.Product, barcode);
         }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to lookup barcode {Barcode} from OpenFoodFacts", barcode);
             return null;
+        }
+    }
+
+    private async Task AcquireRateLimitAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            TimeSpan? delay;
+            lock (RateLimitLock)
+            {
+                var now = DateTime.UtcNow;
+                while (RateLimitTimestamps.Count > 0 && now - RateLimitTimestamps.Peek() > RateLimitWindow)
+                    RateLimitTimestamps.Dequeue();
+
+                if (RateLimitTimestamps.Count < RateLimitMaxRequests)
+                {
+                    RateLimitTimestamps.Enqueue(now);
+                    return;
+                }
+
+                delay = RateLimitWindow - (now - RateLimitTimestamps.Peek());
+            }
+
+            if (delay > TimeSpan.Zero)
+            {
+                _logger.LogWarning("OFF barcode rate limit reached ({Max}/{WindowSec}s). Waiting {Delay:F1}s",
+                    RateLimitMaxRequests, RateLimitWindow.TotalSeconds, delay.Value.TotalSeconds);
+                await Task.Delay(delay.Value, ct);
+            }
         }
     }
 
