@@ -164,7 +164,9 @@ static async Task RunOffImportAsync(IServiceProvider services)
     }
 
     logger.LogInformation("Starting OFF data dump import...");
-    logger.LogInformation("Downloading from https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz");
+
+    var offlineDumpPath = "/home/dom/openfoodfacts-products.jsonl.gz";
+    Stream stream;
 
     var progress = new Progress<int>(count =>
     {
@@ -172,15 +174,27 @@ static async Task RunOffImportAsync(IServiceProvider services)
             logger.LogInformation("Imported {Count} products...", count);
     });
 
-    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-    http.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0 (contact@gutai.app)");
+    if (File.Exists(offlineDumpPath))
+    {
+        logger.LogInformation("Using local file: {Path}", offlineDumpPath);
+        stream = File.OpenRead(offlineDumpPath);
+    }
+    else
+    {
+        logger.LogInformation("Downloading from https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz");
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+        http.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0 (contact@gutai.app)");
 
-    var response = await http.GetAsync("https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz",
-        HttpCompletionOption.ResponseHeadersRead);
-    response.EnsureSuccessStatusCode();
+        var response = await http.GetAsync("https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz",
+            HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        stream = await response.Content.ReadAsStreamAsync();
+    }
 
-    await using var stream = await response.Content.ReadAsStreamAsync();
-    await offlineDb.ImportFromOffDumpAsync(stream, progress);
+    await using (stream)
+    {
+        await offlineDb.ImportFromOffDumpAsync(stream, progress);
+    }
 
     logger.LogInformation("OFF data dump import complete.");
 }

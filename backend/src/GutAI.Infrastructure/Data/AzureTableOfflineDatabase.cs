@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Linq;
 using System.Text.Json;
 using Azure.Data.Tables;
 using GutAI.Application.Common.DTOs;
@@ -22,6 +23,51 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
     };
 
     private const string TableName = "offproducts";
+    private const string OfflinePartitionKey = "off";
+
+    private static string TruncateForTable(string? value, int maxChars) =>
+        value is not null && value.Length > maxChars ? value[..maxChars] : value ?? "";
+
+    private static readonly HashSet<int> RetryableStatuses = [400, 413, 429, 503];
+
+    private async Task SubmitBatchSafeAsync(List<TableTransactionAction> batch, CancellationToken ct)
+    {
+        try
+        {
+            await _table.SubmitTransactionAsync(batch, ct);
+        }
+        catch (TableTransactionFailedException ex) when (RetryableStatuses.Contains(ex.Status))
+        {
+            // Throttling (429/503) — wait and retry the full batch
+            if (ex.Status is 429 or 503)
+            {
+                _logger.LogWarning("Batch throttled ({Status}), waiting 5s before retry...", ex.Status);
+                await Task.Delay(5000, ct);
+                try
+                {
+                    await _table.SubmitTransactionAsync(batch, ct);
+                    return;
+                }
+                catch (TableTransactionFailedException retryEx) when (RetryableStatuses.Contains(retryEx.Status))
+                {
+                    // fall through to per-entity retry
+                }
+            }
+
+            _logger.LogWarning("Batch failed ({ErrorCode}), retrying individually...", ex.ErrorCode);
+            foreach (var action in batch)
+            {
+                try
+                {
+                    await _table.SubmitTransactionAsync([action], ct);
+                }
+                catch (Exception inner)
+                {
+                    _logger.LogWarning("Skipping entity {RowKey}: {Message}", action.Entity.RowKey, inner.Message);
+                }
+            }
+        }
+    }
 
     public AzureTableOfflineDatabase(
         TableServiceClient serviceClient,
@@ -42,7 +88,7 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
 
         try
         {
-            var pk = GetPartitionKey(barcode);
+            var pk = OfflinePartitionKey;
             var response = await _table.GetEntityAsync<TableEntity>(pk, barcode, cancellationToken: ct);
             var entity = response.Value;
 
@@ -75,7 +121,9 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
         using var gzip = new GZipStream(jsonlGzStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzip);
 
-        var batch = new List<TableTransactionAction>();
+        // Batching requires all entities in a batch to share the same partition key.
+        // We use a static partition key for import so batches of 100 always work.
+        var batch = new Dictionary<string, TableTransactionAction>();
         var count = 0;
         string? line;
 
@@ -94,10 +142,10 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
                 if (string.IsNullOrEmpty(code) || string.IsNullOrWhiteSpace(ingredientsText))
                     continue;
 
-                var entity = new TableEntity(GetPartitionKey(code), code);
+                var entity = new TableEntity(OfflinePartitionKey, code);
                 AddStringProperty(entity, "ProductName", root, "product_name");
                 AddStringProperty(entity, "Brands", root, "brands");
-                entity.Add("IngredientsText", ingredientsText);
+                entity.Add("IngredientsText", TruncateForTable(ingredientsText, 30000));
                 AddStringArrayProperty(entity, "IngredientsTags", root, "ingredients_tags");
                 AddStringArrayProperty(entity, "AdditivesTags", root, "additives_tags");
                 AddStringArrayProperty(entity, "AllergensTags", root, "allergens_tags");
@@ -108,17 +156,20 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
                 AddStringProperty(entity, "NutritionGrades", root, "nutrition_grades");
 
                 if (root.TryGetProperty("nutriments", out var nutEl) && nutEl.ValueKind == JsonValueKind.Object)
-                    entity.Add("Nutriments", nutEl.GetRawText());
+                {
+                    var nutrRaw = nutEl.GetRawText();
+                    entity.Add("Nutriments", TruncateForTable(nutrRaw, 30000));
+                }
 
                 AddStringProperty(entity, "ServingSize", root, "serving_size");
                 AddStringProperty(entity, "ImageUrl", root, "image_url");
 
-                batch.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, entity));
+                batch[code] = new TableTransactionAction(TableTransactionActionType.UpsertReplace, entity);
                 count++;
 
                 if (batch.Count >= 100)
                 {
-                    await _table.SubmitTransactionAsync(batch, ct);
+                    await SubmitBatchSafeAsync(batch.Values.ToList(), ct);
                     progress?.Report(count);
                     batch.Clear();
                 }
@@ -130,15 +181,12 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
 
         if (batch.Count > 0)
         {
-            await _table.SubmitTransactionAsync(batch, ct);
+            await SubmitBatchSafeAsync(batch.Values.ToList(), ct);
             progress?.Report(count);
         }
 
         _logger.LogInformation("Imported {Count} products into offline database", count);
     }
-
-    private static string GetPartitionKey(string barcode) =>
-        barcode.Length >= 2 ? barcode[..2] : barcode;
 
     private static FoodProductDto? MapToFoodProductDto(TableEntity e)
     {
