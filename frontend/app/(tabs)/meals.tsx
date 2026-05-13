@@ -13,26 +13,23 @@ import { mealApi } from "../../src/api";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { mealSheet } from "../../src/stores/mealSheet";
-import { MEAL_TYPES } from "../../src/utils/constants";
-import { radius, spacing } from "../../src/utils/theme";
-import {
-  useThemeColors,
-} from "../../src/stores/theme";
+import { spacing } from "../../src/utils/theme";
+import { useThemeColors } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { MealCardSkeleton } from "../../components/SkeletonLoader";
 import { MealDateNav } from "../../components/meals/MealDateNav";
-import { MealTypeChips } from "../../components/meals/MealTypeChips";
 import { DailySummary } from "../../components/meals/DailySummary";
 import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { SwipeHint } from "../../components/meals/SwipeHint";
-import { AddMealSheet } from "../../components/meals/AddMealSheet";
+import { LogMealSheet } from "../../components/meals/LogMealSheet";
 import { EditMealSheet } from "../../components/meals/EditMealSheet";
 import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
 import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
 import { MealGroup } from "../../components/meals/MealGroup";
 import { MealFab } from "../../components/meals/MealFab";
-import * as haptics from "../../src/utils/haptics";
 import type { MealLog } from "../../src/types";
+
+const MEAL_TYPE_ORDER = ["Breakfast", "Lunch", "Dinner", "Snack"];
 
 export default function MealsScreen() {
   const colors = useThemeColors();
@@ -41,7 +38,6 @@ export default function MealsScreen() {
 
   const { deleteMeal, removeItem } = useMealMutations();
 
-  /* ---- Data ---- */
   const {
     data: meals,
     isLoading,
@@ -57,31 +53,6 @@ export default function MealsScreen() {
     queryFn: () => mealApi.dailySummary(selectedDate).then((r) => r.data),
   });
 
-  /* ---- Filtering & grouping ---- */
-  const [filterType, setFilterType] = useState<string | null>(null);
-
-  const filtered = filterType
-    ? (meals ?? []).filter((m) => m.mealType === filterType)
-    : meals;
-
-  const grouped = (() => {
-    const map: Record<string, MealLog[]> = {};
-
-    for (const meal of filtered ?? []) {
-      const key = meal.mealType || "Other";
-      (map[key] ??= []).push(meal);
-    }
-
-    const order = ["Breakfast", "Lunch", "Dinner", "Snack"];
-
-    return Object.entries(map).sort(
-      ([a], [b]) =>
-        (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
-        (order.indexOf(b) === -1 ? 99 : order.indexOf(b)),
-    );
-  })();
-
-  /* ---- Pull-to-refresh ---- */
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -90,144 +61,42 @@ export default function MealsScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  /* ---- Callbacks passed to MealGroup ---- */
   const handleEdit = (meal: MealLog) => mealSheet.openEdit(meal);
-
   const handleCopy = (meal: MealLog) => mealSheet.openCopy(meal);
-
   const handleDelete = (mealId: string) => deleteMeal.mutate(mealId);
-
   const handleSwapItem = (meal: MealLog, idx: number) =>
     mealSheet.openSwap(meal, idx, "edit");
-
   const handleDeleteItem = (meal: MealLog, idx: number) =>
     removeItem(meal, idx);
 
-  /* ---- FAB actions ---- */
-  const fabActions = [
-    {
-      icon: "chatbubble-outline" as const,
-      label: "Describe Meal",
-      color: colors.primary,
-      onPress: () => mealSheet.openAdd("add-describe"),
-    },
-    {
-      icon: "create-outline" as const,
-      label: "Quick Macros",
-      color: colors.secondary,
-      onPress: () => mealSheet.openAdd("add-manual"),
-    },
-    {
-      icon: "search-outline" as const,
-      label: "Add Food",
-      color: colors.accent,
-      onPress: () => router.push("/(tabs)/scan"),
-    },
-  ];
+  // Group meals by type, always show all sections
+  const grouped = (() => {
+    const map: Record<string, MealLog[]> = {};
+    for (const meal of meals ?? []) {
+      const key = meal.mealType || "Other";
+      (map[key] ??= []).push(meal);
+    }
+    return MEAL_TYPE_ORDER.map((type) => [type, map[type] ?? []] as [string, MealLog[]]);
+  })();
 
   return (
     <SafeScreen edges={[]}>
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
         showsVerticalScrollIndicator={false}
       >
         <View style={{ padding: spacing.xl }}>
           <MealDateNav />
-          <MealTypeChips />
 
-          {/* Daily Summary */}
           {dailySummary && <DailySummary summary={dailySummary} />}
 
-          {/* Quick Add: favorites first, then recent foods */}
           <QuickAddRow />
 
-          {/* Filter chips */}
-          <View
-            style={{
-              flexDirection: "row",
-              marginBottom: spacing.md,
-              gap: 6,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setFilterType(null);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Show all meals"
-              accessibilityState={{ selected: filterType === null }}
-              style={{
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                borderRadius: radius.full,
-                backgroundColor:
-                  filterType === null ? colors.primary : colors.borderLight,
-                borderWidth: filterType === null ? 0 : 1,
-                borderColor: colors.border,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: "600",
-                  color:
-                    filterType === null
-                      ? colors.textOnPrimary
-                      : colors.textMuted,
-                }}
-              >
-                All
-              </Text>
-            </TouchableOpacity>
-
-            {MEAL_TYPES.map((type) => (
-              <TouchableOpacity
-                key={type}
-                onPress={() => {
-                  haptics.selection();
-                  setFilterType(filterType === type ? null : type);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter by ${type}`}
-                accessibilityState={{ selected: filterType === type }}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  borderRadius: radius.full,
-                  backgroundColor:
-                    filterType === type ? colors.primary : colors.borderLight,
-                  borderWidth: filterType === type ? 0 : 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color:
-                      filterType === type
-                        ? colors.textOnPrimary
-                        : colors.textMuted,
-                  }}
-                >
-                  {type}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Swipe hint, shown once */}
           <SwipeHint />
 
-          {/* Meal list */}
           {isLoading ? (
             <>
               <MealCardSkeleton />
@@ -236,54 +105,24 @@ export default function MealsScreen() {
             </>
           ) : isError ? (
             <View style={{ alignItems: "center", marginTop: 40 }}>
-              <Ionicons
-                name="cloud-offline-outline"
-                size={48}
-                color={colors.danger}
-              />
-
-              <Text
-                style={{
-                  color: colors.danger,
-                  marginTop: spacing.md,
-                  fontSize: 16,
-                }}
-              >
+              <Ionicons name="cloud-offline-outline" size={48} color={colors.danger} />
+              <Text style={{ color: colors.danger, marginTop: spacing.md, fontSize: 16 }}>
                 Failed to load meals
               </Text>
-
               <TouchableOpacity
                 onPress={() => refetch()}
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading meals"
-                style={{
-                  marginTop: spacing.md,
-                  backgroundColor: colors.primary,
-                  paddingHorizontal: 20,
-                  paddingVertical: 8,
-                  borderRadius: radius.sm,
-                }}
+                style={{ marginTop: spacing.md, backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8 }}
               >
-                <Text
-                  style={{
-                    color: colors.textOnPrimary,
-                    fontWeight: "600",
-                  }}
-                >
-                  Retry
-                </Text>
+                <Text style={{ color: colors.textOnPrimary, fontWeight: "600" }}>Retry</Text>
               </TouchableOpacity>
             </View>
-          ) : grouped.length > 0 ? (
-            grouped.map(([type, mealsInGroup]) => (
+          ) : (
+            grouped.map(([type, typeMeals]) => (
               <MealGroup
                 key={type}
                 type={type}
-                meals={mealsInGroup}
-                totalCalories={mealsInGroup.reduce(
-                  (sum, meal) => sum + meal.totalCalories,
-                  0,
-                )}
+                meals={typeMeals}
+                totalCalories={typeMeals.reduce((sum, m) => sum + m.totalCalories, 0)}
                 onEdit={handleEdit}
                 onCopy={handleCopy}
                 onDelete={handleDelete}
@@ -291,44 +130,28 @@ export default function MealsScreen() {
                 onDeleteItem={handleDeleteItem}
               />
             ))
-          ) : (
-            <View style={{ alignItems: "center", paddingVertical: 48 }}>
-              <Ionicons
-                name="restaurant-outline"
-                size={48}
-                color={colors.textLight}
-              />
-
-              <Text
-                style={{
-                  color: colors.textMuted,
-                  marginTop: spacing.md,
-                  fontSize: 15,
-                }}
-              >
-                {filterType
-                  ? "No meals found"
-                  : "No meals logged for this date"}
-              </Text>
-
-              <Text
-                style={{
-                  color: colors.textLight,
-                  marginTop: spacing.xs,
-                  fontSize: 13,
-                }}
-              >
-                Tap + to log your first meal
-              </Text>
-            </View>
           )}
         </View>
       </ScrollView>
 
-      <MealFab actions={fabActions} />
+      <MealFab
+        actions={[
+          {
+            icon: "restaurant-outline",
+            label: "Log Food",
+            color: colors.primary,
+            onPress: () => mealSheet.openLog(),
+          },
+          {
+            icon: "sparkles-outline",
+            label: "Create Custom Food",
+            color: colors.accent,
+            onPress: () => router.push("/food/create"),
+          },
+        ]}
+      />
 
-      {/* Bottom sheets */}
-      <AddMealSheet />
+      <LogMealSheet />
       <EditMealSheet />
       <CopyMealSheet />
       <ItemSwapSheet />

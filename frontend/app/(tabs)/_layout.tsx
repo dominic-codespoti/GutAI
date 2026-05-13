@@ -66,7 +66,7 @@ function CustomTabBar({
   const colors = useThemeColors();
   const mealSheetMode = useMealSheetStore((s) => s.mode);
 
-  if (mealSheetMode === "add-describe" || mealSheetMode === "add-manual") {
+  if (mealSheetMode === "log-meal") {
     return null;
   }
 
@@ -360,7 +360,7 @@ export default function TabLayout() {
         name="scan"
         options={{
           href: null,
-          title: "Add Food",
+          title: "Food Search",
           headerLeft: () => (
             <TouchableOpacity
               onPress={handleBack}

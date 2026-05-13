@@ -5,8 +5,7 @@ import { toLocalDateStr } from "../utils/date";
 
 export type MealSheetMode =
   | "idle"
-  | "add-describe"
-  | "add-manual"
+  | "log-meal"
   | "edit-meal"
   | "copy-meal"
   | "swap-search";
@@ -27,7 +26,7 @@ interface MealSheetState {
   selectedMealType: MealType;
   selectedDate: string;
 
-  openAdd: (tab: "add-describe" | "add-manual") => void;
+  openLog: () => void;
   openEdit: (meal: MealLog) => void;
   openCopy: (meal: MealLog) => void;
   openSwap: (
@@ -51,9 +50,9 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
   selectedMealType: getMealTypeForTime(new Date().getHours()),
   selectedDate: todayStr(),
 
-  openAdd: (tab) =>
+  openLog: () =>
     set({
-      mode: tab,
+      mode: "log-meal",
       editingMeal: null,
       copyingMeal: null,
       swapContext: null,
@@ -79,7 +78,6 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
     set((s) => ({
       mode: "swap-search",
       swapContext: { meal, itemIndex, origin },
-      // preserve editingMeal so we can return to it
       editingMeal: s.editingMeal,
     })),
 
@@ -107,8 +105,7 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
 
 /** Imperative access for use in callbacks / mutations */
 export const mealSheet = {
-  openAdd: (tab: "add-describe" | "add-manual") =>
-    useMealSheetStore.getState().openAdd(tab),
+  openLog: () => useMealSheetStore.getState().openLog(),
   openEdit: (meal: MealLog) => useMealSheetStore.getState().openEdit(meal),
   openCopy: (meal: MealLog) => useMealSheetStore.getState().openCopy(meal),
   openSwap: (meal: MealLog, itemIndex: number, origin: "edit" | "parsed") =>

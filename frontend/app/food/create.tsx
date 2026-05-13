@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
   StyleSheet,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -13,734 +14,640 @@ import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeScreen } from "../../components/SafeScreen";
 import { useThemeColors } from "../../src/stores/theme";
-import { foodApi } from "../../src/api";
+import { foodApi, mealApi } from "../../src/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "../../src/stores/toast";
 import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
+import { scaleNutrition } from "../../src/utils/nutrition";
+import { maybeRequestReview } from "../../src/utils/review";
 import type { CustomFood } from "../../src/types";
 
-type AiSource = "describe" | "photo" | "library";
-type AiGeneratedCustomFoodResponse = CustomFood & {
-  extractionConfidence?: number | null;
-};
+type CreateMethod = "manual" | "description" | "label";
+type LabelSource = "camera" | "library";
+type AiGeneratedFood = CustomFood & { extractionConfidence?: number | null };
 
 const MIN_DESCRIBE_LENGTH = 8;
+const ROUND = (v: number) => Math.round(v * 10) / 10;
+const NUM = (v: number | null | undefined) => (v == null ? "" : v.toString());
 
-const roundOne = (value: number) => Math.round(value * 10) / 10;
-
-const numberToInput = (value: number | null | undefined) =>
-  value == null ? "" : value.toString();
-
-function normalizeParsedFood(data: AiGeneratedCustomFoodResponse): CustomFood {
+function normalize(data: AiGeneratedFood): CustomFood {
   return {
     name: data.name ?? "",
     brandName: data.brandName ?? "",
-    servingSize: Math.max(1, roundOne(data.servingSize ?? 100)),
+    servingSize: Math.max(1, ROUND(data.servingSize ?? 100)),
     servingSizeUnit: data.servingSizeUnit || "g",
-    calories: roundOne(data.calories ?? 0),
-    proteinG: roundOne(data.proteinG ?? 0),
-    carbG: roundOne(data.carbG ?? 0),
-    fatG: roundOne(data.fatG ?? 0),
-    fiberG: roundOne(data.fiberG ?? 0),
-    sugarG: roundOne(data.sugarG ?? 0),
-    sodiumMg: roundOne(data.sodiumMg ?? 0),
+    calories: ROUND(data.calories ?? 0),
+    proteinG: ROUND(data.proteinG ?? 0),
+    carbG: ROUND(data.carbG ?? 0),
+    fatG: ROUND(data.fatG ?? 0),
+    fiberG: ROUND(data.fiberG ?? 0),
+    sugarG: ROUND(data.sugarG ?? 0),
+    sodiumMg: ROUND(data.sodiumMg ?? 0),
     ingredients: data.ingredients ?? "",
   };
 }
 
-function getAiConfidenceLevel(
-  score: number | null,
-): "High" | "Medium" | "Low" | null {
+function confidenceLevel(score: number | null): "High" | "Medium" | "Low" | null {
   if (score == null || Number.isNaN(score)) return null;
   if (score >= 0.85) return "High";
   if (score >= 0.6) return "Medium";
   return "Low";
 }
 
-function getAiConfidencePalette(
-  level: "High" | "Medium" | "Low" | null,
-  colors: ReturnType<typeof useThemeColors>,
-) {
+function confidenceColors(level: string | null, c: ReturnType<typeof useThemeColors>) {
   switch (level) {
     case "High":
-      return {
-        backgroundColor: colors.primaryBg,
-        borderColor: colors.primaryBorder,
-        textColor: colors.primaryLight,
-        icon: "checkmark-circle",
-      };
+      return { bg: c.primaryBg, border: c.primaryBorder, text: c.primaryLight, icon: "checkmark-circle" as const };
     case "Medium":
-      return {
-        backgroundColor: colors.warningBg,
-        borderColor: colors.warningBorder,
-        textColor: colors.warning,
-        icon: "alert-circle",
-      };
+      return { bg: c.warningBg, border: c.warningBorder, text: c.warning, icon: "alert-circle" as const };
     default:
-      return {
-        backgroundColor: colors.dangerBg,
-        borderColor: colors.dangerBorder,
-        textColor: colors.danger,
-        icon: "help-circle",
-      };
+      return { bg: c.dangerBg, border: c.dangerBorder, text: c.danger, icon: "help-circle" as const };
   }
 }
 
-function formatAiSourceLabel(source: AiSource | null) {
+function sourceLabel(source: "description" | "label" | null) {
   switch (source) {
-    case "describe":
-      return "your description";
-    case "photo":
-      return "a photo";
-    case "library":
-      return "your library image";
-    default:
-      return "AI";
-  }
-}
-
-function pendingAiMessage(source: AiSource | null) {
-  switch (source) {
-    case "describe":
-      return "Generating food details from your description...";
-    case "photo":
-      return "Analyzing your food photo with AI...";
-    case "library":
-      return "Analyzing your library image with AI...";
-    default:
-      return "Generating food details with AI...";
+    case "description": return "your description";
+    case "label": return "a label image";
+    default: return "AI";
   }
 }
 
 export default function CreateCustomFoodScreen() {
-  const t = useThemeColors();
+  const c = useThemeColors();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
+  const qc = useQueryClient();
+  const { isPro } = useSubscriptionStore();
 
+  // ── Form state ──
   const [form, setForm] = useState<CustomFood>({
-    name: "",
-    brandName: "",
-    servingSize: 100,
-    servingSizeUnit: "g",
-    calories: 0,
-    proteinG: 0,
-    carbG: 0,
-    fatG: 0,
-    fiberG: 0,
-    sugarG: 0,
-    sodiumMg: 0,
-    ingredients: "",
+    name: "", brandName: "", servingSize: 100, servingSizeUnit: "g",
+    calories: 0, proteinG: 0, carbG: 0, fatG: 0,
+    fiberG: 0, sugarG: 0, sodiumMg: 0, ingredients: "",
   });
-  const [aiInputMode, setAiInputMode] = useState<AiSource>("describe");
-  const [describeText, setDescribeText] = useState("");
-  const [pendingAiSource, setPendingAiSource] = useState<AiSource | null>(null);
-  const [generatedBy, setGeneratedBy] = useState<AiSource | null>(null);
-  const [aiConfidenceScore, setAiConfidenceScore] = useState<number | null>(
-    null,
-  );
 
-  const isGenerating = pendingAiSource !== null;
-  const aiConfidenceLevel = getAiConfidenceLevel(aiConfidenceScore);
-  const aiConfidencePalette = getAiConfidencePalette(aiConfidenceLevel, t);
+  // ── UI state ──
+  const [method, setMethod] = useState<CreateMethod>("manual");
+  const [generating, setGenerating] = useState(false);
+  const [generatedBy, setGeneratedBy] = useState<"description" | "label" | null>(null);
+  const [confidenceScore, setConfidenceScore] = useState<number | null>(null);
+  const confLevel = confidenceLevel(confidenceScore);
+  const confColors = confidenceColors(confLevel, c);
 
-  const applyGeneratedFood = (
-    nextFood: CustomFood,
-    source: AiSource,
-    confidence: number | null,
-  ) => {
-    setForm((prev) => ({
-      ...prev,
-      ...nextFood,
-    }));
-    setGeneratedBy(source);
-    setAiConfidenceScore(confidence);
-  };
+  // ── Description state ──
+  const [descText, setDescText] = useState("");
 
-  const imageParseMutation = useMutation({
-    mutationFn: async ({
-      imageUri,
-      source,
-    }: {
-      imageUri: string;
-      source: Extract<AiSource, "photo" | "library">;
-    }) => {
-      const resp = await foodApi.parseLabel(imageUri, "image/jpeg");
-      return {
-        data: resp.data as AiGeneratedCustomFoodResponse,
-        source,
-      };
-    },
-    onSuccess: ({ data, source }) => {
-      applyGeneratedFood(
-        normalizeParsedFood(data),
-        source,
-        data.extractionConfidence ?? null,
-      );
-      setPendingAiSource(null);
+  // ── Label state ──
+  const [labelImageUri, setLabelImageUri] = useState<string | null>(null);
+  const [labelSource, setLabelSource] = useState<LabelSource | null>(null);
+
+  // ── Mutations ──
+  const parseLabel = useMutation({
+    mutationFn: (uri: string) => foodApi.parseLabel(uri, "image/jpeg").then((r) => r.data),
+    onSuccess: (data: AiGeneratedFood) => {
+      setForm(normalize(data));
+      setConfidenceScore(data.extractionConfidence ?? null);
+      setGeneratedBy("label");
+      setGenerating(false);
     },
     onError: () => {
-      setPendingAiSource(null);
+      setGenerating(false);
       toast.error("Could not analyze that image. Try a clearer photo.");
     },
   });
 
-  const describeMutation = useMutation({
-    mutationFn: (text: string) =>
-      foodApi.describeFood(text).then((r) => r.data),
-    onSuccess: (response, submittedText) => {
-      setPendingAiSource(null);
-
-      if (submittedText !== describeText.trim()) {
-        return;
-      }
-
-      applyGeneratedFood(
-        normalizeParsedFood(response),
-        "describe",
-        response.extractionConfidence ?? null,
-      );
+  const describeFood = useMutation({
+    mutationFn: (text: string) => foodApi.describeFood(text).then((r) => r.data),
+    onSuccess: (data: AiGeneratedFood, sub) => {
+      if (sub !== descText.trim()) return;
+      setForm(normalize(data));
+      setConfidenceScore(data.extractionConfidence ?? null);
+      setGeneratedBy("description");
+      setGenerating(false);
     },
     onError: () => {
-      setPendingAiSource(null);
+      setGenerating(false);
       toast.error("Could not generate food details from that description.");
     },
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      await foodApi.createCustomFood(form);
-    },
+  const saveFood = useMutation({
+    mutationFn: () => foodApi.createCustomFood(form),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custom-foods"] });
-      toast.success("Food saved successfully!");
+      qc.invalidateQueries({ queryKey: ["custom-foods"] });
+      toast.success("Food saved!");
       router.navigate("/(tabs)/scan?tab=my-foods");
     },
-    onError: () => {
-      toast.error("Failed to save custom food.");
-    },
+    onError: () => toast.error("Failed to save custom food."),
   });
 
-  const submitDescribePrompt = () => {
-    const trimmed = describeText.trim();
+  const saveAndLogFood = useMutation({
+    mutationFn: async () => {
+      const saved = await foodApi.createCustomFood(form);
+      const customFood = saved.data as any;
+      const scaled = scaleNutrition(
+        { calories100g: form.calories, protein100g: form.proteinG, carbs100g: form.carbG, fat100g: form.fatG } as any,
+        form.servingSize,
+      );
+      await mealApi.create({
+        mealType: "Snack",
+        loggedAt: new Date().toISOString(),
+        items: [{
+          foodName: form.name,
+          foodProductId: customFood.id,
+          servings: 1,
+          servingUnit: `${form.servingSize}${form.servingSizeUnit}`,
+          servingWeightG: form.servingSize,
+          ...scaled,
+        }],
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["meals"] });
+      qc.invalidateQueries({ queryKey: ["daily-summary"] });
+      qc.invalidateQueries({ queryKey: ["custom-foods"] });
+      toast.success("Saved & logged!");
+      maybeRequestReview();
+      router.back();
+    },
+    onError: () => toast.error("Failed to save and log."),
+  });
 
-    if (aiInputMode !== "describe") return;
+  const setField = (field: keyof CustomFood, value: string) => {
+    const nums = ["servingSize", "calories", "proteinG", "carbG", "fatG", "fiberG", "sugarG", "sodiumMg"];
+    if (nums.includes(field)) {
+      const n = parseFloat(value);
+      setForm((p) => ({ ...p, [field]: isNaN(n) ? 0 : n }));
+    } else {
+      setForm((p) => ({ ...p, [field]: value }));
+    }
+  };
+
+  const isFormValid = form.name.trim().length > 0;
+
+  // ── Description handlers ──
+  const handleGenerateDescription = async () => {
+    if (!isPro) { const ok = await presentPaywall(); if (!ok) return; }
+    const trimmed = descText.trim();
     if (trimmed.length < MIN_DESCRIBE_LENGTH) {
       toast.error(`Type at least ${MIN_DESCRIBE_LENGTH} characters first.`);
       return;
     }
-    if (isGenerating) return;
-
-    setPendingAiSource("describe");
-    describeMutation.mutate(trimmed);
+    if (generating) return;
+    setGenerating(true);
+    describeFood.mutate(trimmed);
   };
 
-  const handleDescribePress = () => {
-    setAiInputMode("describe");
-  };
-
-  const handlePhotoOfFood = async () => {
-    setAiInputMode("photo");
-
+  // ── Label handlers ──
+  const handleLabelFromCamera = async () => {
+    if (!isPro) { const ok = await presentPaywall(); if (!ok) return; }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Camera permission is required.");
-      return;
-    }
-
+    if (status !== "granted") { toast.error("Camera permission required."); return; }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.8,
     });
-
-    if (!result.canceled && result.assets[0]) {
-      setPendingAiSource("photo");
-      imageParseMutation.mutate({
-        imageUri: result.assets[0].uri,
-        source: "photo",
-      });
-    }
+    if (result.canceled || !result.assets[0]) return;
+    const uri = result.assets[0].uri;
+    setLabelImageUri(uri);
+    setLabelSource("camera");
+    setGenerating(true);
+    setGeneratedBy(null);
+    parseLabel.mutate(uri);
   };
 
-  const handleImagePicker = async () => {
-    setAiInputMode("library");
-
+  const handleLabelFromLibrary = async () => {
+    if (!isPro) { const ok = await presentPaywall(); if (!ok) return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Photo library permission is required.");
-      return;
-    }
-
+    if (status !== "granted") { toast.error("Photo library permission required."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.8,
     });
-
-    if (!result.canceled && result.assets[0]) {
-      setPendingAiSource("library");
-      imageParseMutation.mutate({
-        imageUri: result.assets[0].uri,
-        source: "library",
-      });
-    }
+    if (result.canceled || !result.assets[0]) return;
+    const uri = result.assets[0].uri;
+    setLabelImageUri(uri);
+    setLabelSource("library");
+    setGenerating(true);
+    setGeneratedBy(null);
+    parseLabel.mutate(uri);
   };
 
-  const setField = (field: keyof CustomFood, value: string) => {
-    const numericFields = [
-      "servingSize",
-      "calories",
-      "proteinG",
-      "carbG",
-      "fatG",
-      "fiberG",
-      "sugarG",
-      "sodiumMg",
-    ];
-    if (numericFields.includes(field)) {
-      const num = parseFloat(value);
-      setForm((prev) => ({ ...prev, [field]: isNaN(num) ? 0 : num }));
-    } else {
-      setForm((prev) => ({ ...prev, [field]: value }));
-    }
+  const resetLabel = () => {
+    setLabelImageUri(null);
+    setLabelSource(null);
+    setConfidenceScore(null);
+    setGeneratedBy(null);
   };
 
-  if (!subLoaded) {
-    return (
-      <SafeScreen edges={["top"]}>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color={t.primary} />
-        </View>
-      </SafeScreen>
-    );
-  }
+  // ── Save handlers ──
+  const handleSave = () => saveFood.mutate();
+  const handleSaveAndLog = () => saveAndLogFood.mutate();
 
-  if (!isPro) {
-    return (
-      <SafeScreen edges={["top"]}>
-        <View style={{ flexDirection: "row", alignItems: "center", padding: 16 }}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{ paddingRight: 16 }}
-          >
-            <Ionicons name="arrow-back" size={24} color={t.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 20, fontWeight: "bold", color: t.text }}>
-              AI Food Creation
-            </Text>
-          </View>
-        </View>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: t.primaryBg, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-            <Ionicons name="sparkles" size={36} color={t.primary} />
-          </View>
-          <Text style={{ fontSize: 22, fontWeight: "bold", color: t.text, textAlign: "center", marginBottom: 12 }}>
-            Unlock AI Food Creation
-          </Text>
-          <Text style={{ fontSize: 15, color: t.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
-            Describe a food or snap a photo and let AI instantly generate complete nutrition details — no manual entry needed.
-          </Text>
-          <TouchableOpacity
-            onPress={() => presentPaywall()}
-            accessibilityRole="button"
-            accessibilityLabel="Subscribe to Gut Lens Pro"
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: t.primary,
-              paddingVertical: 16,
-              paddingHorizontal: 32,
-              borderRadius: 12,
-            }}
-          >
-            <Ionicons name="diamond-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
-              Subscribe to Gut Lens Pro
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </SafeScreen>
-    );
-  }
+  const anySaving = saveFood.isPending || saveAndLogFood.isPending;
+
+  // ── Tab config ──
+  const tabs: { key: CreateMethod; label: string; pro: boolean }[] = [
+    { key: "manual", label: "Manual", pro: false },
+    { key: "description", label: "Description ✨", pro: true },
+    { key: "label", label: "Label 📷", pro: true },
+  ];
+
+  const isGenerating = generating && method !== "manual";
+
+  const showFoodDetails = method === "manual" || (method === "description" && generatedBy === "description") || (method === "label" && generatedBy === "label");
+
+  const handleMethodChange = async (next: CreateMethod) => {
+    const isPremium = next === "description" || next === "label";
+    if (isPremium && !isPro) {
+      const ok = await presentPaywall();
+      if (!ok) return;
+    }
+    setMethod(next);
+  };
 
   return (
     <SafeScreen edges={["top"]}>
       <View style={{ flexDirection: "row", alignItems: "center", padding: 16 }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ paddingRight: 16 }}
-        >
-          <Ionicons name="arrow-back" size={24} color={t.text} />
+        <TouchableOpacity onPress={() => router.back()} style={{ paddingRight: 16 }}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: "bold", color: t.text }}>
-            Create Food
-          </Text>
-          <Text style={{ fontSize: 13, color: t.textMuted, marginTop: 2 }}>
-            Use AI or fill in the nutrition details, then save it to My Foods.
+          <Text style={{ fontSize: 20, fontWeight: "bold", color: c.text }}>Create Custom Food</Text>
+          <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 2 }}>
+            Manual entry is free. Pro can generate from a description or nutrition label.
           </Text>
         </View>
       </View>
 
-      <ScrollView
-        style={{ paddingHorizontal: 16 }}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView style={{ paddingHorizontal: 16 }} keyboardShouldPersistTaps="handled">
+        {/* ── Method tabs ── */}
         <View
           style={{
-            marginBottom: 24,
+            flexDirection: "row",
+            backgroundColor: c.bg,
+            borderRadius: 10,
+            padding: 3,
+            marginBottom: 20,
           }}
         >
-          <TouchableOpacity
-            style={[
-              styles.aiPrimaryButton,
-              {
-                backgroundColor:
-                  aiInputMode === "describe" ? t.primaryBg : t.card,
-                borderColor:
-                  aiInputMode === "describe" ? t.primaryLight : t.border,
-              },
-            ]}
-            onPress={handleDescribePress}
-            disabled={isGenerating}
-          >
-            <Ionicons
-              name="sparkles-outline"
-              size={20}
-              color={aiInputMode === "describe" ? t.primaryLight : t.text}
-            />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text
-                style={{
-                  color: aiInputMode === "describe" ? t.primaryLight : t.text,
-                  fontWeight: "700",
-                  fontSize: 15,
-                }}
-              >
-                Describe with AI
-              </Text>
-              <Text
-                style={{
-                  color: t.textSecondary,
-                  fontSize: 12,
-                  marginTop: 2,
-                }}
-              >
-                Type a description, then explicitly generate food details.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
+          {tabs.map(({ key, label, pro }) => (
             <TouchableOpacity
-              style={[
-                styles.aiSecondaryButton,
-                {
-                  backgroundColor:
-                    aiInputMode === "photo" ? t.primaryBg : t.card,
-                  borderColor:
-                    aiInputMode === "photo" ? t.primaryLight : t.border,
-                },
-              ]}
-              onPress={handlePhotoOfFood}
-              disabled={isGenerating}
+              key={key}
+              onPress={() => handleMethodChange(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: method === key }}
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                paddingVertical: 10,
+                borderRadius: 8,
+                backgroundColor: method === key ? c.card : "transparent",
+              }}
             >
-              <Ionicons
-                name="camera-outline"
-                size={20}
-                color={aiInputMode === "photo" ? t.primaryLight : t.text}
-              />
               <Text
                 style={{
-                  color: aiInputMode === "photo" ? t.primaryLight : t.text,
-                  fontWeight: "700",
-                  marginTop: 8,
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: method === key ? c.text : c.textMuted,
                 }}
               >
-                Photo of Food
+                {label}
               </Text>
+              {pro && !isPro && (
+                <View style={{ backgroundColor: c.warning, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1 }}>
+                  <Text style={{ color: "#fff", fontSize: 8, fontWeight: "800" }}>PRO</Text>
+                </View>
+              )}
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.aiSecondaryButton,
-                {
-                  backgroundColor:
-                    aiInputMode === "library" ? t.primaryBg : t.card,
-                  borderColor:
-                    aiInputMode === "library" ? t.primaryLight : t.border,
-                },
-              ]}
-              onPress={handleImagePicker}
-              disabled={isGenerating}
-            >
-              <Ionicons
-                name="images-outline"
-                size={20}
-                color={aiInputMode === "library" ? t.primaryLight : t.text}
-              />
-              <Text
-                style={{
-                  color: aiInputMode === "library" ? t.primaryLight : t.text,
-                  fontWeight: "700",
-                  marginTop: 8,
-                }}
-              >
-                From Library
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {aiInputMode === "describe" && (
-            <View style={{ marginTop: 12 }}>
-              <View style={{ position: "relative" }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.describeInput,
-                    {
-                      color: t.text,
-                      backgroundColor: t.card,
-                      borderColor: t.border,
-                      paddingRight: 56,
-                    },
-                  ]}
-                  value={describeText}
-                  onChangeText={setDescribeText}
-                  placeholder="Describe the food or recipe, e.g. homemade berry smoothie with banana and yogurt"
-                  placeholderTextColor={t.textMuted}
-                  multiline
-                  autoCapitalize="sentences"
-                  returnKeyType="send"
-                  blurOnSubmit={false}
-                  onSubmitEditing={submitDescribePrompt}
-                />
-                <TouchableOpacity
-                  onPress={submitDescribePrompt}
-                  disabled={
-                    isGenerating ||
-                    describeText.trim().length < MIN_DESCRIBE_LENGTH
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel="Generate food details"
-                  style={{
-                    position: "absolute",
-                    right: 12,
-                    bottom: 12,
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    backgroundColor:
-                      isGenerating ||
-                      describeText.trim().length < MIN_DESCRIBE_LENGTH
-                        ? t.borderLight
-                        : t.primaryLight,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {isGenerating && pendingAiSource === "describe" ? (
-                    <ActivityIndicator size="small" color={t.textOnPrimary} />
-                  ) : (
-                    <Ionicons
-                      name="arrow-forward"
-                      size={18}
-                      color={
-                        describeText.trim().length < MIN_DESCRIBE_LENGTH
-                          ? t.textMuted
-                          : t.textOnPrimary
-                      }
-                    />
-                  )}
-                </TouchableOpacity>
-              </View>
-              <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>
-                {describeText.trim().length >= MIN_DESCRIBE_LENGTH
-                  ? "Tap the send button or press Enter to generate food details."
-                  : "Type at least 8 characters before generating food details."}
-              </Text>
-            </View>
-          )}
-
-          {isGenerating && (
-            <View
-              style={[
-                styles.aiStatusCard,
-                {
-                  backgroundColor: t.card,
-                  borderColor: t.borderLight,
-                },
-              ]}
-            >
-              <ActivityIndicator size="small" color={t.primary} />
-              <Text style={{ color: t.textSecondary, marginLeft: 10, flex: 1 }}>
-                {pendingAiMessage(pendingAiSource)}
-              </Text>
-            </View>
-          )}
-
-          {generatedBy && !isGenerating && (
-            <View
-              style={[
-                styles.aiStatusCard,
-                {
-                  backgroundColor: aiConfidencePalette.backgroundColor,
-                  borderColor: aiConfidencePalette.borderColor,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Ionicons
-                  name={aiConfidencePalette.icon as any}
-                  size={18}
-                  color={aiConfidencePalette.textColor}
-                />
-                <Text
-                  style={{
-                    color: aiConfidencePalette.textColor,
-                    fontWeight: "700",
-                    marginLeft: 8,
-                    fontSize: 14,
-                  }}
-                >
-                  {aiConfidenceLevel
-                    ? `${aiConfidenceLevel} AI confidence`
-                    : "AI draft generated"}
-                </Text>
-                {aiConfidenceScore != null && (
-                  <Text
-                    style={{
-                      color: aiConfidencePalette.textColor,
-                      fontWeight: "600",
-                      marginLeft: 8,
-                      fontSize: 13,
-                    }}
-                  >
-                    {Math.round(aiConfidenceScore * 100)}%
-                  </Text>
-                )}
-              </View>
-              <Text
-                style={{ color: t.textSecondary, fontSize: 12, marginTop: 6 }}
-              >
-                Generated from {formatAiSourceLabel(generatedBy)}. Review the
-                details before saving.
-              </Text>
-            </View>
-          )}
+          ))}
         </View>
 
-        <View
-          style={{
-            borderTopWidth: 1,
-            borderTopColor: t.borderLight,
-            paddingTop: 20,
-            marginBottom: 4,
-          }}
-        >
-          <Text
+        {/* ════════════════════════
+            MANUAL TAB
+            ════════════════════════ */}
+        {method === "manual" && (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{ fontWeight: "700", fontSize: 15, color: c.text, marginBottom: 4 }}>
+              Manual Entry
+            </Text>
+            <Text style={{ color: c.textSecondary, fontSize: 13, marginBottom: 16 }}>
+              Enter the nutrition details yourself.
+            </Text>
+          </View>
+        )}
+
+        {/* ════════════════════════
+            DESCRIPTION TAB
+            ════════════════════════ */}
+        {method === "description" && (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{ fontWeight: "700", fontSize: 15, color: c.text, marginBottom: 4 }}>
+              Generate from Description
+            </Text>
+            <Text style={{ color: c.textSecondary, fontSize: 13, marginBottom: 12 }}>
+              Describe the food or recipe. We'll estimate nutrition details, then you can review before saving.
+            </Text>
+
+            <View style={{ position: "relative" }}>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 15,
+                  color: c.text,
+                  backgroundColor: c.card,
+                  minHeight: 88,
+                  textAlignVertical: "top",
+                  paddingRight: 56,
+                }}
+                value={descText}
+                onChangeText={setDescText}
+                placeholder="e.g. homemade berry smoothie with banana and yogurt"
+                placeholderTextColor={c.textMuted}
+                multiline
+                autoCapitalize="sentences"
+                returnKeyType="send"
+                blurOnSubmit={false}
+                onSubmitEditing={handleGenerateDescription}
+              />
+              <TouchableOpacity
+                onPress={handleGenerateDescription}
+                disabled={isGenerating || descText.trim().length < MIN_DESCRIBE_LENGTH}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  bottom: 12,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor:
+                    isGenerating || descText.trim().length < MIN_DESCRIBE_LENGTH
+                      ? c.borderLight : c.primary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {isGenerating ? (
+                  <ActivityIndicator size="small" color={c.textOnPrimary} />
+                ) : (
+                  <Ionicons
+                    name="arrow-forward"
+                    size={18}
+                    color={descText.trim().length < MIN_DESCRIBE_LENGTH ? c.textMuted : c.textOnPrimary}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 8 }}>
+              {descText.trim().length >= MIN_DESCRIBE_LENGTH
+                ? "Tap the arrow or press Enter to generate."
+                : "Type at least 8 characters."}
+            </Text>
+          </View>
+        )}
+
+        {/* ════════════════════════
+            LABEL TAB
+            ════════════════════════ */}
+        {method === "label" && (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{ fontWeight: "700", fontSize: 15, color: c.text, marginBottom: 4 }}>
+              Extract from Nutrition Label
+            </Text>
+            <Text style={{ color: c.textSecondary, fontSize: 13, marginBottom: 12 }}>
+              Take or upload a photo of a nutrition label. We'll extract serving size, calories, macros, and more.
+            </Text>
+
+            {!labelImageUri ? (
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity
+                  onPress={handleLabelFromCamera}
+                  disabled={isGenerating}
+                  style={{
+                    flex: 1,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: c.border,
+                    borderRadius: 12,
+                    paddingVertical: 20,
+                    backgroundColor: c.card,
+                  }}
+                >
+                  <Ionicons name="camera-outline" size={28} color={c.text} />
+                  <Text style={{ color: c.text, fontWeight: "700", fontSize: 14, marginTop: 8 }}>
+                    Take Photo
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleLabelFromLibrary}
+                  disabled={isGenerating}
+                  style={{
+                    flex: 1,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: c.border,
+                    borderRadius: 12,
+                    paddingVertical: 20,
+                    backgroundColor: c.card,
+                  }}
+                >
+                  <Ionicons name="images-outline" size={28} color={c.text} />
+                  <Text style={{ color: c.text, fontWeight: "700", fontSize: 14, marginTop: 8 }}>
+                    Choose from Library
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  borderRadius: 12,
+                  padding: 12,
+                  backgroundColor: c.card,
+                }}
+              >
+                <Image
+                  source={{ uri: labelImageUri }}
+                  style={{ width: "100%", height: 160, borderRadius: 8, marginBottom: 12 }}
+                  resizeMode="contain"
+                />
+                {isGenerating && (
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <ActivityIndicator size="small" color={c.primary} />
+                    <Text style={{ color: c.textSecondary, marginLeft: 8, flex: 1 }}>
+                      Analyzing label image...
+                    </Text>
+                  </View>
+                )}
+                {generatedBy === "label" && !isGenerating && (
+                  <View
+                    style={{
+                      backgroundColor: confColors.bg,
+                      borderColor: confColors.border,
+                      borderWidth: 1,
+                      borderRadius: 8,
+                      padding: 10,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name={confColors.icon as any} size={16} color={confColors.text} />
+                      <Text style={{ color: confColors.text, fontWeight: "700", fontSize: 13, marginLeft: 6 }}>
+                        {confLevel ? `${confLevel} confidence` : "Extracted"}
+                      </Text>
+                      {confidenceScore != null && (
+                        <Text style={{ color: confColors.text, fontWeight: "600", fontSize: 12, marginLeft: 6 }}>
+                          {Math.round(confidenceScore * 100)}%
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 4 }}>
+                      Extracted from {labelSource === "camera" ? "a photo" : "your library image"}. Review details before saving.
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  onPress={resetLabel}
+                  disabled={isGenerating}
+                  style={{ alignSelf: "center", paddingVertical: 6 }}
+                >
+                  <Text style={{ color: c.primary, fontWeight: "600", fontSize: 13 }}>
+                    Replace Photo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ════════════════════════
+            GENERATING INDICATOR (description-only, label has inline)
+            ════════════════════════ */}
+        {method === "description" && isGenerating && (
+          <View
             style={{
-              color: t.textSecondary,
-              fontWeight: "700",
-              fontSize: 14,
-              marginBottom: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: c.borderLight,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
             }}
           >
+            <ActivityIndicator size="small" color={c.primary} />
+            <Text style={{ color: c.textSecondary, marginLeft: 10, flex: 1 }}>
+              Generating food details from your description...
+            </Text>
+          </View>
+        )}
+
+        {/* ════════════════════════
+            CONFIDENCE CARD (description-only, label has inline)
+            ════════════════════════ */}
+        {method === "description" && generatedBy === "description" && !isGenerating && (
+          <View
+            style={{
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
+              backgroundColor: confColors.bg,
+              borderColor: confColors.border,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name={confColors.icon as any} size={18} color={confColors.text} />
+              <Text style={{ color: confColors.text, fontWeight: "700", marginLeft: 8, fontSize: 14 }}>
+                {confLevel ? `${confLevel} AI confidence` : "AI draft generated"}
+              </Text>
+              {confidenceScore != null && (
+                <Text style={{ color: confColors.text, fontWeight: "600", marginLeft: 8, fontSize: 13 }}>
+                  {Math.round(confidenceScore * 100)}%
+                </Text>
+              )}
+            </View>
+            <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 6 }}>
+              Generated from {sourceLabel(generatedBy)}. Review the details before saving.
+            </Text>
+          </View>
+        )}
+
+        {/* ════════════════════════
+            FOOD DETAILS FORM
+            ════════════════════════ */}
+        {showFoodDetails && (
+        <View style={{ borderTopWidth: 1, borderTopColor: c.borderLight, paddingTop: 20, marginBottom: 4 }}>
+          <Text style={{ color: c.textSecondary, fontWeight: "700", fontSize: 14, marginBottom: 12 }}>
             Food Details
           </Text>
         </View>
+        )}
 
-        <View style={styles.formGroup}>
-          <Text style={{ color: t.textMuted, marginBottom: 4 }}>Name *</Text>
+        {showFoodDetails && (
+        <>
+        <View style={s.field}>
+          <Text style={{ color: c.textMuted, marginBottom: 4 }}>Name *</Text>
           <TextInput
-            style={[
-              styles.input,
-              { color: t.text, backgroundColor: t.card, borderColor: t.border },
-            ]}
+            style={inputStyle(c)}
             value={form.name}
             onChangeText={(v) => setField("name", v)}
             placeholder="e.g. My Favorite Bread"
-            placeholderTextColor={t.textMuted}
+            placeholderTextColor={c.textMuted}
           />
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={{ color: t.textMuted, marginBottom: 4 }}>Brand</Text>
+        <View style={s.field}>
+          <Text style={{ color: c.textMuted, marginBottom: 4 }}>Brand</Text>
           <TextInput
-            style={[
-              styles.input,
-              { color: t.text, backgroundColor: t.card, borderColor: t.border },
-            ]}
+            style={inputStyle(c)}
             value={form.brandName ?? ""}
             onChangeText={(v) => setField("brandName", v)}
             placeholder="Optional"
-            placeholderTextColor={t.textMuted}
+            placeholderTextColor={c.textMuted}
           />
         </View>
 
         <View style={{ flexDirection: "row", gap: 12 }}>
-          <View style={[styles.formGroup, { flex: 1 }]}>
-            <Text style={{ color: t.textMuted, marginBottom: 4 }}>
-              Serving Size *
-            </Text>
+          <View style={[s.field, { flex: 1 }]}>
+            <Text style={{ color: c.textMuted, marginBottom: 4 }}>Serving Size *</Text>
             <TextInput
-              style={[
-                styles.input,
-                {
-                  color: t.text,
-                  backgroundColor: t.card,
-                  borderColor: t.border,
-                },
-              ]}
-              value={numberToInput(form.servingSize)}
+              style={inputStyle(c)}
+              value={NUM(form.servingSize)}
               onChangeText={(v) => setField("servingSize", v)}
               keyboardType="numeric"
             />
           </View>
-          <View style={[styles.formGroup, { flex: 1 }]}>
-            <Text style={{ color: t.textMuted, marginBottom: 4 }}>Unit *</Text>
+          <View style={[s.field, { flex: 1 }]}>
+            <Text style={{ color: c.textMuted, marginBottom: 4 }}>Unit *</Text>
             <TextInput
-              style={[
-                styles.input,
-                {
-                  color: t.text,
-                  backgroundColor: t.card,
-                  borderColor: t.border,
-                },
-              ]}
+              style={inputStyle(c)}
               value={form.servingSizeUnit}
               onChangeText={(v) => setField("servingSizeUnit", v)}
             />
           </View>
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={{ color: t.textMuted, marginBottom: 4 }}>
-            Calories (kcal) *
-          </Text>
+        <View style={s.field}>
+          <Text style={{ color: c.textMuted, marginBottom: 4 }}>Calories (kcal) *</Text>
           <TextInput
-            style={[
-              styles.input,
-              { color: t.text, backgroundColor: t.card, borderColor: t.border },
-            ]}
-            value={numberToInput(form.calories)}
+            style={inputStyle(c)}
+            value={NUM(form.calories)}
             onChangeText={(v) => setField("calories", v)}
             keyboardType="numeric"
           />
         </View>
 
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 12,
-            flexWrap: "wrap",
-            marginBottom: 16,
-          }}
-        >
+        <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
           {[
             { label: "Protein (g) *", key: "proteinG" },
             { label: "Carbs (g) *", key: "carbG" },
@@ -748,67 +655,40 @@ export default function CreateCustomFoodScreen() {
             { label: "Fiber (g)", key: "fiberG" },
             { label: "Sugar (g)", key: "sugarG" },
             { label: "Sodium (mg)", key: "sodiumMg" },
-          ].map((macro) => (
-            <View
-              key={macro.key}
-              style={[styles.formGroup, { minWidth: "45%", flex: 1 }]}
-            >
-              <Text style={{ color: t.textMuted, marginBottom: 4 }}>
-                {macro.label}
-              </Text>
+          ].map((m) => (
+            <View key={m.key} style={[s.field, { minWidth: "45%", flex: 1 }]}>
+              <Text style={{ color: c.textMuted, marginBottom: 4 }}>{m.label}</Text>
               <TextInput
-                style={[
-                  styles.input,
-                  {
-                    color: t.text,
-                    backgroundColor: t.card,
-                    borderColor: t.border,
-                  },
-                ]}
-                value={numberToInput(
-                  form[macro.key as keyof CustomFood] as number,
-                )}
-                onChangeText={(v) => setField(macro.key as keyof CustomFood, v)}
+                style={inputStyle(c)}
+                value={NUM(form[m.key as keyof CustomFood] as number)}
+                onChangeText={(v) => setField(m.key as keyof CustomFood, v)}
                 keyboardType="numeric"
               />
             </View>
           ))}
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={{ color: t.textMuted, marginBottom: 4 }}>
-            Ingredients
-          </Text>
+        <View style={s.field}>
+          <Text style={{ color: c.textMuted, marginBottom: 4 }}>Ingredients</Text>
           <TextInput
-            style={[
-              styles.input,
-              {
-                height: 80,
-                color: t.text,
-                backgroundColor: t.card,
-                borderColor: t.border,
-              },
-            ]}
+            style={[inputStyle(c), { height: 80 }]}
             value={form.ingredients ?? ""}
             onChangeText={(v) => setField("ingredients", v)}
             placeholder="Optional ingredients or notes"
-            placeholderTextColor={t.textMuted}
+            placeholderTextColor={c.textMuted}
             multiline
           />
         </View>
 
+        {/* ════════════════════════
+            SAVE ACTIONS
+            ════════════════════════ */}
         <TouchableOpacity
-          style={[
-            styles.saveBtn,
-            {
-              backgroundColor: t.primary,
-              opacity: !form.name.trim() || saveMutation.isPending ? 0.5 : 1,
-            },
-          ]}
-          onPress={() => saveMutation.mutate()}
-          disabled={!form.name.trim() || saveMutation.isPending}
+          onPress={handleSave}
+          disabled={!isFormValid || anySaving}
+          style={[s.saveBtn, { backgroundColor: c.primary, opacity: isFormValid && !anySaving ? 1 : 0.5 }]}
         >
-          {saveMutation.isPending ? (
+          {anySaving ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
@@ -816,48 +696,52 @@ export default function CreateCustomFoodScreen() {
             </Text>
           )}
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleSaveAndLog}
+          disabled={!isFormValid || anySaving}
+          style={{
+            paddingVertical: 14,
+            borderRadius: 12,
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: 8,
+            borderWidth: 1,
+            borderColor: c.primary,
+            opacity: isFormValid && !anySaving ? 1 : 0.5,
+          }}
+        >
+          {anySaving ? (
+            <ActivityIndicator color={c.primary} />
+          ) : (
+            <Text style={{ color: c.primary, fontWeight: "700", fontSize: 15 }}>
+              Save & Log
+            </Text>
+          )}
+        </TouchableOpacity>
+        </>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeScreen>
   );
 }
 
-const styles = StyleSheet.create({
-  aiPrimaryButton: {
-    flexDirection: "row",
-    alignItems: "center",
+function inputStyle(c: ReturnType<typeof useThemeColors>) {
+  return {
     borderWidth: 1,
-    padding: 14,
-    borderRadius: 12,
-  },
-  aiSecondaryButton: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  aiStatusCard: {
-    flexDirection: "column",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
-  input: {
-    borderWidth: 1,
+    borderColor: c.border,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-  },
-  describeInput: {
-    minHeight: 88,
-    textAlignVertical: "top",
-  },
+    color: c.text,
+    backgroundColor: c.card,
+  };
+}
+
+const s = StyleSheet.create({
+  field: { marginBottom: 16 },
   saveBtn: {
     padding: 16,
     borderRadius: 12,

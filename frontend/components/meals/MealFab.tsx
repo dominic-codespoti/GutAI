@@ -30,7 +30,6 @@ const ACTION_BUTTON_SIZE = 46;
 const ACTION_ROW_HEIGHT = 54;
 const ACTION_ROW_GAP = 10;
 const MENU_BOTTOM_OFFSET = MAIN_FAB_SIZE + 16;
-
 const ACTION_RIGHT_OFFSET = (MAIN_FAB_SIZE - ACTION_BUTTON_SIZE) / 2;
 
 export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
@@ -68,7 +67,6 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
 
   const animateOpen = () => {
     anim.stopAnimation();
-
     Animated.spring(anim, {
       toValue: 1,
       useNativeDriver: true,
@@ -79,7 +77,6 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
 
   const animateClose = (onComplete?: () => void) => {
     anim.stopAnimation();
-
     Animated.timing(anim, {
       toValue: 0,
       duration: 140,
@@ -105,7 +102,6 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
 
   const toggle = () => {
     haptics.medium();
-
     if (open) {
       closeMenu();
     } else {
@@ -115,7 +111,6 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
 
   const handleActionPress = (action: MealFabAction) => {
     haptics.medium();
-
     closeMenu(() => {
       action.onPress();
     });
@@ -127,7 +122,7 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
         <Pressable
           onPress={() => closeMenu()}
           accessibilityRole="button"
-          accessibilityLabel="Close meal options menu"
+          accessibilityLabel="Close menu"
           style={{
             position: "absolute",
             top: 0,
@@ -152,25 +147,13 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
           pointerEvents={open ? "auto" : "none"}
           style={{
             position: "absolute",
-
-            /*
-             * The action buttons are smaller than the main FAB.
-             * This offset aligns their centres with the main FAB centre,
-             * instead of aligning their right edges.
-             */
             right: right + ACTION_RIGHT_OFFSET,
-
             bottom: bottom + MENU_BOTTOM_OFFSET,
             opacity: anim,
             transform: [{ translateY: menuTranslateY }, { scale: menuScale }],
           }}
         >
-          <View
-            style={{
-              gap: ACTION_ROW_GAP,
-              alignItems: "flex-end",
-            }}
-          >
+          <View style={{ gap: ACTION_ROW_GAP, alignItems: "flex-end" }}>
             {actions.map((action, index) => (
               <MealFabActionButton
                 key={action.label}
@@ -198,7 +181,7 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
         activeOpacity={0.88}
         onPress={toggle}
         accessibilityRole="button"
-        accessibilityLabel={open ? "Close meal options" : "Add meal"}
+        accessibilityLabel={open ? "Close menu" : "Add"}
         accessibilityState={{ expanded: open }}
         style={{
           position: "absolute",
@@ -214,11 +197,7 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
           elevation: 8,
         }}
       >
-        <Animated.View
-          style={{
-            transform: [{ rotate: iconRotate }],
-          }}
-        >
+        <Animated.View style={{ transform: [{ rotate: iconRotate }] }}>
           <Ionicons name="add" size={31} color={colors.textOnPrimary} />
         </Animated.View>
       </TouchableOpacity>

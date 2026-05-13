@@ -19,13 +19,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { toast } from "../../src/stores/toast";
 import { ErrorState } from "../../components/ErrorState";
 import { NutritionBar } from "../../components/NutritionBar";
-import { MealTypePicker } from "../../components/MealTypePicker";
-import { ServingSizeSelector } from "../../components/ServingSizeSelector";
 import { FoodSearchResult } from "../../components/FoodSearchResult";
-import { BottomSheet } from "../../components/BottomSheet";
+import { AddToMealSheet } from "../../components/meals/AddToMealSheet";
 import {
   scaleNutrition,
-  nutritionSummaryText,
 } from "../../src/utils/nutrition";
 import { useFavorites } from "../../src/hooks/useFavorites";
 import type { FavoriteFood, FoodProduct, RecentFood } from "../../src/types";
@@ -174,8 +171,6 @@ export default function ScanScreen() {
 
     setBrowseFocus("default");
   }, [params.tab]);
-
-  const effectiveGrams = addToMealServingG * addToMealMultiplier;
 
   useEffect(() => {
     if (Platform.OS === "android") {
@@ -327,11 +322,18 @@ export default function ScanScreen() {
   ]);
 
   const addToMealMutation = useMutation({
-    mutationFn: (product: FoodProduct) => {
-      const s = effectiveGrams;
-      const scaled = scaleNutrition(product, s);
+    mutationFn: ({
+      product,
+      servingG,
+      mealType,
+    }: {
+      product: FoodProduct;
+      servingG: number;
+      mealType: string;
+    }) => {
+      const scaled = scaleNutrition(product, servingG);
       return mealApi.create({
-        mealType: addToMealType,
+        mealType,
         loggedAt: new Date().toISOString(),
         items: [
           {
@@ -342,8 +344,8 @@ export default function ScanScreen() {
                 ? product.id
                 : undefined,
             servings: 1,
-            servingUnit: `${s}g`,
-            servingWeightG: s,
+            servingUnit: `${servingG}g`,
+            servingWeightG: servingG,
             ...scaled,
           },
         ],
@@ -694,7 +696,7 @@ export default function ScanScreen() {
                 color: colors.text,
               }}
             >
-              Create with AI instead
+              Create Custom Food instead
             </Text>
             <Text
               style={{
@@ -704,7 +706,7 @@ export default function ScanScreen() {
                 marginTop: 4,
               }}
             >
-              Describe the food, take a photo, or choose one from your library.
+              Describe the food, take a photo, or enter details manually.
             </Text>
           </View>
         </View>
@@ -712,7 +714,7 @@ export default function ScanScreen() {
         <TouchableOpacity
           onPress={openCreateWithAi}
           accessibilityRole="button"
-          accessibilityLabel="Create new food with AI"
+          accessibilityLabel="Create custom food"
           style={{
             marginTop: 14,
             backgroundColor: colors.primaryLight,
@@ -730,7 +732,7 @@ export default function ScanScreen() {
             color={colors.textOnPrimary}
           />
           <Text style={{ color: colors.textOnPrimary, fontWeight: "700" }}>
-            Create New Food with AI
+            Create Custom Food
           </Text>
         </TouchableOpacity>
       </View>
@@ -868,49 +870,6 @@ export default function ScanScreen() {
       </View>
     );
   };
-
-  const renderStickyCreateWithAiButton = () => (
-    <View
-      style={{
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 12,
-        borderTopWidth: 1,
-        borderTopColor: colors.borderLight,
-        backgroundColor: colors.bg,
-      }}
-    >
-      <TouchableOpacity
-        onPress={openCreateWithAi}
-        accessibilityRole="button"
-        accessibilityLabel="Create new food with AI"
-        style={{
-          backgroundColor: colors.primaryLight,
-          borderRadius: 12,
-          minHeight: 52,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-        }}
-      >
-        <Ionicons
-          name="sparkles-outline"
-          size={18}
-          color={colors.textOnPrimary}
-        />
-        <Text
-          style={{
-            color: colors.textOnPrimary,
-            fontWeight: "700",
-            fontSize: 15,
-          }}
-        >
-          Create New Food with AI
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
 
   const renderStandardListFooter = () => (
     <>
@@ -1089,148 +1048,47 @@ export default function ScanScreen() {
             </>
           )}
 
-          {showAddToMeal ? (
-            <View
+          <TouchableOpacity
+            onPress={() => {
+              if (!safetyReport.data?.product) return;
+              setAddToMealProduct(safetyReport.data.product);
+              setAddToMealServingG(
+                safetyReport.data.product.servingQuantity
+                  ? Math.round(safetyReport.data.product.servingQuantity)
+                  : 100,
+              );
+              setAddToMealMultiplier(1);
+              setCustomServingText("");
+              setShowAddToMeal(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Add to meal"
+            style={{
+              marginTop: 12,
+              backgroundColor: colors.primaryLight,
+              borderRadius: 8,
+              padding: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name="add-circle-outline"
+              size={18}
+              color={colors.textOnPrimary}
+            />
+            <Text
               style={{
-                marginTop: 12,
-                backgroundColor: colors.bg,
-                borderRadius: 8,
-                padding: 12,
+                color: colors.textOnPrimary,
+                fontWeight: "600",
+                marginLeft: 6,
+                fontSize: 14,
               }}
             >
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: colors.textSecondary,
-                  marginBottom: 8,
-                }}
-              >
-                Add to meal:
-              </Text>
-              <MealTypePicker
-                selected={addToMealType}
-                onSelect={setAddToMealType}
-              />
-              <ServingSizeSelector
-                servingG={addToMealServingG}
-                onServingChange={setAddToMealServingG}
-                customText={customServingText}
-                onCustomTextChange={setCustomServingText}
-                multiplier={addToMealMultiplier}
-                onMultiplierChange={setAddToMealMultiplier}
-                product={addToMealProduct ?? safetyReport.data?.product}
-                summaryText={
-                  safetyReport.data?.product
-                    ? nutritionSummaryText(
-                        scaleNutrition(
-                          safetyReport.data.product,
-                          effectiveGrams,
-                        ),
-                        effectiveGrams,
-                      )
-                    : undefined
-                }
-              />
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "flex-end",
-                  gap: 8,
-                  marginTop: 8,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowAddToMeal(false);
-                    setAddToMealProduct(null);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                  style={{ paddingHorizontal: 12, paddingVertical: 8 }}
-                >
-                  <Text
-                    style={{
-                      color: colors.textSecondary,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() =>
-                    addToMealMutation.mutate(safetyReport.data!.product)
-                  }
-                  disabled={addToMealMutation.isPending}
-                  accessibilityRole="button"
-                  accessibilityLabel="Log meal"
-                  style={{
-                    backgroundColor: colors.primaryLight,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 8,
-                  }}
-                >
-                  {addToMealMutation.isPending ? (
-                    <ActivityIndicator
-                      color={colors.textOnPrimary}
-                      size="small"
-                    />
-                  ) : (
-                    <Text
-                      style={{
-                        color: colors.textOnPrimary,
-                        fontWeight: "600",
-                      }}
-                    >
-                      Log It
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity
-              onPress={() => {
-                setShowAddToMeal(true);
-                setAddToMealMultiplier(1);
-                setCustomServingText("");
-                setAddToMealServingG(
-                  safetyReport.data?.product.servingQuantity
-                    ? Math.round(safetyReport.data.product.servingQuantity)
-                    : 100,
-                );
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Add to meal"
-              style={{
-                marginTop: 12,
-                backgroundColor: colors.primaryLight,
-                borderRadius: 8,
-                padding: 12,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={colors.textOnPrimary}
-              />
-              <Text
-                style={{
-                  color: colors.textOnPrimary,
-                  fontWeight: "600",
-                  marginLeft: 6,
-                  fontSize: 14,
-                }}
-              >
-                Add to Meal
-              </Text>
-            </TouchableOpacity>
-          )}
+              Add to Meal
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </>
@@ -1366,132 +1224,19 @@ export default function ScanScreen() {
         />
       </KeyboardAvoidingView>
 
-      {!showAddToMeal && renderStickyCreateWithAiButton()}
-
-      <BottomSheet
+      <AddToMealSheet
+        product={addToMealProduct}
         visible={showAddToMeal && !!addToMealProduct}
         onClose={() => {
           setShowAddToMeal(false);
           setAddToMealProduct(null);
         }}
-      >
-        <Text
-          style={{
-            fontSize: 20,
-            fontWeight: "700",
-            color: colors.text,
-            marginBottom: 4,
-          }}
-        >
-          Add to Meal
-        </Text>
-        <Text
-          style={{
-            fontSize: 16,
-            color: colors.textSecondary,
-            marginBottom: 20,
-          }}
-        >
-          {addToMealProduct?.name}
-        </Text>
-
-        <View style={{ marginBottom: 20 }}>
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: colors.textSecondary,
-              marginBottom: 8,
-            }}
-          >
-            Meal Type:
-          </Text>
-          <MealTypePicker
-            selected={addToMealType}
-            onSelect={setAddToMealType}
-          />
-        </View>
-
-        <ServingSizeSelector
-          servingG={addToMealServingG}
-          onServingChange={setAddToMealServingG}
-          customText={customServingText}
-          onCustomTextChange={setCustomServingText}
-          multiplier={addToMealMultiplier}
-          onMultiplierChange={setAddToMealMultiplier}
-          product={addToMealProduct}
-          summaryText={
-            addToMealProduct
-              ? nutritionSummaryText(
-                  scaleNutrition(addToMealProduct, effectiveGrams),
-                  effectiveGrams,
-                )
-              : undefined
-          }
-        />
-
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            gap: 12,
-            marginTop: 24,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => {
-              setShowAddToMeal(false);
-              setAddToMealProduct(null);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-            style={{
-              flex: 1,
-              paddingVertical: 14,
-              borderRadius: 12,
-              backgroundColor: colors.borderLight,
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{
-                color: colors.textSecondary,
-                fontWeight: "600",
-                fontSize: 16,
-              }}
-            >
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => addToMealMutation.mutate(addToMealProduct!)}
-            disabled={addToMealMutation.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Log meal"
-            style={{
-              flex: 1,
-              backgroundColor: colors.primaryLight,
-              paddingVertical: 14,
-              borderRadius: 12,
-              alignItems: "center",
-            }}
-          >
-            {addToMealMutation.isPending ? (
-              <ActivityIndicator color={colors.textOnPrimary} size="small" />
-            ) : (
-              <Text
-                style={{
-                  color: colors.textOnPrimary,
-                  fontWeight: "600",
-                  fontSize: 16,
-                }}
-              >
-                Log It
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
+        onLog={(product, servingG, mealType) => {
+          addToMealMutation.mutate({ product, servingG, mealType });
+        }}
+        isPending={addToMealMutation.isPending}
+        defaultMealType={addToMealType}
+      />
     </View>
   );
 }
