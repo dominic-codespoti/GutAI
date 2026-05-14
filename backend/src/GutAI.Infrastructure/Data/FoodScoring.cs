@@ -286,7 +286,7 @@ internal static class FoodScoring
                 score += 10f;
             else if (dto.FoodKind == GutAI.Domain.Enums.FoodKind.Branded && !queryHasBrand)
             {
-                score -= 15f;
+                score -= 25f;
 
                 // Extra penalty for branded products whose name is suspiciously short/generic.
                 // A single-word branded product name (e.g. "Eggs", "Garlic", "Coffee") that
@@ -446,8 +446,8 @@ internal static class FoodScoring
         // Fruit queries: prefer whole fruit over juice
         if (queryLower is "lime" or "lemon" or "orange" or "grapefruit")
         {
-            if (nameLower.Contains("juice") && !queryLower.Contains("juice")) score -= 25f;
-            if (nameLower.Contains("raw") && !nameLower.Contains("juice")) score += 10f;
+            if (nameLower.Contains("juice") && !queryLower.Contains("juice")) score -= 45f;
+            if (nameLower.Contains("raw") && !nameLower.Contains("juice")) score += 15f;
         }
 
         // Beans: penalize liquid

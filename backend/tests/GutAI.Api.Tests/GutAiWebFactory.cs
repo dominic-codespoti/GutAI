@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Azure.Data.Tables;
 using DotNet.Testcontainers.Builders;
@@ -56,6 +57,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             Storage.Replace(services, connStr);
             AiStub.Register(services);
+            ChatStub.Register(services);
         });
     }
 
@@ -122,6 +124,31 @@ file static class AiStub
 
         public Task<CustomFoodDto?> ParseNutritionLabelAsync(Stream imageStream, string contentType, CancellationToken ct = default)
             => Task.FromResult<CustomFoodDto?>(null);
+    }
+}
+
+/// <summary>Chat service stub for contract tests. Returns empty history and no-ops for clear/stream.</summary>
+file static class ChatStub
+{
+    public static void Register(IServiceCollection services)
+    {
+        services.RemoveAll(typeof(IChatService));
+        services.AddSingleton<IChatService>(_ => new Stub());
+    }
+
+    private sealed class Stub : IChatService
+    {
+        public async IAsyncEnumerable<ChatStreamEvent> StreamResponseAsync(Guid userId, string message, [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public Task<List<ChatHistoryMessage>> GetHistoryAsync(Guid userId, int limit = 50, CancellationToken ct = default)
+            => Task.FromResult(new List<ChatHistoryMessage>());
+
+        public Task ClearHistoryAsync(Guid userId, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }
 

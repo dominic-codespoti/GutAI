@@ -12,6 +12,7 @@ internal static class FoodScoringTerms
         "alaska native", "industrial", "fast food",
         "ns as to", "usda commodity", "as purchased", "not further specified",
         "nfs", "ready-to-eat", "ready-to-heat", "glucose reduced", "stabilized",
+        "prepared", "cooked", "instant", "fortified",
         "nuggets", "nugget", "breaded", "patties", "patty", "stick", "sticks",
         "cereals ready-to-eat", "includes foods for usda", "food distribution program",
         "mechanically deboned", "mechanically separated", "by-products", "manufacturing",

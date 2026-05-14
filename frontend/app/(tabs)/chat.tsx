@@ -13,28 +13,18 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import EventSource from "react-native-sse";
 import { useThemeColors } from "../../src/stores/theme";
 import * as haptics from "../../src/utils/haptics";
 import { chatApi } from "../../src/api";
-import { getItem } from "../../src/utils/storage";
-import Constants from "expo-constants";
 import Markdown from "react-native-markdown-display";
 import {
   useSubscriptionStore,
   presentPaywall,
 } from "../../src/stores/subscription";
+import { useChatStream, formatToolName } from "../../src/hooks/useChatStream";
+import TypingIndicator from "../../src/components/TypingIndicator";
 
-import type { ChatMessage, ChatStreamEvent } from "../../src/types";
-
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  Constants.expoConfig?.extra?.apiUrl ||
-  Platform.select({
-    android: "http://10.0.2.2:5000",
-    ios: "http://localhost:5000",
-    default: "http://localhost:5000",
-  });
+import type { ChatMessage } from "../../src/types";
 
 interface LocalMessage {
   id: string;
@@ -54,10 +44,9 @@ export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const streamRef = useRef<EventSource | null>(null);
+  const { startStream, cancelStream } = useChatStream();
   const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
 
-  // Load history on mount
   const { isLoading } = useQuery({
     queryKey: ["chatHistory"],
     queryFn: async () => {
@@ -88,13 +77,14 @@ export default function ChatScreen() {
     const text = input.trim();
     if (!text || isStreaming) return;
 
+    const assistantId = `assistant-${Date.now()}`;
     const userMsg: LocalMessage = {
       id: `user-${Date.now()}`,
       role: "user",
       content: text,
     };
     const assistantMsg: LocalMessage = {
-      id: `assistant-${Date.now()}`,
+      id: assistantId,
       role: "assistant",
       content: "",
       isStreaming: true,
@@ -105,95 +95,50 @@ export default function ChatScreen() {
     setIsStreaming(true);
     scrollToBottom();
 
-    try {
-      const token = await getItem("accessToken");
-      const es = new EventSource(`${BASE_URL}/api/chat/stream`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: text }),
-      });
-
-      streamRef.current = es;
-
-      es.addEventListener("message", (event: any) => {
-        const data = event.data;
-        if (data === "[DONE]") {
-          es.close();
-          streamRef.current = null;
-          setIsStreaming(false);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, isStreaming: false, toolStatus: undefined }
-                : m,
-            ),
-          );
-          queryClient.invalidateQueries({ queryKey: ["chatHistory"] });
-          return;
-        }
-
-        try {
-          const parsed: ChatStreamEvent = JSON.parse(data);
-          if (parsed.content) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsg.id
-                  ? { ...m, content: m.content + parsed.content }
-                  : m,
-              ),
-            );
-            scrollToBottom();
-          } else if (parsed.tool_call) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsg.id
-                  ? {
-                      ...m,
-                      toolStatus: `${parsed.status}: ${formatToolName(parsed.tool_call)}`,
-                    }
-                  : m,
-              ),
-            );
-          }
-        } catch {}
-      });
-
-      es.addEventListener("error", () => {
-        es.close();
-        streamRef.current = null;
-        setIsStreaming(false);
+    await startStream(text, {
+      onContent: (content) => {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMsg.id
-              ? {
-                  ...m,
-                  content:
-                    m.content ||
-                    "Sorry, something went wrong. Please try again.",
-                  isStreaming: false,
-                }
+            m.id === assistantId
+              ? { ...m, content: m.content + content }
               : m,
           ),
         );
-      });
-    } catch {
-      setIsStreaming(false);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMsg.id
-            ? {
-                ...m,
-                content: "Failed to connect. Please try again.",
-                isStreaming: false,
-              }
-            : m,
-        ),
-      );
-    }
-  }, [input, isStreaming, scrollToBottom, queryClient]);
+        scrollToBottom();
+      },
+      onToolStatus: (toolName, status) => {
+        const capStatus = status.charAt(0).toUpperCase() + status.slice(1);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, toolStatus: `${capStatus}: ${formatToolName(toolName)}` }
+              : m,
+          ),
+        );
+      },
+      onDone: () => {
+        setIsStreaming(false);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, isStreaming: false, toolStatus: undefined }
+              : m,
+          ),
+        );
+        queryClient.invalidateQueries({ queryKey: ["chatHistory"] });
+      },
+      onError: (errorMessage) => {
+        setIsStreaming(false);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: errorMessage, isStreaming: false }
+              : m,
+          ),
+        );
+      },
+    });
+  }, [input, isStreaming, scrollToBottom, queryClient, startStream]);
 
   const clearChat = useMutation({
     mutationFn: () => chatApi.clearHistory(),
@@ -204,10 +149,8 @@ export default function ChatScreen() {
   });
 
   useEffect(() => {
-    return () => {
-      streamRef.current?.close();
-    };
-  }, []);
+    return () => cancelStream();
+  }, [cancelStream]);
 
   const renderMessage = useCallback(
     ({ item }: { item: LocalMessage }) => {
@@ -240,14 +183,16 @@ export default function ChatScreen() {
           {isUser ? (
             <Text style={[styles.msgText, styles.userText]}>
               {item.content}
-              {item.isStreaming && !item.content && !item.toolStatus && "…"}
             </Text>
           ) : (
             <>
-              <Markdown style={mdStyles}>
-                {item.content ||
-                  (item.isStreaming && !item.toolStatus ? "…" : "")}
-              </Markdown>
+              {item.content ? (
+                <Markdown style={mdStyles}>{item.content}</Markdown>
+              ) : item.isStreaming && !item.toolStatus ? (
+                <View style={styles.typingContainer}>
+                  <TypingIndicator visible={true} />
+                </View>
+              ) : null}
               {item.isStreaming && item.content && (
                 <View style={styles.cursorDot} />
               )}
@@ -259,18 +204,13 @@ export default function ChatScreen() {
     [colors, styles, mdStyles],
   );
 
-  // Paywall gate — show upgrade screen if not subscribed
   if (!subLoaded) {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>
-              <Ionicons
-                name="sparkles"
-                size={20}
-                color={colors.textOnPrimary}
-              />
+              <Ionicons name="sparkles" size={20} color={colors.textOnPrimary} />
             </View>
             <View>
               <Text style={styles.headerTitle}>AI Health Coach</Text>
@@ -291,11 +231,7 @@ export default function ChatScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>
-              <Ionicons
-                name="sparkles"
-                size={20}
-                color={colors.textOnPrimary}
-              />
+              <Ionicons name="sparkles" size={20} color={colors.textOnPrimary} />
             </View>
             <View>
               <Text style={styles.headerTitle}>AI Health Coach</Text>
@@ -311,7 +247,7 @@ export default function ChatScreen() {
           <Text style={styles.paywallBody}>
             Get unlimited access to your personal AI health coach. Ask
             questions, log meals by voice, track triggers, and receive
-            personalized nutrition advice — all through natural conversation.
+            personalized nutrition advice \u2014 all through natural conversation.
           </Text>
           <TouchableOpacity
             style={styles.paywallBtn}
@@ -338,7 +274,6 @@ export default function ChatScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={0}
     >
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerLeft}>
           <View style={styles.headerIcon}>
@@ -359,7 +294,6 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Messages */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -384,14 +318,12 @@ export default function ChatScreen() {
             {[
               "What are my trigger foods?",
               "Log lunch: chicken salad and water",
-              "How's my nutrition today?",
+              "How\u0027s my nutrition today?",
             ].map((s) => (
               <TouchableOpacity
                 key={s}
                 style={styles.suggestionChip}
-                onPress={() => {
-                  setInput(s);
-                }}
+                onPress={() => setInput(s)}
                 accessibilityRole="button"
                 accessibilityLabel={s}
               >
@@ -414,7 +346,6 @@ export default function ChatScreen() {
         />
       )}
 
-      {/* Input */}
       <View
         style={[
           styles.inputBar,
@@ -457,11 +388,6 @@ export default function ChatScreen() {
       </View>
     </KeyboardAvoidingView>
   );
-}
-
-function formatToolName(name?: string): string {
-  if (!name) return "";
-  return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 const getMarkdownStyles = (colors: any) => ({
@@ -630,6 +556,10 @@ const getStyles = (colors: any) =>
       backgroundColor: colors.primary,
       marginTop: 4,
       opacity: 0.6,
+    },
+    typingContainer: {
+      paddingVertical: 4,
+      alignSelf: "flex-start",
     },
     inputBar: {
       flexDirection: "row",

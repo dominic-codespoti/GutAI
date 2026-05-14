@@ -79,22 +79,45 @@ function parseCSharpDtos(dirPath) {
     let braceDepth = 0;
 
     for (const line of content.split("\n")) {
-      const recordMatch = line.match(/public\s+record\s+(\w+)/);
+      // Match record declaration with optional positional parameters
+      const recordMatch = line.match(/public\s+record\s+(\w+)\s*(?:\(([^)]*)\))?/);
       if (recordMatch) {
         current = recordMatch[1];
         dtos[current] = [];
         braceDepth = 0;
+
+        // Extract positional parameters (e.g. string Role, DateTimeOffset CreatedAt)
+        if (recordMatch[2]) {
+          const params = recordMatch[2].split(",").map(p => p.trim()).filter(Boolean);
+          for (const param of params) {
+            const parts = param.split(/\s+/);
+            if (parts.length >= 2) {
+              const name = parts[parts.length - 1];
+              const camel = toCamelCase(name);
+              dtos[current].push(camel);
+            }
+          }
+        }
+        continue;
       }
 
       if (current) {
         braceDepth += (line.match(/{/g) || []).length;
         braceDepth -= (line.match(/}/g) || []).length;
 
+        // Match { get; init; } properties
         const propMatch = line.match(
           /public\s+\S+\??\s+(\w+)\s*{\s*get;\s*init;\s*}/,
         );
         if (propMatch) {
           const camel = toCamelCase(propMatch[1]);
+          dtos[current].push(camel);
+        }
+
+        // Match expression-bodied properties (e.g. public string Id => "...")
+        const exprMatch = line.match(/public\s+\S+\??\s+(\w+)\s*=>/);
+        if (exprMatch) {
+          const camel = toCamelCase(exprMatch[1]);
           dtos[current].push(camel);
         }
 
@@ -135,7 +158,13 @@ const INTERFACE_TO_DTO = {
   DailyNutritionSummary: "DailyNutritionSummaryDto",
   SymptomLog: "SymptomLogDto",
   SymptomType: "SymptomTypeDto",
+  ChatMessage: "ChatHistoryMessage",
 };
+
+// Additional directories to scan for backend DTO records (e.g. interfaces file)
+const EXTRA_DTO_DIRS = [
+  path.join(ROOT, "backend/src/GutAI.Application/Common/Interfaces"),
+];
 
 // Known intentional mismatches:
 // - Endpoint transforms DTO field names (e.g. UsRegulatoryStatus → usStatus)
@@ -144,7 +173,7 @@ const INTERFACE_TO_DTO = {
 const KNOWN_EXCEPTIONS = {
   MealLog: ["userId", "photoUrl", "originalText"],
   MealItem: ["cholesterolMg", "saturatedFatG", "potassiumMg"],
-  FoodProduct: ["additivesTags", "nutritionInfo", "isDeleted"],
+  FoodProduct: ["additivesTags", "nutritionInfo", "isDeleted", "imageFrontUrl", "imageIngredientsUrl", "imageNutritionUrl"],
   FoodAdditive: [
     "usStatus", "euStatus",                     // frontend names (endpoint maps from usRegulatoryStatus)
     "usRegulatoryStatus", "euRegulatoryStatus",  // backend DTO names
@@ -173,6 +202,14 @@ function main() {
 
   const tsInterfaces = parseTsInterfaces(tsPath);
   const csDtos = parseCSharpDtos(dtoDirPath);
+
+  // Merge DTOs from extra directories (e.g. Interfaces file with records)
+  for (const extraDir of EXTRA_DTO_DIRS) {
+    if (fs.existsSync(extraDir)) {
+      const extraDtos = parseCSharpDtos(extraDir);
+      Object.assign(csDtos, extraDtos);
+    }
+  }
 
   let errors = 0;
   let checked = 0;

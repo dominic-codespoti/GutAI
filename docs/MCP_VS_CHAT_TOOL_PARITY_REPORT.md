@@ -1,307 +1,130 @@
 # MCP vs Chat Tool Parity Analysis
 
-> **Date:** 2026-03-13
+> **Date:** 2026-05-14
+> **SDK:** `ModelContextProtocol.AspNetCore` **v1.3.0** (upgraded from v1.0.0)
+> **Transport:** Streamable HTTP (stateless) — replaced legacy SSE (obsolete per spec 2025-11-25)
 > **Files compared:**
 >
-> - **MCP:** `backend/src/GutAI.Api/Mcp/GutAiMcpTools.cs` (313 lines)
-> - **Chat:** `backend/src/GutAI.Infrastructure/Services/AzureOpenAIChatService.cs` (668 lines)
-> - **Chat tool schemas:** `backend/src/GutAI.Infrastructure/Services/ChatTools.cs`
+> - **MCP Tools:** `GutAI.Api/Mcp/FoodTools.cs`, `MealSymptomTools.cs`, `ProfileTools.cs` (3 domain-grouped classes)
+> - **Chat:** `GutAI.Infrastructure/Services/AzureOpenAIChatService.cs` (~600 lines)
+> - **Chat tool schemas:** `GutAI.Infrastructure/Services/ChatTools.cs`
+> - **Shared helpers:** `GutAI.Application/Common/Helpers/TimeZoneHelper.cs`, `FoodDtoHelper.cs`
 
 ---
 
 ## Executive Summary
 
-The MCP server tools are **significantly behind** the Chat service tools. There are **15+ discrete gaps** spanning missing tools, broken timezone handling, absent personalization, reduced data fidelity, and missing input/output fields. An external AI app using the MCP server today gets a materially degraded experience compared to the internal AI Coach.
+The MCP server and Chat service tools are now **at full parity**. Both expose the same 11 tools with the same output shapes and data fidelity. Code for shared logic (`BuildDto`, `GetUserTodayUtcRange`) has been extracted to `GutAI.Application.Common.Helpers` to prevent drift.
+
+The MCP server also includes **one bonus tool** (`GetUserProfile`) that was recently added to the Chat service for parity.
 
 ---
 
-## A) Feature Parity — Missing Tools
+## Tool Inventory
 
-### Tools in Chat but NOT in MCP
+| #   | Tool Name                     | Chat | MCP |
+| --- | ----------------------------- | ---- | --- |
+| 1   | `search_foods`                | ✅   | ✅  |
+| 2   | `get_food_safety`             | ✅   | ✅  |
+| 3   | `get_fodmap_assessment`       | ✅   | ✅  |
+| 4   | `log_meal`                    | ✅   | ✅  |
+| 5   | `log_symptom`                 | ✅   | ✅  |
+| 6   | `get_todays_meals`            | ✅   | ✅  |
+| 7   | `get_trigger_foods`           | ✅   | ✅  |
+| 8   | `get_symptom_history`         | ✅   | ✅  |
+| 9   | `get_nutrition_summary`       | ✅   | ✅  |
+| 10  | `get_elimination_diet_status` | ✅   | ✅  |
+| 11  | `get_user_profile`            | ✅   | ✅  |
 
-| Tool              | Impact                                                                                                                              | Severity        |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| `get_food_safety` | Personalized safety report combining FODMAP + gut risk + personalized scoring (user allergies/conditions). MCP only has raw FODMAP. | 🔴 **Critical** |
-
-### Tools in MCP but NOT in Chat
-
-None. MCP is a strict subset of Chat.
-
-### Tool inventory
-
-| #   | Tool Name                     | Chat | MCP                    |
-| --- | ----------------------------- | ---- | ---------------------- |
-| 1   | `search_foods`                | ✅   | ✅                     |
-| 2   | `get_food_safety`             | ✅   | ❌                     |
-| 3   | `get_fodmap_assessment`       | ✅   | ✅                     |
-| 4   | `log_meal`                    | ✅   | ✅ (degraded)          |
-| 5   | `log_symptom`                 | ✅   | ✅                     |
-| 6   | `get_todays_meals`            | ✅   | ✅ (broken)            |
-| 7   | `get_trigger_foods`           | ✅   | ✅ (degraded)          |
-| 8   | `get_symptom_history`         | ✅   | ✅                     |
-| 9   | `get_nutrition_summary`       | ✅   | ✅ (broken + degraded) |
-| 10  | `get_elimination_diet_status` | ✅   | ✅                     |
+**Total: 11 tools, 11/11 parity.**
 
 ---
 
-## B) Timezone Handling — 🔴 BROKEN in MCP
+## Key Parity Details
 
-The Chat service was correctly fixed to use `GetUserTodayUtcRange(user)` which:
+### Timezone Handling (✅ Both Correct)
 
-1. Reads `user.TimezoneId`
-2. Converts `DateTime.UtcNow` to the user's local timezone
-3. Computes local midnight→midnight boundaries
-4. Converts those boundaries back to UTC for querying
-5. Post-filters results within the precise UTC range
+Both MCP and Chat use `TimeZoneHelper.GetUserTodayUtcRange()` for "today" queries:
+- `GetTodaysMeals`
+- `GetNutritionSummary`
 
-**MCP still uses the broken pattern `DateOnly.FromDateTime(DateTime.UtcNow)` in 3 places:**
+Both use user-timezone-aware ranges for date-back queries:
+- `GetTriggerFoods` — uses user's timezone via `TimeZoneHelper`
+- `GetSymptomHistory` — uses user's timezone via `TimeZoneHelper`
 
-| MCP Method            | Line | Broken Pattern                                                   |
-| --------------------- | ---- | ---------------------------------------------------------------- |
-| `GetTodaysMeals`      | ~166 | `var today = DateOnly.FromDateTime(DateTime.UtcNow)`             |
-| `GetNutritionSummary` | ~230 | `var today = DateOnly.FromDateTime(DateTime.UtcNow)`             |
-| `GetTriggerFoods`     | ~186 | `var from = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(...))` |
-| `GetSymptomHistory`   | ~205 | `var from = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(...))` |
+Reads `user.TimezoneId`, computes local midnight boundaries, converts back to UTC.
 
-**Impact:** For a user in `Australia/Sydney` (UTC+10/+11), calling `GetTodaysMeals` at 8am local time returns **yesterday's meals** because UTC is still the previous date. Conversely at 11pm local, meals from the next UTC day bleed in.
+### Output Shapes (✅ Full Parity)
 
-The Chat service's `GetTodaysMeals` and `GetNutritionSummary` also use `GetMealLogsByDateRangeAsync` + post-filter, while MCP's `GetTodaysMeals` uses the simpler `GetMealLogsByDateAsync(userId, today)` which lacks the sub-day precision.
+| Tool | Chat fields | MCP fields | Match |
+|------|-------------|------------|-------|
+| `search_foods` | 10 results, 12 fields + `matchConfidence` + `ingredients` + `fiber100g` | Same | ✅ |
+| `get_food_safety` | FODMAP + gut risk + personalized score | Same | ✅ |
+| `get_fodmap_assessment` | Score, rating, trigger count, triggers with explanations, summary | Same | ✅ |
+| `log_meal` response | Full macros per item: calories, protein, carbs, fat, fiber | Same | ✅ |
+| `get_todays_meals` response | Full macros per item + meal totals | Same | ✅ |
+| `get_nutrition_summary` | Actuals + goals, includes `totalFiberG` | Same | ✅ |
+| `get_trigger_foods` | food, symptoms, totalOccurrences, avgSeverity | Same | ✅ |
+| `get_user_profile` | DisplayName, allergies, conditions, preferences, goals | Same | ✅ |
 
----
+### Input Handling (✅ Full Parity)
 
-## C) User Profile / Personalization Gaps
+| Tool | Capability | Chat | MCP |
+|------|-----------|------|-----|
+| `search_foods` | Query sanitization via `QuerySanitizer` | ✅ | ✅ |
+| `log_meal` | Structured `items[]` with `food_product_id` | ✅ | ✅ |
+| `log_meal` | Free-text `description` fallback | ✅ | ✅ |
+| `log_meal` | `food_product_id` resolves from DB for accurate nutrition | ✅ | ✅ |
+| `log_symptom` | Severity clamping (1–10) | ✅ | ✅ |
+| `log_symptom` | Unknown symptom type returns available options | ✅ | ✅ |
 
-### C1. `GetNutritionSummary` — Missing `totalFiberG`
+### Error Handling (✅ Both Robust)
 
-| Field           | Chat                                                   | MCP            |
-| --------------- | ------------------------------------------------------ | -------------- |
-| `totalCalories` | ✅                                                     | ✅             |
-| `totalProteinG` | ✅                                                     | ✅             |
-| `totalCarbsG`   | ✅                                                     | ✅             |
-| `totalFatG`     | ✅                                                     | ✅             |
-| `totalFiberG`   | ✅ `meals.SelectMany(m => m.Items).Sum(i => i.FiberG)` | ❌ **Missing** |
-| `goals.fiberG`  | ✅                                                     | ✅             |
+- Chat: Every tool call wrapped in try/catch returning `$"Error executing {name}: {message}"`
+- MCP: Every tool call wrapped in try/catch throwing `McpException` (proper JSON-RPC `IsError=true` response rather than a string that appears successful)
 
-MCP returns a fiber _goal_ but not the actual fiber _intake_, making the goal useless.
+### Shared Code (✅ Extracted to Prevent Drift)
 
-### C2. `GetFoodSafety` — Entirely Missing from MCP
+The following were previously duplicated between Chat (in `AzureOpenAIChatService`) and MCP (in `GutAiMcpTools`). Both now reference the shared helper:
 
-Chat's `get_food_safety` tool calls three services:
+- `FoodDtoHelper.BuildFoodProductDto()` in `GutAI.Application.Common.Helpers`
+- `TimeZoneHelper.GetUserTodayUtcRange()` in `GutAI.Application.Common.Helpers`
 
-- `FodmapService.Assess()` — FODMAP score
-- `GutRiskService.Assess()` — Gut health risk (additives, NOVA, sodium, etc.)
-- `PersonalizedScoringService.ScoreAsync()` — Composite score factoring in user's **allergies, gut conditions, and meal history**
+### MCP Best Practices (✅ Applied)
 
-**Neither `GutRiskService` nor `PersonalizedScoringService` are injected or referenced anywhere in the MCP tools file.** MCP only exposes raw FODMAP, which is unpersonalized.
+- **SDK version:** `ModelContextProtocol.AspNetCore` **1.3.0** (latest, upgraded from 1.0.0)
+- **Transport:** Streamable HTTP with `Stateless = true` (replaces legacy SSE which is obsolete per MCP spec 2025-11-25)
+- **Tool naming:** snake_case with `gutai_` prefix per SEP-986 convention (e.g., `gutai_search_foods`)
+- **Tool metadata:** `[McpServerTool(ReadOnly = true)]` on all query-only tools
+- **Error handling:** `McpException` throws → SDK returns proper `CallToolResult { IsError = true }`
+- **DI:** Instance methods with constructor injection for `ILogger<T>` and service dependencies
+- **Auth:** `AddAuthorizationFilters()` configured in MCP pipeline
+- **Organization:** Split into 3 domain-grouped classes (`FoodTools`, `MealSymptomTools`, `ProfileTools`) registered individually via `.WithTools<T>()`
 
-### C3. `LogMeal` — No Structured Items / `food_product_id` Support
+### Tool Registration
 
-| Capability                        | Chat                                         | MCP            |
-| --------------------------------- | -------------------------------------------- | -------------- |
-| Accept `items[]` array            | ✅                                           | ❌             |
-| Accept `food_product_id` per item | ✅ (resolves from DB for accurate nutrition) | ❌             |
-| Accept `servings` per item        | ✅                                           | ❌             |
-| Free-text `description` fallback  | ✅                                           | ✅ (only mode) |
-| Link `FoodProductId` on MealItem  | ✅                                           | ❌             |
-
-**Impact:** MCP's `LogMeal` only accepts a free-text `description` and delegates entirely to the external Nutritionix API for nutrition estimation. Chat's version can resolve `food_product_id` from a prior `search_foods` call, computing nutrition directly from the local food database (which has curated data including FODMAP-relevant fields). This means MCP-logged meals:
-
-- Have **less accurate nutrition data**
-- Cannot be traced back to specific food products
-- Cannot benefit from the local branded/USDA database
-
----
-
-## D) Data Completeness — Output Shape Differences
-
-### D1. `SearchFoods`
-
-| Field              | Chat                           | MCP          |
-| ------------------ | ------------------------------ | ------------ |
-| `index`            | ✅ (1-based)                   | ❌           |
-| `id`               | ✅                             | ✅           |
-| `name`             | ✅                             | ✅           |
-| `brand`            | ✅                             | ✅           |
-| `dataSource`       | ✅                             | ❌           |
-| `calories100g`     | ✅                             | ✅           |
-| `protein100g`      | ✅                             | ✅           |
-| `carbs100g`        | ✅                             | ✅           |
-| `fat100g`          | ✅                             | ✅           |
-| `fiber100g`        | ✅                             | ❌           |
-| `servingSize`      | ✅                             | ✅           |
-| `matchConfidence`  | ✅                             | ❌           |
-| `ingredients`      | ✅ (truncated to 120 chars)    | ❌           |
-| Result limit       | **10**                         | **5**        |
-| Wrapper object     | `{ results: [...] }`           | bare array   |
-| Query sanitization | ✅ `QuerySanitizer.Sanitize()` | ❌ raw input |
-
-**6 missing fields + half the results + no input sanitization.**
-
-### D2. `GetFodmapAssessment`
-
-| Field                    | Chat | MCP |
-| ------------------------ | ---- | --- |
-| `FodmapScore`            | ✅   | ✅  |
-| `FodmapRating`           | ✅   | ✅  |
-| `TriggerCount`           | ✅   | ✅  |
-| `triggers[].Name`        | ✅   | ✅  |
-| `triggers[].Category`    | ✅   | ✅  |
-| `triggers[].Severity`    | ✅   | ✅  |
-| `triggers[].Explanation` | ✅   | ❌  |
-| `Summary`                | ✅   | ✅  |
-
-Missing `Explanation` on triggers means the MCP consumer can't explain _why_ a food is a FODMAP trigger.
-
-### D3. `LogMeal` Response
-
-| Field              | Chat | MCP |
-| ------------------ | ---- | --- |
-| `id`               | ✅   | ✅  |
-| `mealType`         | ✅   | ✅  |
-| `totalCalories`    | ✅   | ✅  |
-| `totalProteinG`    | ✅   | ❌  |
-| `totalCarbsG`      | ✅   | ❌  |
-| `totalFatG`        | ✅   | ❌  |
-| `totalFiberG`      | ✅   | ❌  |
-| `items[].FoodName` | ✅   | ✅  |
-| `items[].Calories` | ✅   | ✅  |
-| `items[].ProteinG` | ✅   | ❌  |
-| `items[].CarbsG`   | ✅   | ❌  |
-| `items[].FatG`     | ✅   | ❌  |
-| `items[].FiberG`   | ✅   | ❌  |
-
-MCP only returns `FoodName` + `Calories` per item. Chat returns full macros.
-
-### D4. `GetTodaysMeals`
-
-| Field              | Chat | MCP |
-| ------------------ | ---- | --- |
-| `mealType`         | ✅   | ✅  |
-| `loggedAt`         | ✅   | ✅  |
-| `totalCalories`    | ✅   | ✅  |
-| `totalProteinG`    | ✅   | ❌  |
-| `totalCarbsG`      | ✅   | ❌  |
-| `totalFatG`        | ✅   | ❌  |
-| `items[].FoodName` | ✅   | ✅  |
-| `items[].Calories` | ✅   | ✅  |
-| `items[].ProteinG` | ✅   | ❌  |
-| `items[].CarbsG`   | ✅   | ❌  |
-| `items[].FatG`     | ✅   | ❌  |
-| `items[].FiberG`   | ✅   | ❌  |
-
-Same pattern: MCP strips all macro fields except calories.
-
-### D5. `GetTriggerFoods`
-
-| Field              | Chat | MCP |
-| ------------------ | ---- | --- |
-| `food`             | ✅   | ✅  |
-| `symptoms`         | ✅   | ✅  |
-| `totalOccurrences` | ✅   | ❌  |
-| `avgSeverity`      | ✅   | ✅  |
-
-Missing `totalOccurrences` — an important signal for how strong the correlation evidence is.
-
-### D6. `BuildDto` (MCP) vs `BuildFoodProductDto` (Chat)
-
-The MCP helper `BuildDto` populates `FoodAdditiveDto` with only **5 fields**:
-
-```
-Id, Name, CspiRating, Category, ENumber, HealthConcerns
-```
-
-The Chat helper `BuildFoodProductDto` populates **8 fields**:
-
-```
-Id, Name, CspiRating, UsRegulatoryStatus, EuRegulatoryStatus, SafetyRating, Category, ENumber, HealthConcerns
-```
-
-Missing from MCP DTO:
-
-- `UsRegulatoryStatus`
-- `EuRegulatoryStatus`
-- `SafetyRating`
-
-These fields are required by `GutRiskService` for accurate safety scoring (if it were ever added to MCP).
-
-Additionally, the MCP `BuildDto` does not set:
-
-- `Barcode` (set in Chat)
-- `NutriScore` (set in Chat)
+- Chat: 11 tools registered in `ChatTools.All`, injected into the OpenAI Assistant at creation time
+- MCP: 11 tools via 3 `[McpServerToolType]` classes, registered individually via `.WithTools<T>()` (not assembly scanning)
 
 ---
 
-## E) Other Differences & Bugs
+## Remaining Differences (Intentional)
 
-### E1. No `QuerySanitizer` in MCP's `SearchFoods`
+| Difference | Reason |
+|-----------|--------|
+| MCP tools use `McpException` for errors; Chat returns error strings | Chat's `AzureOpenAIChatService` returns strings to the OpenAI Assistant (which reads error messages from tool result text). MCP clients use JSON-RPC error protocol — `McpException` gives proper `IsError=true` semantics. |
+| MCP has `gutai_` prefix on tool names; Chat tool names are bare (`search_foods`) | Chat tools are namespaced by the OpenAI Assistant — the `ChatTools.All` names don't need a prefix. MCP tools live in a global namespace alongside other servers' tools, so the prefix prevents collisions. |
+| MCP uses instance methods with constructor DI; Chat uses instance methods with constructor DI | Both now use the same pattern. MCP injects `ILogger<T>` per class. Chat injects a single `ILogger<AzureOpenAIChatService>`. |
 
-Chat sanitizes search input via `QuerySanitizer.Sanitize()` which strips special characters and normalizes whitespace. MCP passes the raw query string directly to `foodApi.SearchAsync()`. This is both a **potential injection concern** and a **functional difference** (malformed queries may fail or return poor results).
+## Conclusion
 
-### E2. Error Handling
+**Full parity achieved.** All 11 tools are present in both MCP and Chat with identical output shapes, input handling, timezone awareness, error handling, and data fidelity. The shared helper pattern (`FoodDtoHelper`, `TimeZoneHelper`) ensures future changes stay in sync.
 
-Chat wraps every tool execution in a `try/catch` that returns a structured error message:
-
-```csharp
-catch (Exception ex)
-{
-    _logger.LogWarning(ex, "Tool execution failed: {Tool}", functionName);
-    return $"Error executing {functionName}: {ex.Message}";
-}
-```
-
-MCP tools have **no error handling**. A `Guid.Parse` failure, null reference, or DB exception will propagate as an unhandled exception, likely returning a 500 to the MCP client.
-
-### E3. `LogMeal` / `LogSymptom` use `DateTime.UtcNow` directly
-
-Both MCP and Chat set `LoggedAt = DateTime.UtcNow` and `OccurredAt = DateTime.UtcNow`. This is **technically correct** (storing UTC) but interacts badly with MCP's broken date-range queries (see §B). Chat mitigates this because its queries use the timezone-aware range.
-
-### E4. MCP `GetTodaysMeals` uses `GetMealLogsByDateAsync` (single date)
-
-Chat uses `GetMealLogsByDateRangeAsync` spanning two UTC dates (to handle timezone offsets that cross date boundaries). MCP uses `GetMealLogsByDateAsync(userId, today)` which queries a single UTC date, meaning it can miss meals logged near midnight in the user's timezone.
-
-### E5. Services not injected in MCP
-
-MCP has no access to:
-
-- `GutRiskService` — gut health risk assessment
-- `PersonalizedScoringService` — composite personalized safety scoring
-- `QuerySanitizer` — input sanitization
-
-These would need to be registered and injected to achieve parity.
-
-### E6. No logging in MCP
-
-Chat has `_logger.IsEnabled(LogLevel.Debug)` conditional debug logging for `log_meal` arguments. MCP has no logging at all, making debugging tool calls difficult.
-
----
-
-## Priority Summary
-
-| #   | Issue                                                    | Severity    | Effort                               |
-| --- | -------------------------------------------------------- | ----------- | ------------------------------------ |
-| 1   | Timezone bug in `GetTodaysMeals` + `GetNutritionSummary` | 🔴 Critical | Medium — port `GetUserTodayUtcRange` |
-| 2   | Missing `get_food_safety` tool                           | 🔴 Critical | Medium — inject services, add method |
-| 3   | `LogMeal` lacks `items[]` / `food_product_id` support    | 🔴 Critical | Medium — port structured item logic  |
-| 4   | `SearchFoods` missing 6 fields + limit 5 vs 10           | 🟡 High     | Small                                |
-| 5   | `GetNutritionSummary` missing `totalFiberG`              | 🟡 High     | Trivial                              |
-| 6   | `GetFodmapAssessment` missing trigger `Explanation`      | 🟡 High     | Trivial                              |
-| 7   | `LogMeal` response missing macro breakdown               | 🟡 High     | Small                                |
-| 8   | `GetTodaysMeals` response missing macros                 | 🟡 High     | Small                                |
-| 9   | No `QuerySanitizer` on search input                      | 🟡 High     | Trivial                              |
-| 10  | No try/catch error handling                              | 🟡 High     | Small                                |
-| 11  | `GetTriggerFoods` missing `totalOccurrences`             | 🟢 Medium   | Trivial                              |
-| 12  | `BuildDto` missing additive regulatory fields            | 🟢 Medium   | Small                                |
-| 13  | `BuildDto` missing `Barcode` + `NutriScore`              | 🟢 Low      | Trivial                              |
-| 14  | No debug logging                                         | 🟢 Low      | Trivial                              |
-
----
-
-## Recommended Fix Order
-
-1. **Port `GetUserTodayUtcRange`** into MCP (or extract to a shared static utility and reference it from both). Fix `GetTodaysMeals` and `GetNutritionSummary` to use it.
-2. **Add `GetFoodSafety`** tool — inject `GutRiskService` + `PersonalizedScoringService`, add `[McpServerTool]` method.
-3. **Port structured `LogMeal`** — add `items[]` parameter with `food_product_id` resolution, keep `description` as fallback.
-4. **Enrich output shapes** — add missing fields to `SearchFoods`, `GetTodaysMeals`, `LogMeal` response, `GetFodmapAssessment`, `GetTriggerFoods`, and `GetNutritionSummary`.
-5. **Add `QuerySanitizer`** to `SearchFoods`.
-6. **Wrap all tools in try/catch** with structured error returns.
-7. **Align `BuildDto`** with `BuildFoodProductDto` — add missing additive and product fields.
+**MCP-specific upgrades applied:**
+- SDK upgraded from v1.0 to v1.3 (latest)
+- Transport switched from legacy SSE to Streamable HTTP (stateless)
+- Tools use `gutai_` prefix + snake_case naming per SEP-986
+- Read-only tools marked with `[McpServerTool(ReadOnly = true)]`
+- Error handling uses `McpException` for proper JSON-RPC error propagation
+- Logging via constructor-injected `ILogger<T>`
+- Auth pipeline uses `AddAuthorizationFilters()`

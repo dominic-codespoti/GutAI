@@ -40,7 +40,13 @@ public static class ChatEndpoints
         {
             await foreach (var evt in chatService.StreamResponseAsync(userId, request.Message, ct))
             {
-                if (evt.Content is not null)
+                if (evt.ThreadId is not null)
+                {
+                    var payload = JsonSerializer.Serialize(new { thread_id = evt.ThreadId });
+                    await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
+                    await httpContext.Response.Body.FlushAsync(ct);
+                }
+                else if (evt.Content is not null)
                 {
                     var payload = JsonSerializer.Serialize(new { content = evt.Content });
                     await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
@@ -63,19 +69,15 @@ public static class ChatEndpoints
     {
         var userId = GetUserId(principal);
         var messages = await chatService.GetHistoryAsync(userId, limit ?? 50, ct);
-        return Results.Ok(messages.Select(m => new
-        {
-            m.Id,
-            m.Role,
-            m.Content,
-            m.CreatedAt
-        }));
+        return Results.Ok(messages);
     }
 
-    static async Task<IResult> ClearHistory(ClaimsPrincipal principal, [FromServices] IChatService chatService, CancellationToken ct)
+    static async Task<IResult> ClearHistory(ClaimsPrincipal principal, [FromServices] IChatService chatService, ILogger<Program> logger, CancellationToken ct)
     {
         var userId = GetUserId(principal);
+        logger.LogInformation("User {UserId} clearing chat history", userId);
         await chatService.ClearHistoryAsync(userId, ct);
+        logger.LogInformation("User {UserId} chat history cleared", userId);
         return Results.NoContent();
     }
 

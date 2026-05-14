@@ -147,6 +147,7 @@ internal static class ServingEstimator
         if (lower.Contains("broccoli") || lower.Contains("cauliflower")) return 90m;
         if (lower.Contains("pizza")) return 110m;
         if (lower.Contains("burger") || lower.Contains("sandwich") || lower.Contains("wrap") || lower.Contains("burrito")) return 200m;
+        if (lower.Contains("tortilla")) return 45m;
         if (lower.Contains("taco")) return 80m;
         if (lower.Contains("cookie") || lower.Contains("biscuit")) return 30m;
         if (lower.Contains("donut") || lower.Contains("doughnut")) return 60m;

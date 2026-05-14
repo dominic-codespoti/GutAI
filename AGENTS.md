@@ -67,6 +67,7 @@ All endpoints MUST validate inputs before processing. Return `400 Bad Request` o
   - Symptoms: severity 1–10, valid symptomTypeId, optional notes max 1000 chars, duration 0–7 days
   - Food: name required (max 300 chars), valid additive IDs
   - Alerts: valid additiveId
+  - Chat: message required, max 2000 chars (validated in StreamChat)
 
 ## 5. Null / Default Safety
 
@@ -87,6 +88,7 @@ Never overwrite existing entity fields with null when the update request omits t
 Never use `Lazy<Task<T>>` for faulting resources. A faulted `Lazy` permanently caches the exception.
 
 - **Rule:** Use `SemaphoreSlim` + null check for async lazy initialization, or reset the lazy on failure.
+- **Pattern:** `AssistantFactory` in `GutAI.Infrastructure.Services` demonstrates the correct pattern — uses `SemaphoreSlim` with a nullable cached ID that resets to `null` on failure, allowing retry on the next call.
 
 ---
 
@@ -99,7 +101,7 @@ The full CI pipeline runs these checks in order:
 1. `dotnet build` — zero errors
 2. `dotnet test GutAI.Infrastructure.Tests` — 550+ unit tests (services, scoring, FODMAP, GI, substitutions, NLP)
 3. `dotnet test GutAI.Api.Tests` — API contract tests (WebApplicationFactory + Testcontainers Azurite)
-4. `node scripts/check-contracts.js` — frontend↔backend DTO field matching (26 interface↔DTO pairs)
+4. `node scripts/check-contracts.js` — frontend↔backend DTO field matching (27 interface↔DTO pairs)
 5. `npx tsc --noEmit` — frontend TypeScript type check
 
 All must pass before merging.

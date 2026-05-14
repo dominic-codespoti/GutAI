@@ -75,9 +75,14 @@ builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
     options.Level = System.IO.Compression.CompressionLevel.Fastest);
 
 // MCP server (exposes gut health tools to external AI apps)
+// Uses Streamable HTTP (stateless) per MCP spec 2025-11-25 — no long-lived sessions needed.
+// The legacy SSE transport is obsolete as of SDK 1.1.
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
-    .WithToolsFromAssembly();
+    .WithHttpTransport(options => options.Stateless = true)
+    .AddAuthorizationFilters()
+    .WithTools<GutAI.Api.Mcp.FoodTools>()
+    .WithTools<GutAI.Api.Mcp.MealSymptomTools>()
+    .WithTools<GutAI.Api.Mcp.ProfileTools>();
 
 // Health checks
 builder.Services.AddHealthChecks();

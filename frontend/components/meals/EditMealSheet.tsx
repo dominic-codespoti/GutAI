@@ -44,7 +44,7 @@ export function EditMealSheet() {
     Record<number, { servingG: number; multiplier: number; customText: string }>
   >({});
 
-  const { updateMeal } = useMealMutations();
+  const { updateMeal, deleteMeal } = useMealMutations();
 
   // Initialise form when editingMeal changes
   useEffect(() => {
@@ -110,7 +110,11 @@ export function EditMealSheet() {
   };
 
   const handleSave = () => {
-    if (!editingMeal || editItems.length === 0) return;
+    if (!editingMeal) return;
+    if (editItems.length === 0) {
+      deleteMeal.mutate(editingMeal.id);
+      return;
+    }
     updateMeal.mutate({
       id: editingMeal.id,
       data: {
@@ -428,7 +432,7 @@ export function EditMealSheet() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSave}
-              disabled={updateMeal.isPending}
+              disabled={updateMeal.isPending || deleteMeal.isPending}
               accessibilityRole="button"
               accessibilityLabel="Save meal"
               style={{
