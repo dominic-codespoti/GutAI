@@ -222,18 +222,18 @@ export default function DashboardScreen() {
     queryFn: () => symptomApi.list({ date: today }).then((r) => r.data),
   });
 
-  const { data: alerts } = useQuery({
+  const { data: alerts, refetch: refetchAlerts } = useQuery({
     queryKey: ["alerts"],
     queryFn: () => userApi.getAlerts().then((r) => r.data),
   });
 
-  const { data: triggerFoods } = useQuery({
+  const { data: triggerFoods, refetch: refetchTriggerFoods } = useQuery({
     queryKey: ["trigger-foods-dashboard"],
     queryFn: () => insightApi.triggerFoods(30).then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: streak } = useQuery({
+  const { data: streak, refetch: refetchStreak } = useQuery({
     queryKey: ["streak"],
     queryFn: () => mealApi.streak().then((r) => r.data),
     staleTime: 10 * 60 * 1000,
@@ -242,9 +242,12 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchMeals(), refetchSummary(), refetchSymptoms()]);
+    await Promise.all([
+      refetchMeals(), refetchSummary(), refetchSymptoms(),
+      refetchAlerts(), refetchTriggerFoods(), refetchStreak(),
+    ]);
     setRefreshing(false);
-  }, [refetchMeals, refetchSummary, refetchSymptoms]);
+  }, [refetchMeals, refetchSummary, refetchSymptoms, refetchAlerts, refetchTriggerFoods, refetchStreak]);
 
   const isLoading = loadingMeals || loadingSummary;
 

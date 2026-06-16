@@ -48,7 +48,10 @@ export default function MealsScreen() {
     queryFn: () => mealApi.list(selectedDate).then((r) => r.data),
   });
 
-  const { data: dailySummary } = useQuery({
+  const {
+    data: dailySummary,
+    refetch: refetchSummary,
+  } = useQuery({
     queryKey: ["daily-summary", selectedDate],
     queryFn: () => mealApi.dailySummary(selectedDate).then((r) => r.data),
   });
@@ -57,9 +60,9 @@ export default function MealsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), refetchSummary()]);
     setRefreshing(false);
-  }, [refetch]);
+  }, [refetch, refetchSummary]);
 
   const handleEdit = (meal: MealLog) => mealSheet.openEdit(meal);
   const handleCopy = (meal: MealLog) => mealSheet.openCopy(meal);

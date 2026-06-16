@@ -3,7 +3,7 @@
     "name": "GutAI",
     "slug": "gut-ai",
     "scheme": "gutai",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "gut.ai",
-      "buildNumber": "22",
+      "buildNumber": "24",
       "infoPlist": {
         "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
         "ITSAppUsesNonExemptEncryption": false
@@ -27,7 +27,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.djapplications.gutai",
-      "versionCode": 24,
+      "versionCode": 27,
       "permissions": [
         "android.permission.CAMERA"
       ]
