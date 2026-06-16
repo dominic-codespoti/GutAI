@@ -20,32 +20,19 @@ import { toast } from "../../src/stores/toast";
 import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
 import { scaleNutrition } from "../../src/utils/nutrition";
 import { maybeRequestReview } from "../../src/utils/review";
+import {
+  normalizeCustomFood,
+  customFoodToMealItem,
+  ROUND,
+} from "../../src/utils/customFood";
+import type { AiGeneratedFood } from "../../src/utils/customFood";
 import type { CustomFood } from "../../src/types";
 
 type CreateMethod = "manual" | "description" | "label";
 type LabelSource = "camera" | "library";
-type AiGeneratedFood = CustomFood & { extractionConfidence?: number | null };
 
 const MIN_DESCRIBE_LENGTH = 8;
-const ROUND = (v: number) => Math.round(v * 10) / 10;
 const NUM = (v: number | null | undefined) => (v == null ? "" : v.toString());
-
-function normalize(data: AiGeneratedFood): CustomFood {
-  return {
-    name: data.name ?? "",
-    brandName: data.brandName ?? "",
-    servingSize: Math.max(1, ROUND(data.servingSize ?? 100)),
-    servingSizeUnit: data.servingSizeUnit || "g",
-    calories: ROUND(data.calories ?? 0),
-    proteinG: ROUND(data.proteinG ?? 0),
-    carbG: ROUND(data.carbG ?? 0),
-    fatG: ROUND(data.fatG ?? 0),
-    fiberG: ROUND(data.fiberG ?? 0),
-    sugarG: ROUND(data.sugarG ?? 0),
-    sodiumMg: ROUND(data.sodiumMg ?? 0),
-    ingredients: data.ingredients ?? "",
-  };
-}
 
 function confidenceLevel(score: number | null): "High" | "Medium" | "Low" | null {
   if (score == null || Number.isNaN(score)) return null;
@@ -105,7 +92,7 @@ export default function CreateCustomFoodScreen() {
   const parseLabel = useMutation({
     mutationFn: (uri: string) => foodApi.parseLabel(uri, "image/jpeg").then((r) => r.data),
     onSuccess: (data: AiGeneratedFood) => {
-      setForm(normalize(data));
+      setForm(normalizeCustomFood(data));
       setConfidenceScore(data.extractionConfidence ?? null);
       setGeneratedBy("label");
       setGenerating(false);
@@ -120,7 +107,7 @@ export default function CreateCustomFoodScreen() {
     mutationFn: (text: string) => foodApi.describeFood(text).then((r) => r.data),
     onSuccess: (data: AiGeneratedFood, sub) => {
       if (sub !== descText.trim()) return;
-      setForm(normalize(data));
+      setForm(normalizeCustomFood(data));
       setConfidenceScore(data.extractionConfidence ?? null);
       setGeneratedBy("description");
       setGenerating(false);

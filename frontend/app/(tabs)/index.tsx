@@ -12,6 +12,8 @@ import { mealApi, symptomApi, userApi, insightApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
 import { DashboardSkeleton } from "../../components/SkeletonLoader";
 import { ErrorState } from "../../components/ErrorState";
+import { MealFab } from "../../components/meals/MealFab";
+import { mealSheet } from "../../src/stores/mealSheet";
 import { useRouter } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 import ReanimatedObj, {
@@ -290,27 +292,6 @@ export default function DashboardScreen() {
     if (h < 17) return "Good afternoon";
     return "Good evening";
   })();
-
-  const fabActions = [
-    {
-      label: "Add Food",
-      icon: "search" as const,
-      color: c.accent,
-      route: "/(tabs)/scan" as const,
-    },
-    {
-      label: "Log Symptom",
-      icon: "pulse" as const,
-      color: c.secondary,
-      route: "/(tabs)/symptoms" as const,
-    },
-    {
-      label: "Log Meal",
-      icon: "restaurant" as const,
-      color: c.primary,
-      route: "/(tabs)/meals" as const,
-    },
-  ];
 
   return (
     <SafeScreen edges={[]}>
@@ -1029,12 +1010,34 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      {/* Hidden Quick Actions for E2E tests and possible future UI */}
-      <View style={{ position: "absolute", opacity: 0, pointerEvents: "none" }}>
-        {fabActions.map((act) => (
-          <Text key={act.label}>{act.label}</Text>
-        ))}
-      </View>
+      <MealFab
+        actions={[
+          {
+            icon: "restaurant-outline",
+            label: "Log Food",
+            color: c.primary,
+            onPress: () => mealSheet.openLog({ initialTab: "describe" }),
+          },
+          {
+            icon: "search-outline",
+            label: "Quick Add",
+            color: c.accent,
+            onPress: () => mealSheet.openLog({ initialTab: "search" }),
+          },
+          {
+            icon: "barcode-outline",
+            label: "Scan",
+            color: c.secondary,
+            onPress: () => mealSheet.openLog({ initialTab: "scan" }),
+          },
+          {
+            icon: "pulse",
+            label: "Symptom",
+            color: c.warning,
+            onPress: () => router.push("/(tabs)/symptoms"),
+          },
+        ]}
+      />
     </SafeScreen>
   );
 }

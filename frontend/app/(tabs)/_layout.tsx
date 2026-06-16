@@ -11,6 +11,10 @@ import {
 import { useRouter } from "expo-router";
 import { useThemeColors } from "../../src/stores/theme";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
+import { LogMealSheet } from "../../components/meals/LogMealSheet";
+import { EditMealSheet } from "../../components/meals/EditMealSheet";
+import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
+import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
 import * as haptics from "../../src/utils/haptics";
 import Svg, { Path, Defs, Filter, FeDropShadow } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -267,110 +271,117 @@ export default function TabLayout() {
   );
 
   return (
-    <Tabs
-      backBehavior="history"
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        headerShown: true,
-        headerStyle: { backgroundColor: colors.bg },
-        headerShadowVisible: false,
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: "700" as const, fontSize: 17 },
-        headerRight,
-        sceneStyle: {
-          paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
-          backgroundColor: colors.bg,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={22}
-              color={color}
-            />
-          ),
+    <>
+      <Tabs
+        backBehavior="history"
+        tabBar={(props) => <CustomTabBar {...props} />}
+        screenOptions={{
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.bg },
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+          headerTitleStyle: { fontWeight: "700" as const, fontSize: 17 },
+          headerRight,
+          sceneStyle: {
+            paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
+            backgroundColor: colors.bg,
+          },
         }}
-      />
-      <Tabs.Screen
-        name="symptoms"
-        options={{
-          title: "Symptoms",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "pulse" : "pulse-outline"}
-              size={22}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="meals"
-        options={{
-          title: "Meals",
-          tabBarLabel: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="insights"
-        options={{
-          title: "Insights",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "analytics" : "analytics-outline"}
-              size={22}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: "Coach",
-          headerShown: false,
-          sceneStyle: { paddingBottom: 0, backgroundColor: colors.bg },
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={
-                focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline"
-              }
-              size={22}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          href: null,
-          title: "Profile",
-          headerRight: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="scan"
-        options={{
-          href: null,
-          title: "Food Search",
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={handleBack}
-              style={{ marginLeft: 12, padding: 4 }}
-            >
-              <Ionicons name="chevron-back" size={24} color={colors.text} />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "home" : "home-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="symptoms"
+          options={{
+            title: "Symptoms",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "pulse" : "pulse-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="meals"
+          options={{
+            title: "Meals",
+            tabBarLabel: () => null,
+          }}
+        />
+        <Tabs.Screen
+          name="insights"
+          options={{
+            title: "Insights",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "analytics" : "analytics-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="chat"
+          options={{
+            title: "Coach",
+            headerShown: false,
+            sceneStyle: { paddingBottom: 0, backgroundColor: colors.bg },
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={
+                  focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline"
+                }
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            href: null,
+            title: "Profile",
+            headerRight: () => null,
+          }}
+        />
+        <Tabs.Screen
+          name="scan"
+          options={{
+            href: null,
+            title: "Food Search",
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={handleBack}
+                style={{ marginLeft: 12, padding: 4 }}
+              >
+                <Ionicons name="chevron-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+            ),
+          }}
+        />
+      </Tabs>
+
+      <LogMealSheet />
+      <EditMealSheet />
+      <CopyMealSheet />
+      <ItemSwapSheet />
+    </>
   );
 }

@@ -24,6 +24,7 @@ function invalidate(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["daily-summary"] });
   qc.invalidateQueries({ queryKey: ["recent-foods"] });
   qc.invalidateQueries({ queryKey: ["streak"] });
+  qc.invalidateQueries({ queryKey: ["custom-foods"] });
   qc.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
   qc.invalidateQueries({ queryKey: ["diary-analysis"] });
   qc.invalidateQueries({ queryKey: ["additive-exposure"] });

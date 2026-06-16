@@ -3,12 +3,20 @@ import type { MealLog } from "../types";
 import { getMealTypeForTime, MEAL_TYPES } from "../utils/constants";
 import { toLocalDateStr } from "../utils/date";
 
+export type LogMealTab = "describe" | "search" | "scan" | "manual";
+
 export type MealSheetMode =
   | "idle"
   | "log-meal"
   | "edit-meal"
   | "copy-meal"
   | "swap-search";
+
+export interface LogOptions {
+  initialTab?: LogMealTab;
+  date?: string;
+  mealType?: string;
+}
 
 export type MealType = (typeof MEAL_TYPES)[number];
 
@@ -25,8 +33,9 @@ interface MealSheetState {
   swapContext: SwapContext | null;
   selectedMealType: MealType;
   selectedDate: string;
+  logOptions: LogOptions | null;
 
-  openLog: () => void;
+  openLog: (options?: LogOptions) => void;
   openEdit: (meal: MealLog) => void;
   openCopy: (meal: MealLog) => void;
   openSwap: (
@@ -49,13 +58,17 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
   swapContext: null,
   selectedMealType: getMealTypeForTime(new Date().getHours()),
   selectedDate: todayStr(),
+  logOptions: null,
 
-  openLog: () =>
+  openLog: (options) =>
     set({
       mode: "log-meal",
       editingMeal: null,
       copyingMeal: null,
       swapContext: null,
+      logOptions: options ?? null,
+      ...(options?.date ? { selectedDate: options.date } : {}),
+      ...(options?.mealType ? { selectedMealType: options.mealType as MealType } : {}),
     }),
 
   openEdit: (meal) =>
@@ -90,6 +103,7 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
       editingMeal: null,
       copyingMeal: null,
       swapContext: null,
+      logOptions: null,
     }),
 
   reset: () =>
@@ -98,6 +112,7 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
       editingMeal: null,
       copyingMeal: null,
       swapContext: null,
+      logOptions: null,
       selectedMealType: getMealTypeForTime(new Date().getHours()),
       selectedDate: todayStr(),
     }),
@@ -105,7 +120,7 @@ export const useMealSheetStore = create<MealSheetState>((set) => ({
 
 /** Imperative access for use in callbacks / mutations */
 export const mealSheet = {
-  openLog: () => useMealSheetStore.getState().openLog(),
+  openLog: (options?: LogOptions) => useMealSheetStore.getState().openLog(options),
   openEdit: (meal: MealLog) => useMealSheetStore.getState().openEdit(meal),
   openCopy: (meal: MealLog) => useMealSheetStore.getState().openCopy(meal),
   openSwap: (meal: MealLog, itemIndex: number, origin: "edit" | "parsed") =>

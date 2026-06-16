@@ -22,7 +22,10 @@ import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { useFavorites } from "../../src/hooks/useFavorites";
 import { mealApi, foodApi } from "../../src/api";
 import { toast } from "../../src/stores/toast";
+import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
 import { mapParsedItemToRequest } from "../../src/utils/mealMappers";
+import { normalizeCustomFood, customFoodToMealItem } from "../../src/utils/customFood";
+import type { AiGeneratedFood } from "../../src/utils/customFood";
 import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
 import { buildLoggedAt } from "../../src/utils/date";
@@ -135,6 +138,7 @@ export function LogMealSheet() {
   const close = useMealSheetStore((s) => s.close);
 
   const visible = mode === "log-meal";
+  const logOptions = useMealSheetStore((s) => s.logOptions);
 
   const [activeTab, setActiveTab] = useState<LogMealTab>("describe");
   const [subView, setSubView] = useState<LogSubView>("menu");
@@ -152,6 +156,7 @@ export function LogMealSheet() {
     Record<number, { servingG: number; multiplier: number; customText: string }>
   >({});
   const [showReview, setShowReview] = useState(false);
+  const [aiPreview, setAiPreview] = useState<AiGeneratedFood | null>(null);
 
   // Manual state
   const [manualName, setManualName] = useState("");
@@ -180,6 +185,7 @@ export function LogMealSheet() {
   const [addToMealCustomText, setAddToMealCustomText] = useState("");
 
   const { createMeal } = useMealMutations();
+  const { isPro } = useSubscriptionStore();
 
   // Queries
   const barcodeQuery = useQuery({
@@ -228,6 +234,13 @@ export function LogMealSheet() {
     return () => clearTimeout(timer);
   }, [searchText]);
 
+  // Reset active tab when sheet opens with initialTab option
+  useEffect(() => {
+    if (visible && logOptions?.initialTab) {
+      setActiveTab(logOptions.initialTab);
+    }
+  }, [visible, logOptions?.initialTab]);
+
   // Parse mutation
   const parseMutation = useMutation({
     mutationFn: (text: string) =>
@@ -257,6 +270,18 @@ export function LogMealSheet() {
       );
     },
     onError: () => toast.error("Could not parse meal. Try being more specific."),
+  });
+
+  // AI describe mutation (Create Custom Food shortcut)
+  const aiDescribeMutation = useMutation({
+    mutationFn: (text: string) => foodApi.describeFood(text).then((r) => r.data),
+    onSuccess: (data) => {
+      setAiPreview(data);
+      toast.success(`Generated "${data.name || data.brandName || "food"}"`);
+    },
+    onError: () => {
+      toast.error("Could not generate food details from that description. Try being more specific.");
+    },
   });
 
   const handleLogManual = () => {
@@ -315,6 +340,40 @@ export function LogMealSheet() {
     });
     resetForm();
   };
+
+  const handleAiDescribe = async () => {
+    if (!isPro) {
+      const ok = await presentPaywall();
+      if (!ok) return;
+    }
+    const trimmed = naturalText.trim();
+    if (trimmed.length < 8) {
+      toast.error("Type at least 8 characters first.");
+      return;
+    }
+    if (aiDescribeMutation.isPending) return;
+    aiDescribeMutation.mutate(trimmed);
+  };
+
+  const handleAiLog = async () => {
+    if (!aiPreview) return;
+    try {
+      const normalized = normalizeCustomFood(aiPreview);
+      const saved = await foodApi.createCustomFood(normalized);
+      const customFoodId = (saved.data as any).id;
+      queryClient.invalidateQueries({ queryKey: ["custom-foods"] });
+      createMeal.mutate({
+        mealType: selectedMealType,
+        loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
+        items: [customFoodToMealItem({ ...normalized, id: customFoodId })],
+      });
+      setAiPreview(null);
+    } catch {
+      toast.error("Failed to log AI-generated food.");
+    }
+  };
+
+  const clearAiPreview = () => setAiPreview(null);
 
   const removeParsedItem = (idx: number) => {
     setParsedItems((prev) => {
@@ -437,6 +496,7 @@ export function LogMealSheet() {
     setParsedItems([]);
     setParsedConfigs({});
     setShowReview(false);
+    setAiPreview(null);
     setManualName("");
     setManualCalories("");
     setManualProtein("0");
@@ -728,7 +788,7 @@ export function LogMealSheet() {
           {/* ════════════════════════════════════════
              DESCRIBE TAB
              ════════════════════════════════════════ */}
-          {activeTab === "describe" && !showReview && (
+          {activeTab === "describe" && !showReview && !aiPreview && (
             <View>
               <TextInput
                 placeholder='e.g. "2 eggs, toast with butter, orange juice"'
@@ -774,6 +834,137 @@ export function LogMealSheet() {
                     <Text style={{ color: colors.textOnPrimary, fontWeight: "600", fontSize: 14 }}>
                       Parse & Log
                     </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleAiDescribe}
+                  disabled={aiDescribeMutation.isPending || !naturalText.trim()}
+                  style={{
+                    backgroundColor: colors.accent,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: radius.sm,
+                    opacity: naturalText.trim() ? 1 : 0.5,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {aiDescribeMutation.isPending ? (
+                    <ActivityIndicator color={colors.textOnPrimary} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={14} color={colors.textOnPrimary} />
+                      <Text style={{ color: colors.textOnPrimary, fontWeight: "600", fontSize: 14 }}>
+                        Describe with AI
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {activeTab === "describe" && aiPreview && (
+            <View>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md, gap: 6 }}>
+                <Ionicons name="sparkles" size={18} color={colors.warning} />
+                <Text style={{ fontWeight: "700", fontSize: 15, color: colors.text }}>
+                  AI Generated Food
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.borderLight,
+                  padding: spacing.lg,
+                  marginBottom: spacing.md,
+                }}
+              >
+                <Text style={{ fontSize: 18, fontWeight: "700", color: colors.text }}>
+                  {aiPreview.name || "Food"}
+                </Text>
+                {aiPreview.brandName && (
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                    {aiPreview.brandName}
+                  </Text>
+                )}
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: spacing.md }}>
+                  <View style={{ backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>Serving: {aiPreview.servingSize}{aiPreview.servingSizeUnit}</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.primaryBg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>{aiPreview.calories} cal</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>P: {aiPreview.proteinG}g</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>C: {aiPreview.carbG}g</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>F: {aiPreview.fatG}g</Text>
+                  </View>
+                  {aiPreview.fiberG != null && aiPreview.fiberG > 0 && (
+                    <View style={{ backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <Text style={{ fontSize: 12, color: colors.textMuted }}>Fiber: {aiPreview.fiberG}g</Text>
+                    </View>
+                  )}
+                  {aiPreview.sodiumMg != null && aiPreview.sodiumMg > 0 && (
+                    <View style={{ backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <Text style={{ fontSize: 12, color: colors.textMuted }}>Na: {aiPreview.sodiumMg}mg</Text>
+                    </View>
+                  )}
+                </View>
+
+                {aiPreview.extractionConfidence != null && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md }}>
+                    <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                      {aiPreview.extractionConfidence >= 0.85 ? "High" : aiPreview.extractionConfidence >= 0.6 ? "Medium" : "Low"} confidence ({Math.round(aiPreview.extractionConfidence * 100)}%)
+                    </Text>
+                  </View>
+                )}
+
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 }}>
+                  This food will be saved to My Foods and logged to {selectedDate} · {selectedMealType}.
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+                <TouchableOpacity
+                  onPress={clearAiPreview}
+                  style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                >
+                  <Text style={{ color: colors.textMuted, fontWeight: "600" }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleAiLog}
+                  disabled={createMeal.isPending || aiDescribeMutation.isPending}
+                  style={{
+                    backgroundColor: colors.primary,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: radius.sm,
+                    opacity: createMeal.isPending ? 0.5 : 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {createMeal.isPending ? (
+                    <ActivityIndicator color={colors.textOnPrimary} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={14} color={colors.textOnPrimary} />
+                      <Text style={{ color: colors.textOnPrimary, fontWeight: "600", fontSize: 14 }}>
+                        Log to {selectedMealType}
+                      </Text>
+                    </>
                   )}
                 </TouchableOpacity>
               </View>

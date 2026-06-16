@@ -21,10 +21,6 @@ import { MealDateNav } from "../../components/meals/MealDateNav";
 import { DailySummary } from "../../components/meals/DailySummary";
 import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { SwipeHint } from "../../components/meals/SwipeHint";
-import { LogMealSheet } from "../../components/meals/LogMealSheet";
-import { EditMealSheet } from "../../components/meals/EditMealSheet";
-import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
-import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
 import { MealGroup } from "../../components/meals/MealGroup";
 import { MealFab } from "../../components/meals/MealFab";
 import type { MealLog } from "../../src/types";
@@ -154,10 +150,6 @@ export default function MealsScreen() {
         ]}
       />
 
-      <LogMealSheet />
-      <EditMealSheet />
-      <CopyMealSheet />
-      <ItemSwapSheet />
     </SafeScreen>
   );
 }
