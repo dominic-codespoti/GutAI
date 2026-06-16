@@ -12,7 +12,7 @@ import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors, useThemeShadow } from "../../src/stores/theme";
 import * as haptics from "../../src/utils/haptics";
 
-type MealFabAction = {
+export type MealFabAction = {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   color: string;

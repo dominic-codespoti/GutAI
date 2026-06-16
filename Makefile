@@ -4,6 +4,7 @@
 up:
 	docker compose up -d --build
 	cd frontend && npm install
+	@echo "🔍 Ensuring port 8081 is free..." && sudo fuser -k 8081/tcp 2>/dev/null || true && sleep 1
 	@setsid sh -c 'cd frontend && npx expo start --web --port 8081' > /tmp/gutai-frontend.log 2>&1 & echo $$! > /tmp/gutai-frontend.pid
 	@echo ""
 	@echo "🚀 GutAI local environment is running!"

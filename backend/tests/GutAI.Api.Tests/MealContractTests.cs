@@ -57,6 +57,7 @@ public class MealContractTests(GutAiWebFactory factory)
         item.AssertHasNumberProperty("fiberG");
         item.AssertHasNumberProperty("sugarG");
         item.AssertHasNumberProperty("sodiumMg");
+        item.AssertHasStringProperty("safetyRating");
     }
 
     [Fact]

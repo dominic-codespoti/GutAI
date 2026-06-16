@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { DashboardSkeleton } from "../../components/SkeletonLoader";
 import { ErrorState } from "../../components/ErrorState";
 import { MealFab } from "../../components/meals/MealFab";
-import { mealSheet } from "../../src/stores/mealSheet";
+import { useDefaultMealFabActions } from "../../components/meals/useDefaultMealFabActions";
 import { useRouter } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 import ReanimatedObj, {
@@ -195,6 +195,7 @@ export default function DashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const today = toLocalDateStr();
   const router = useRouter();
+  const fabActions = useDefaultMealFabActions();
 
   const {
     data: meals,
@@ -1010,34 +1011,7 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      <MealFab
-        actions={[
-          {
-            icon: "restaurant-outline",
-            label: "Log Food",
-            color: c.primary,
-            onPress: () => mealSheet.openLog({ initialTab: "describe" }),
-          },
-          {
-            icon: "search-outline",
-            label: "Quick Add",
-            color: c.accent,
-            onPress: () => mealSheet.openLog({ initialTab: "search" }),
-          },
-          {
-            icon: "barcode-outline",
-            label: "Scan",
-            color: c.secondary,
-            onPress: () => mealSheet.openLog({ initialTab: "scan" }),
-          },
-          {
-            icon: "pulse",
-            label: "Symptom",
-            color: c.warning,
-            onPress: () => router.push("/(tabs)/symptoms"),
-          },
-        ]}
-      />
+      <MealFab actions={fabActions} />
     </SafeScreen>
   );
 }

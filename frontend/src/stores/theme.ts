@@ -34,8 +34,8 @@ function resolve(pref: ColorScheme): "light" | "dark" {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  preference: "light",
-  resolved: resolve("light"),
+  preference: "system",
+  resolved: resolve("system"),
   _hydrated: false,
   setPreference: (pref) => {
     set({ preference: pref, resolved: resolve(pref) });

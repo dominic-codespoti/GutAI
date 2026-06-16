@@ -45,6 +45,7 @@ export interface MealItem {
   servingUnit: string;
   servingWeightG?: number;
   foodProductId?: string;
+  safetyRating?: string | null;
   calories: number;
   proteinG: number;
   carbsG: number;

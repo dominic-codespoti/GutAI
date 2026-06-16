@@ -36,6 +36,7 @@ public interface ITableStore
     Task<FoodProduct?> GetFoodProductAsync(Guid id, CancellationToken ct = default);
     Task<FoodProduct?> GetFoodProductByBarcodeAsync(string barcode, CancellationToken ct = default);
     Task<List<FoodProduct>> SearchFoodProductsAsync(string query, int maxResults, CancellationToken ct = default);
+    Task<Dictionary<Guid, string?>> GetFoodProductSafetyRatingsAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
     Task UpsertFoodProductAsync(FoodProduct product, CancellationToken ct = default);
 
     Task<List<FoodAdditive>> GetAllFoodAdditivesAsync(CancellationToken ct = default);

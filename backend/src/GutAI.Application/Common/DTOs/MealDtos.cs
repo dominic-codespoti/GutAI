@@ -34,6 +34,7 @@ public record MealItemDto
     public decimal CholesterolMg { get; init; }
     public decimal SaturatedFatG { get; init; }
     public decimal PotassiumMg { get; init; }
+    public string? SafetyRating { get; init; }
 }
 
 public record CreateMealRequest

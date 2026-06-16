@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import { mealApi } from "../../src/api";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
@@ -23,14 +22,15 @@ import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { SwipeHint } from "../../components/meals/SwipeHint";
 import { MealGroup } from "../../components/meals/MealGroup";
 import { MealFab } from "../../components/meals/MealFab";
+import { useDefaultMealFabActions } from "../../components/meals/useDefaultMealFabActions";
 import type { MealLog } from "../../src/types";
 
 const MEAL_TYPE_ORDER = ["Breakfast", "Lunch", "Dinner", "Snack"];
 
 export default function MealsScreen() {
   const colors = useThemeColors();
-  const router = useRouter();
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
+  const fabActions = useDefaultMealFabActions();
 
   const { deleteMeal, removeItem } = useMealMutations();
 
@@ -133,22 +133,7 @@ export default function MealsScreen() {
         </View>
       </ScrollView>
 
-      <MealFab
-        actions={[
-          {
-            icon: "restaurant-outline",
-            label: "Log Food",
-            color: colors.primary,
-            onPress: () => mealSheet.openLog(),
-          },
-          {
-            icon: "sparkles-outline",
-            label: "Create Custom Food",
-            color: colors.accent,
-            onPress: () => router.push("/food/create"),
-          },
-        ]}
-      />
+      <MealFab actions={fabActions} />
 
     </SafeScreen>
   );

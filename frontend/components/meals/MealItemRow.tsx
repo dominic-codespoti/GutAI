@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SwipeableItemRow } from "../SwipeableItemRow";
+import { SafetyRatingBadge } from "./SafetyRatingBadge";
 import { spacing } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
 import { foodApi } from "../../src/api";
@@ -75,6 +76,7 @@ const handleTap = async () => {
           </Text>
         </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <SafetyRatingBadge rating={item.safetyRating} />
           <Text style={{ color: colors.textSecondary, fontWeight: "500" }}>
             {item.calories} cal
           </Text>

@@ -545,6 +545,21 @@ public class TableStorageStore : ITableStore
         return await GetFoodProductAsync(Guid.Parse(foodProductId), ct);
     }
 
+    public async Task<Dictionary<Guid, string?>> GetFoodProductSafetyRatingsAsync(IEnumerable<Guid> ids, CancellationToken ct)
+    {
+        var idList = ids.Distinct().ToList();
+        var tasks = idList.Select(async id =>
+        {
+            var e = await GetEntityOrNullAsync("FOOD", id.ToString(), ct);
+            if (e == null) return (id, (string?)null);
+            var val = e.GetInt32("SafetyRating");
+            return (id, val.HasValue ? ((SafetyRating)val.Value).ToString() : (string?)null);
+        });
+
+        var results = await Task.WhenAll(tasks);
+        return results.ToDictionary(r => r.id, r => r.Item2);
+    }
+
     public async Task<List<FoodProduct>> SearchFoodProductsAsync(string query, int maxResults, CancellationToken ct)
     {
         var filter = "PartitionKey eq 'FOOD'";

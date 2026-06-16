@@ -96,7 +96,8 @@ public static class MealEndpoints
         await InvalidateUserInsightCaches(userId, cache);
 
         meal.Items = items;
-        return Results.Created($"/api/meals/{meal.Id}", MapToDto(meal));
+        var createSafetyRatings = await LoadSafetyRatingsAsync(items, store);
+        return Results.Created($"/api/meals/{meal.Id}", MapToDto(meal, createSafetyRatings));
     }
 
     static async Task<IResult> LogNatural(
@@ -136,13 +137,15 @@ public static class MealEndpoints
             meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
             foreach (var m in meals)
                 m.Items = await store.GetMealItemsAsync(userId, m.Id);
-            return Results.Ok(meals.OrderBy(m => m.LoggedAt).Select(MapToDto));
+            var tzSafetyRatings = await LoadSafetyRatingsAsync(meals.SelectMany(m => m.Items ?? []).ToList(), store);
+            return Results.Ok(meals.OrderBy(m => m.LoggedAt).Select(m => MapToDto(m, tzSafetyRatings)));
         }
 
         var allMeals = await store.GetMealLogsByDateAsync(userId, targetDate);
         foreach (var m in allMeals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
-        return Results.Ok(allMeals.OrderBy(m => m.LoggedAt).Select(MapToDto));
+        var safetyRatings = await LoadSafetyRatingsAsync(allMeals.SelectMany(m => m.Items ?? []).ToList(), store);
+        return Results.Ok(allMeals.OrderBy(m => m.LoggedAt).Select(m => MapToDto(m, safetyRatings)));
     }
 
     static async Task<IResult> GetMeal(Guid id, ClaimsPrincipal principal, ITableStore store)
@@ -152,7 +155,8 @@ public static class MealEndpoints
         if (meal is null) return Results.NotFound();
 
         meal.Items = await store.GetMealItemsAsync(userId, meal.Id);
-        return Results.Ok(MapToDto(meal));
+        var getSafetyRatings = await LoadSafetyRatingsAsync(meal.Items, store);
+        return Results.Ok(MapToDto(meal, getSafetyRatings));
     }
 
     static async Task<IResult> UpdateMeal(Guid id, CreateMealRequest request, ClaimsPrincipal principal, ITableStore store, ICacheService cache)
@@ -222,7 +226,8 @@ public static class MealEndpoints
         await InvalidateUserInsightCaches(userId, cache);
 
         meal.Items = newItems;
-        return Results.Ok(MapToDto(meal));
+        var updateSafetyRatings = await LoadSafetyRatingsAsync(newItems, store);
+        return Results.Ok(MapToDto(meal, updateSafetyRatings));
     }
 
     static async Task<IResult> DeleteMeal(Guid id, ClaimsPrincipal principal, ITableStore store, ICacheService cache)
@@ -292,12 +297,14 @@ public static class MealEndpoints
         foreach (var s in symptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
 
+        var exportSafetyRatings = await LoadSafetyRatingsAsync(meals.SelectMany(m => m.Items ?? []).ToList(), store);
+
         var export = new
         {
             exportedAt = DateTime.UtcNow,
             from = fromDate,
             to = toDate,
-            meals = meals.OrderBy(m => m.LoggedAt).Select(MapToDto),
+            meals = meals.OrderBy(m => m.LoggedAt).Select(m => MapToDto(m, exportSafetyRatings)),
             symptoms = symptoms.OrderBy(s => s.OccurredAt).Select(s => new
             {
                 id = s.Id,
@@ -312,7 +319,7 @@ public static class MealEndpoints
         return Results.Ok(export);
     }
 
-    static MealLogDto MapToDto(MealLog m) => new()
+    static MealLogDto MapToDto(MealLog m, IReadOnlyDictionary<Guid, string?>? safetyRatings = null) => new()
     {
         Id = m.Id,
         MealType = m.MealType.ToString(),
@@ -342,9 +349,23 @@ public static class MealEndpoints
             SodiumMg = i.SodiumMg,
             CholesterolMg = i.CholesterolMg,
             SaturatedFatG = i.SaturatedFatG,
-            PotassiumMg = i.PotassiumMg
+            PotassiumMg = i.PotassiumMg,
+            SafetyRating = i.FoodProductId.HasValue && safetyRatings?.TryGetValue(i.FoodProductId.Value, out var sr) == true ? sr : null
         }).ToList()
     };
+
+    static async Task<IReadOnlyDictionary<Guid, string?>> LoadSafetyRatingsAsync(ICollection<MealItem> items, ITableStore store)
+    {
+        var ids = items
+            .Where(i => i.FoodProductId.HasValue)
+            .Select(i => i.FoodProductId!.Value)
+            .Distinct()
+            .ToList();
+
+        return ids.Count == 0
+            ? new Dictionary<Guid, string?>()
+            : await store.GetFoodProductSafetyRatingsAsync(ids);
+    }
 
     static async Task InvalidateUserInsightCaches(Guid userId, ICacheService cache)
     {

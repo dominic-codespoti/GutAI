@@ -153,7 +153,12 @@ public class ContentUnderstandingService : IContentUnderstandingService
             var result = await responsesClient.CreateResponseAsync(options, ct);
 #pragma warning restore OPENAI001
 
-            var textResponse = ExtractResponseText(result.Value);
+            // Use the raw HTTP response body (wire-format JSON with lowercase property names)
+            var rawJson = result.GetRawResponse()?.Content?.ToString();
+            var textResponse = rawJson is not null
+                ? ExtractResponseText(rawJson)
+                : null;
+
             if (string.IsNullOrWhiteSpace(textResponse))
             {
                 _logger?.LogWarning("Agent '{AgentName}' returned empty response.", _agentName);
@@ -232,33 +237,76 @@ public class ContentUnderstandingService : IContentUnderstandingService
         try
         {
             var json = JsonSerializer.Serialize(responseValue);
-            using var doc = JsonDocument.Parse(json);
-
-            if (doc.RootElement.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in output.EnumerateArray())
-                {
-                    if (item.TryGetProperty("type", out var type) && type.GetString() == "message" &&
-                        item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
-                    {
-                        var texts = new List<string>();
-                        foreach (var block in content.EnumerateArray())
-                        {
-                            if (block.TryGetProperty("text", out var text))
-                                texts.Add(text.GetString() ?? "");
-                        }
-                        if (texts.Count > 0)
-                            return string.Concat(texts);
-                    }
-                }
-            }
-
-            return null;
+            return ExtractResponseText(json);
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    private static string? ExtractResponseText(string rawJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            return ExtractOutputText(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractOutputText(JsonElement root)
+    {
+        // Try lowercase "output" (wire format) then "Output" / "OutputItems" (reflection serialization)
+        var output = TryGetPropertyCaseInsensitive(root, "output");
+        if (output is null || output.Value.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var item in output.Value.EnumerateArray())
+        {
+            var type = TryGetPropertyCaseInsensitive(item, "type");
+            if (type is null || type.Value.GetString() != "message")
+                continue;
+
+            var content = TryGetPropertyCaseInsensitive(item, "content");
+            if (content is null || content.Value.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var texts = new List<string>();
+            foreach (var block in content.Value.EnumerateArray())
+            {
+                var text = TryGetPropertyCaseInsensitive(block, "text");
+                if (text is not null)
+                    texts.Add(text.Value.GetString() ?? "");
+            }
+            if (texts.Count > 0)
+                return string.Concat(texts);
+        }
+
+        return null;
+    }
+
+    private static JsonElement? TryGetPropertyCaseInsensitive(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return null;
+
+        if (element.TryGetProperty(propertyName, out var value))
+            return value;
+
+        // Try the lowercase variant
+        var lower = propertyName.ToLowerInvariant();
+        if (lower != propertyName && element.TryGetProperty(lower, out value))
+            return value;
+
+        // Try the PascalCase variant
+        var pascal = char.ToUpperInvariant(propertyName[0]) + propertyName[1..];
+        if (pascal != propertyName && element.TryGetProperty(pascal, out value))
+            return value;
+
+        return null;
     }
 
     /// <summary>
