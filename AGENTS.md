@@ -11,14 +11,6 @@ DO NOT guess architectural details, domain logic, or test arrangements. If your 
 - **System Architecture & Setup**: `docs/ARCHITECTURE.md`
 - **End-to-End Testing (Playwright)**: `docs/PLAYWRIGHT_E2E_ANALYSIS.md`
 - **Deployment**: `docs/DEPLOYMENT.md`
-- **Scoring & Algorithms**: `docs/SCORING_ANALYSIS_REPORT.md`
-- **FODMAP Domain Logic**: `docs/FODMAP_SERVICE_ANALYSIS.md`
-- **Glycemic Index Logic**: `docs/GLYCEMIC_INDEX_SERVICE_ANALYSIS.md`
-- **GutRisk Integrations**: `docs/GUTRISK_SERVICE_ANALYSIS.md`
-- **Meals & UX**: `docs/MEALS_UX_ANALYSIS.md` and `docs/MEAL_LOGGING_BUG_ANALYSIS.md`
-- **Database & Data Files**: `docs/DATA_FILES_AUDIT_REPORT.md`
-- **Food Database Integrations**: `docs/global-branded-food-data-analysis.md`
-- **Historical Bugs & Analytics**: `docs/BUG_AUDIT_REPORT.md`
 
 ## 📝 Documentation Maintenance
 
