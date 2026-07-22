@@ -6,8 +6,9 @@ namespace GutAI.Infrastructure.Services;
 
 public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
 {
-    private const int MinOnsetHours = 1;
-    private const int MaxOnsetHours = 8;
+    // Onset window and food-name grouping now live in FoodSymptomMatching, shared with
+    // CorrelationEngine, so the two features can no longer silently disagree about
+    // whether a given food correlates with a given symptom.
 
     public async Task<FoodDiaryAnalysisDto> AnalyzeAsync(Guid userId, DateOnly from, DateOnly to, ITableStore store)
     {
@@ -19,28 +20,31 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
         foreach (var s in symptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
 
-        var correlations = new List<(string FoodName, string SymptomName, int Severity, double OnsetHours)>();
+        var correlations = new List<(string FoodName, string NormFoodName, string SymptomName, int Severity, double OnsetHours)>();
 
         foreach (var symptom in symptoms)
         {
-            var precedingMeals = meals.Where(m =>
-            {
-                var hours = (symptom.OccurredAt - m.LoggedAt).TotalHours;
-                return hours >= MinOnsetHours && hours <= MaxOnsetHours;
-            });
+            var precedingMeals = meals.Where(m => FoodSymptomMatching.IsWithinOnsetWindow(m.LoggedAt, symptom.OccurredAt));
 
             foreach (var meal in precedingMeals)
             {
                 var onsetHours = (symptom.OccurredAt - meal.LoggedAt).TotalHours;
                 foreach (var item in meal.Items)
                 {
-                    correlations.Add((item.FoodName, symptom.SymptomType?.Name ?? "Unknown", symptom.Severity, onsetHours));
+                    correlations.Add((
+                        item.FoodName,
+                        FoodSymptomMatching.NormalizeForGrouping(item.FoodName),
+                        symptom.SymptomType?.Name ?? "Unknown",
+                        symptom.Severity,
+                        onsetHours));
                 }
             }
         }
 
+        // Group by normalized food name so "Chicken Breast" / "chicken breasts" / "CHICKEN BREAST!"
+        // count as one pattern instead of fragmenting below the confidence thresholds below.
         var patterns = correlations
-            .GroupBy(c => (c.FoodName, c.SymptomName))
+            .GroupBy(c => (c.NormFoodName, c.SymptomName))
             .Select(g =>
             {
                 var occurrences = g.Count();
@@ -49,16 +53,17 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
                 var confidence = occurrences >= 5 && avgSeverity >= 5m ? "High"
                     : occurrences >= 3 || avgSeverity >= 6m ? "Medium"
                     : "Low";
+                var displayName = g.First().FoodName;
 
                 return new FoodSymptomPatternDto
                 {
-                    FoodName = g.Key.FoodName,
+                    FoodName = displayName,
                     SymptomName = g.Key.SymptomName,
                     Occurrences = occurrences,
                     AverageSeverity = Math.Round(avgSeverity, 1),
                     AverageOnsetHours = Math.Round(avgOnset, 1),
                     Confidence = confidence,
-                    Explanation = $"{g.Key.FoodName} was followed by {g.Key.SymptomName} {occurrences} time(s) " +
+                    Explanation = $"{displayName} was followed by {g.Key.SymptomName} {occurrences} time(s) " +
                         $"with avg severity {Math.Round(avgSeverity, 1)}/10, typically {Math.Round(avgOnset, 1)}h after eating."
                 };
             })
@@ -163,11 +168,7 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             foreach (var meal in reintroMeals)
             {
                 var triggered = recentSymptoms
-                    .Where(s =>
-                    {
-                        var hours = (s.OccurredAt - meal.LoggedAt).TotalHours;
-                        return hours >= MinOnsetHours && hours <= MaxOnsetHours;
-                    })
+                    .Where(s => FoodSymptomMatching.IsWithinOnsetWindow(meal.LoggedAt, s.OccurredAt))
                     .Select(s => s.Severity);
                 followingSymptoms.AddRange(triggered);
             }
@@ -278,11 +279,7 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
                 .Select(g =>
                 {
                     var count = symptoms.Count(s =>
-                        g.Any(m =>
-                        {
-                            var hours = (s.OccurredAt - m.LoggedAt).TotalHours;
-                            return hours >= MinOnsetHours && hours <= MaxOnsetHours;
-                        }));
+                        g.Any(m => FoodSymptomMatching.IsWithinOnsetWindow(m.LoggedAt, s.OccurredAt)));
                     return (MealType: g.Key, Count: count);
                 })
                 .OrderByDescending(x => x.Count)

@@ -57,7 +57,31 @@ public static class RateLimitingExtensions
                 {
                     PermitLimit = 30,
                     Window = TimeSpan.FromHours(1),
-                    QueueLimit = 2,
+                    // QueueLimit=0: a nonzero queue on a 1-hour window leaves excess requests
+                    // hanging (queued) for up to an hour instead of getting a fast 429 — see
+                    // the aiExtraction policy below, where this exact behavior was caught by a test.
+                    QueueLimit = 0,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                });
+            });
+
+            // Strict policy for endpoints that invoke GPT-4o (text or vision) directly per
+            // request — /api/food/describe and /api/food/parse-label. These previously rode
+            // the generic "search" policy (30/min = up to 1,800/hr), which is fine for cheap
+            // Lucene text search but leaves the AI-cost-bearing endpoints effectively unlimited.
+            options.AddPolicy("aiExtraction", httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
+                return RateLimitPartition.GetFixedWindowLimiter($"ai_{userId}", _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromHours(1),
+                    // QueueLimit=0: reject immediately past the limit. A nonzero queue on a
+                    // 1-hour fixed window would leave excess requests hanging for up to an
+                    // hour waiting for capacity instead of getting a fast 429 (confirmed via
+                    // FoodContractTests.DescribeFoodFromText_ExceedsAiExtractionLimit_*, which
+                    // timed out instead of receiving 429 before this fix).
+                    QueueLimit = 0,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 });
             });

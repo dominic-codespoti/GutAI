@@ -3,6 +3,19 @@
 > **Meal logging · Calorie tracking · Gut health symptom correlation · Food safety insights**
 > **.NET 10 Backend + React Native Expo Frontend (iOS / Android / Web)**
 
+> **⚠️ Documentation note:** Sections below this point are the original pre-implementation
+> planning document. The build diverged from the plan in a few load-bearing ways the plan
+> text was never updated to reflect:
+> - **Persistence is Azure Table Storage (`TableStorageStore.cs`), not PostgreSQL 16 / EF Core.**
+>   There is no `AppDbContext`, no migrations, no `Configurations/` folder — see
+>   `AGENTS.md`'s "Entity ↔ Table Storage Roundtrip" rule, which is the actual governing
+>   convention for persistence changes.
+> - **Backend unit tests use xUnit + Moq**, not xUnit + NSubstitute.
+> Treat the "Tech Stack" and "Architecture" sections below as historical intent, not current
+> fact, for anything persistence-related. Everything else (endpoints, correlation engine,
+> external API fan-out, frontend structure) matches the shipped implementation reasonably
+> closely as of this note.
+
 ## Current Implementation Status (Session 12)
 
 ### Backend — Fully Implemented ✅
@@ -111,13 +124,13 @@ Request → ExceptionMiddleware → SerilogRequestLogging → CORS → RateLimit
 | ---------------- | ----------------------------------------- |
 | Runtime          | .NET 10 (C# 14)                           |
 | Framework        | ASP.NET Core Minimal APIs                 |
-| ORM              | Entity Framework Core 10                  |
-| Database         | PostgreSQL 16                             |
+| ORM              | None — Azure.Data.Tables SDK directly     |
+| Database         | Azure Table Storage (see doc note above)  |
 | Cache            | In-memory (IDistributedCache)             |
 | Auth             | ASP.NET Core Identity + JWT Bearer tokens |
 | API Docs         | Scalar                                    |
 | Logging          | Serilog → Seq                             |
-| Testing          | xUnit + NSubstitute + Testcontainers      |
+| Testing          | xUnit + Moq + Testcontainers (Azurite)    |
 | Containerization | Docker + Docker Compose                   |
 
 ### Frontend

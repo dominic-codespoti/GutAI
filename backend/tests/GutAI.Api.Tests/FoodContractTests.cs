@@ -60,6 +60,44 @@ public class FoodContractTests(GutAiWebFactory factory)
         json.AssertHasNumberProperty("extractionConfidence");
     }
 
+    [Fact]
+    public async Task DescribeFoodFromText_ExceedsAiExtractionLimit_Returns429BeforeSearchLimit()
+    {
+        // /api/food/describe is route-scoped to the strict "aiExtraction" policy (10/hour)
+        // rather than the group-level "search" policy (30/min) it used to inherit. If the
+        // route-level override ever silently stops applying (e.g. a future refactor moves
+        // the RequireRateLimiting call, or ASP.NET Core's metadata resolution order changes),
+        // this test catches it: the 11th call within the window must be rejected, not the 31st.
+        GutAiWebFactory.StubDescribeResult = new CustomFoodDto
+        {
+            Name = "Berry Smoothie",
+            ServingSize = 320,
+            ServingSizeUnit = "g",
+            Calories = 240,
+            ProteinG = 12,
+            CarbG = 34,
+            FatG = 6,
+        };
+
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+
+        HttpResponseMessage? lastResponse = null;
+        for (var i = 0; i < 10; i++)
+        {
+            lastResponse = await client.PostAsJsonAsync("/api/food/describe", new
+            {
+                text = "homemade berry smoothie with banana and yogurt"
+            });
+        }
+        lastResponse!.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests, "the first 10 requests are within the aiExtraction limit");
+
+        var eleventh = await client.PostAsJsonAsync("/api/food/describe", new
+        {
+            text = "homemade berry smoothie with banana and yogurt"
+        });
+        eleventh.StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "the 11th call in the same hour must be rejected by the aiExtraction policy, not permitted up to the search policy's 30/min");
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("short")]

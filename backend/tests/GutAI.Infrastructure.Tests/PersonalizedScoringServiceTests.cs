@@ -224,6 +224,91 @@ public class PersonalizedScoringServiceTests
         result.PersonalWarnings.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task GenericIngredientWordTrigger_DoesNotFalsePositiveOnUnrelatedProduct()
+    {
+        // Regression test: the old implementation matched triggers against the full raw
+        // ingredients string, so a trigger food logged as "Milk" would flag almost any
+        // packaged product whose ingredients merely mention milk. Matching should now be
+        // FoodProductId-exact or normalized-NAME-only, so an unrelated product that just
+        // happens to contain the trigger word in its ingredients must NOT be penalized.
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var mealId = Guid.NewGuid();
+
+        var meals = new List<GutAI.Domain.Entities.MealLog>
+        {
+            new()
+            {
+                Id = mealId,
+                UserId = userId,
+                LoggedAt = now.AddDays(-5),
+                Items = [new() { Id = Guid.NewGuid(), MealLogId = mealId, FoodName = "Milk" }]
+            }
+        };
+        var symptoms = new List<GutAI.Domain.Entities.SymptomLog>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Severity = 7,
+                OccurredAt = now.AddDays(-5).AddHours(3),
+                SymptomTypeId = 1,
+                SymptomType = new() { Id = 1, Name = "Bloating", Category = "GI" }
+            }
+        };
+
+        var unrelatedProduct = MakeProduct("Dark Chocolate Bar", "cocoa, sugar, milk fat, soy lecithin", novaGroup: 3);
+        var store = MockTableStoreFactory.Create(meals: meals, symptoms: symptoms).Object;
+        var result = await _sut.ScoreAsync(unrelatedProduct, userId, store);
+
+        result.PersonalTriggerPenalty.Should().Be(0);
+        result.PersonalWarnings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SameFoodProductIdLoggedBefore_MatchesRegardlessOfNameDrift()
+    {
+        // A product re-scanned/renamed between logs (e.g. OFF data changed the display name)
+        // should still match via FoodProductId even though the raw names differ entirely.
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var mealId = Guid.NewGuid();
+        var productId = Guid.NewGuid();
+
+        var meals = new List<GutAI.Domain.Entities.MealLog>
+        {
+            new()
+            {
+                Id = mealId,
+                UserId = userId,
+                LoggedAt = now.AddDays(-5),
+                Items = [new() { Id = Guid.NewGuid(), MealLogId = mealId, FoodName = "Old Product Name", FoodProductId = productId }]
+            }
+        };
+        var symptoms = new List<GutAI.Domain.Entities.SymptomLog>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Severity = 7,
+                OccurredAt = now.AddDays(-5).AddHours(3),
+                SymptomTypeId = 1,
+                SymptomType = new() { Id = 1, Name = "Bloating", Category = "GI" }
+            }
+        };
+
+        var sameProductRenamed = MakeProduct("Brand New Display Name", "wheat, sugar", novaGroup: 3);
+        sameProductRenamed = sameProductRenamed with { Id = productId };
+        var store = MockTableStoreFactory.Create(meals: meals, symptoms: symptoms).Object;
+        var result = await _sut.ScoreAsync(sameProductRenamed, userId, store);
+
+        result.PersonalTriggerPenalty.Should().BeGreaterThan(0);
+        result.PersonalWarnings.Should().NotBeEmpty();
+    }
+
     // ─── Rating bands ──────────────────────────────────────────────────
 
     [Fact]

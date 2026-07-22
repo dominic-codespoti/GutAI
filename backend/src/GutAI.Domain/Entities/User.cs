@@ -18,7 +18,6 @@ public class User
     public bool OnboardingCompleted { get; set; }
     public string? TimezoneId { get; set; }
     public string? AgentThreadId { get; set; }
-    public bool IsPremium { get; set; }
 
     public ICollection<MealLog> MealLogs { get; set; } = [];
     public ICollection<CustomFood> CustomFoods { get; set; } = [];

@@ -475,6 +475,32 @@ public class ContentUnderstandingService : IContentUnderstandingService
         {
             dto.ExtractionConfidence = Math.Clamp(dto.ExtractionConfidence.Value, 0m, 1m);
         }
+
+        // OCR/vision misreads (stray hyphens, mis-parsed dashes) can produce negative values
+        // for quantities that are never physically negative — clamp before persisting so a
+        // misread label can't corrupt downstream daily nutrition totals.
+        dto.Calories = Math.Max(0, dto.Calories);
+        dto.ProteinG = Math.Max(0, dto.ProteinG);
+        dto.CarbG = Math.Max(0, dto.CarbG);
+        dto.FatG = Math.Max(0, dto.FatG);
+        dto.ServingSize = Math.Max(0, dto.ServingSize);
+        if (dto.FiberG.HasValue) dto.FiberG = Math.Max(0, dto.FiberG.Value);
+        if (dto.SugarG.HasValue) dto.SugarG = Math.Max(0, dto.SugarG.Value);
+        if (dto.SodiumMg.HasValue) dto.SodiumMg = Math.Max(0, dto.SodiumMg.Value);
+        if (dto.SaturatedFatG.HasValue) dto.SaturatedFatG = Math.Max(0, dto.SaturatedFatG.Value);
+        if (dto.TransFatG.HasValue) dto.TransFatG = Math.Max(0, dto.TransFatG.Value);
+        if (dto.CholesterolMg.HasValue) dto.CholesterolMg = Math.Max(0, dto.CholesterolMg.Value);
+        if (dto.PotassiumMg.HasValue) dto.PotassiumMg = Math.Max(0, dto.PotassiumMg.Value);
+        if (dto.CalciumMg.HasValue) dto.CalciumMg = Math.Max(0, dto.CalciumMg.Value);
+        if (dto.IronMg.HasValue) dto.IronMg = Math.Max(0, dto.IronMg.Value);
+        if (dto.MagnesiumMg.HasValue) dto.MagnesiumMg = Math.Max(0, dto.MagnesiumMg.Value);
+        if (dto.ZincMg.HasValue) dto.ZincMg = Math.Max(0, dto.ZincMg.Value);
+        if (dto.VitaminA_IU.HasValue) dto.VitaminA_IU = Math.Max(0, dto.VitaminA_IU.Value);
+        if (dto.VitaminC_Mg.HasValue) dto.VitaminC_Mg = Math.Max(0, dto.VitaminC_Mg.Value);
+        if (dto.VitaminD_Mcg.HasValue) dto.VitaminD_Mcg = Math.Max(0, dto.VitaminD_Mcg.Value);
+        if (dto.VitaminB12_Mcg.HasValue) dto.VitaminB12_Mcg = Math.Max(0, dto.VitaminB12_Mcg.Value);
+        if (dto.Omega3G.HasValue) dto.Omega3G = Math.Max(0, dto.Omega3G.Value);
+        if (dto.CaffeineMg.HasValue) dto.CaffeineMg = Math.Max(0, dto.CaffeineMg.Value);
     }
 
     internal static bool TryParseFallbackResponse(string? responseText, out CustomFoodDto? dto)
@@ -701,10 +727,10 @@ public class ContentUnderstandingService : IContentUnderstandingService
             return null;
         }
 
-        return MapDocumentContentToDto(documentContent);
+        return MapDocumentContentToDto(documentContent, _logger);
     }
 
-    internal static CustomFoodDto MapDocumentContentToDto(DocumentContent documentContent)
+    internal static CustomFoodDto MapDocumentContentToDto(DocumentContent documentContent, ILogger<ContentUnderstandingService>? logger = null)
     {
         var dto = new CustomFoodDto();
         decimal? maxExtractionConfidence = null;
@@ -871,9 +897,10 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
             dto.ExtractionConfidence ??= maxExtractionConfidence;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Catch-all to ensure we return whatever we have mapped so far, rather than crashing whole ingestion
+            // Catch-all to ensure we return whatever we have mapped so far, rather than crashing whole ingestion.
+            logger?.LogWarning(ex, "Nutrition label field mapping failed partway through; returning partial extraction.");
         }
 
         return dto;

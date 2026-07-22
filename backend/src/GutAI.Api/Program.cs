@@ -113,7 +113,6 @@ app.Use(async (context, next) =>
 app.UseResponseCompression();
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors();
-app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
@@ -122,6 +121,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+// UseRateLimiter MUST run after UseAuthentication: every per-user policy ("authenticated",
+// "search", "chat", "aiExtraction") partitions by httpContext.User.FindFirst("sub"), which is
+// only populated once authentication middleware has run. Rate limiting before authentication
+// meant these policies were silently falling back to IP-based (or shared-fallback) keys for
+// every request, never actually partitioning by user as their own partition-key functions
+// clearly intend — caught via FoodContractTests.DescribeFoodFromText_ExceedsAiExtractionLimit
+// exhausting a shared bucket that broke unrelated tests using different authenticated users.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 // Health check
@@ -149,7 +156,7 @@ app.MapGroup("/api/user").MapUserEndpoints().RequireAuthorization().RequireRateL
 app.MapGroup("/api/chat").MapChatEndpoints().RequireAuthorization().RequireRateLimiting("chat");
 
 // MCP endpoint for external AI apps
-app.MapMcp().RequireAuthorization();
+app.MapMcp().RequireAuthorization().RequireRateLimiting("authenticated");
 
 // ── CLI commands ──────────────────────────────────────────────────────────────
 if (args.Contains("--import-off"))

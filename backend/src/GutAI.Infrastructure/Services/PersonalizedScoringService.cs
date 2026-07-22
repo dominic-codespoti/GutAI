@@ -188,12 +188,17 @@ public class PersonalizedScoringService
             .Select(s => new { s.OccurredAt, s.RelatedMealLogId })
             .ToList();
 
-        var triggerFoodNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Trigger identity: prefer FoodProductId (exact, zero false positives) and fall back to
+        // normalized product-NAME containment (not ingredients — matching raw ingredient text
+        // against a single common trigger word like "milk" or "egg" used to flag nearly every
+        // packaged product that mentions it as an ingredient).
+        var triggerFoods = new List<(Guid? FoodProductId, string FoodName)>();
+        var seenTriggerKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (symptomLogs.Count > 0)
         {
             var symptomTimes = symptomLogs.Select(s => s.OccurredAt).ToList();
-            var earliest = symptomTimes.Min().AddHours(-6);
+            var earliest = symptomTimes.Min().AddHours(-FoodSymptomMatching.MaxOnsetHours);
 
             var allMeals = await store.GetMealLogsByDateRangeAsync(userId, cutoffFrom, cutoffTo);
             foreach (var meal in allMeals)
@@ -201,38 +206,41 @@ public class PersonalizedScoringService
 
             var candidateMeals = allMeals
                 .Where(m => m.LoggedAt >= earliest)
-                .Select(m => new { m.LoggedAt, Items = m.Items.Select(i => i.FoodName).ToList() })
+                .Select(m => new { m.LoggedAt, Items = m.Items.Select(i => (i.FoodProductId, i.FoodName)).ToList() })
                 .ToList();
 
             foreach (var symptom in symptomLogs)
             {
-                var windowStart = symptom.OccurredAt.AddHours(-6);
-                var windowEnd = symptom.OccurredAt.AddHours(-1);
-
                 foreach (var meal in candidateMeals)
                 {
-                    if (meal.LoggedAt >= windowStart && meal.LoggedAt <= windowEnd)
+                    if (!FoodSymptomMatching.IsWithinOnsetWindow(meal.LoggedAt, symptom.OccurredAt))
+                        continue;
+
+                    foreach (var (foodProductId, foodName) in meal.Items)
                     {
-                        foreach (var foodName in meal.Items)
-                            triggerFoodNames.Add(foodName);
+                        var key = foodProductId.HasValue
+                            ? $"id:{foodProductId.Value}"
+                            : $"name:{FoodSymptomMatching.NormalizeForGrouping(foodName)}";
+                        if (seenTriggerKeys.Add(key))
+                            triggerFoods.Add((foodProductId, foodName));
                     }
                 }
             }
 
-            if (triggerFoodNames.Count > 0)
+            if (triggerFoods.Count > 0)
             {
-                var productName = product.Name.ToLowerInvariant();
-                var productIngredients = lowerIngredients;
+                var normalizedProductName = FoodSymptomMatching.NormalizeForGrouping(product.Name);
                 var matchCount = 0;
 
-                foreach (var trigger in triggerFoodNames)
+                foreach (var (triggerProductId, triggerName) in triggerFoods)
                 {
-                    var lowerTrigger = trigger.ToLowerInvariant();
-                    if ((productName?.Contains(lowerTrigger) ?? false) || (productIngredients?.Contains(lowerTrigger) ?? false)
-                        || (lowerTrigger?.Contains(productName) ?? false))
+                    var isMatch = (triggerProductId.HasValue && triggerProductId.Value == product.Id)
+                        || IsNormalizedNameMatch(triggerName, normalizedProductName);
+
+                    if (isMatch)
                     {
                         matchCount++;
-                        warnings.Add($"🔁 \"{trigger}\" appeared in meals before your recent symptoms.");
+                        warnings.Add($"🔁 \"{triggerName}\" appeared in meals before your recent symptoms.");
                         if (matchCount >= 5) break;
                     }
                 }
@@ -290,5 +298,25 @@ public class PersonalizedScoringService
             PersonalWarnings = warnings,
             Summary = summary,
         };
+    }
+
+    /// <summary>
+    /// Fallback trigger match when no FoodProductId is available on either side: compares
+    /// normalized (case/punctuation/plural-insensitive) NAMES only, so a generic logged food
+    /// like "Pizza" still flags a specific product like "Pizza Margherita", without matching
+    /// against the product's full ingredient list (the source of the false-positive problem
+    /// this replaced — a trigger named "milk" would otherwise flag almost any packaged food).
+    /// </summary>
+    private static bool IsNormalizedNameMatch(string triggerName, string normalizedProductName)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedProductName))
+            return false;
+
+        var normalizedTrigger = FoodSymptomMatching.NormalizeForGrouping(triggerName);
+        if (string.IsNullOrWhiteSpace(normalizedTrigger))
+            return false;
+
+        return normalizedProductName.Contains(normalizedTrigger, StringComparison.Ordinal)
+            || normalizedTrigger.Contains(normalizedProductName, StringComparison.Ordinal);
     }
 }

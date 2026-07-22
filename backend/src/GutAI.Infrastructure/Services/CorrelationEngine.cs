@@ -43,16 +43,25 @@ public class CorrelationEngine : ICorrelationEngine
 
         var correlations = new Dictionary<string, (HashSet<Guid> mealIds, decimal totalSeverity, int symptomMatches, int totalMeals)>();
 
+        // Foods are grouped by a normalized identity key (case/punctuation/plural-insensitive)
+        // rather than the raw FoodName, so "Chicken Breast" and "chicken breasts" contribute to
+        // the same bucket instead of each needing their own occurrence threshold to surface.
+        // foodDisplayNames remembers the first raw name seen for each normalized key so the
+        // output still shows a natural-looking label instead of the normalized form.
         var itemMealCounts = new Dictionary<string, int>();
+        var foodDisplayNames = new Dictionary<string, string>();
         foreach (var meal in meals)
         {
             var seen = new HashSet<string>();
             foreach (var item in meal.Items)
             {
-                if (seen.Add(item.FoodName))
+                var foodKey = FoodSymptomMatching.NormalizeForGrouping(item.FoodName);
+                if (seen.Add(foodKey))
                 {
-                    itemMealCounts.TryGetValue(item.FoodName, out var c);
-                    itemMealCounts[item.FoodName] = c + 1;
+                    itemMealCounts.TryGetValue(foodKey, out var c);
+                    itemMealCounts[foodKey] = c + 1;
+                    if (!foodDisplayNames.ContainsKey(foodKey))
+                        foodDisplayNames[foodKey] = item.FoodName;
                 }
 
                 if (item.FoodProduct?.FoodProductAdditives != null)
@@ -72,20 +81,19 @@ public class CorrelationEngine : ICorrelationEngine
 
         foreach (var symptom in symptoms)
         {
-            var windowStart = symptom.OccurredAt.AddHours(-6);
-            var windowEnd = symptom.OccurredAt.AddHours(-1);
-            var priorMeals = meals.Where(m => m.LoggedAt >= windowStart && m.LoggedAt <= windowEnd);
+            var priorMeals = meals.Where(m => FoodSymptomMatching.IsWithinOnsetWindow(m.LoggedAt, symptom.OccurredAt));
 
             foreach (var meal in priorMeals)
             {
                 var seenInMeal = new HashSet<string>();
                 foreach (var item in meal.Items)
                 {
-                    var foodKey = $"{item.FoodName}|{symptom.SymptomType?.Name ?? "Unknown"}";
+                    var normFoodName = FoodSymptomMatching.NormalizeForGrouping(item.FoodName);
+                    var foodKey = $"{normFoodName}|{symptom.SymptomType?.Name ?? "Unknown"}";
                     if (seenInMeal.Add(foodKey))
                     {
                         if (!correlations.ContainsKey(foodKey))
-                            correlations[foodKey] = (new HashSet<Guid>(), 0, 0, itemMealCounts.GetValueOrDefault(item.FoodName, 1));
+                            correlations[foodKey] = (new HashSet<Guid>(), 0, 0, itemMealCounts.GetValueOrDefault(normFoodName, 1));
 
                         var entry = correlations[foodKey];
                         entry.mealIds.Add(meal.Id);
@@ -122,13 +130,15 @@ public class CorrelationEngine : ICorrelationEngine
             .Select(c =>
             {
                 var parts = c.Key.Split('|');
+                var key = parts[0];
+                var displayName = key.StartsWith("[additive] ") ? key : foodDisplayNames.GetValueOrDefault(key, key);
                 var occurrences = c.Value.mealIds.Count;
                 var totalMeals = c.Value.totalMeals;
                 var frequencyPercent = totalMeals > 0 ? Math.Round((decimal)occurrences / totalMeals * 100, 1) : 0;
                 var avgSeverity = Math.Min(Math.Round(c.Value.totalSeverity / c.Value.symptomMatches, 1), 10);
                 return new CorrelationDto
                 {
-                    FoodOrAdditive = parts[0],
+                    FoodOrAdditive = displayName,
                     SymptomName = parts[1],
                     Occurrences = occurrences,
                     TotalMeals = totalMeals,

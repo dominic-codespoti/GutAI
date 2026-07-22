@@ -132,11 +132,22 @@ public static class InsightEndpoints
                 symptoms = g.Select(c => c.SymptomName).Distinct().ToList(),
                 totalOccurrences = g.Sum(c => c.Occurrences),
                 avgSeverity = g.Average(c => (double)c.AverageSeverity),
-                worstConfidence = g.Max(c => c.Confidence)
+                // Confidence is a string ("Low"/"Medium"/"High") — string.Max would pick
+                // "Medium" over "High" (lexicographic: 'M' > 'L' > 'H'). Rank ordinally instead
+                // so the strongest evidence in the group is reported correctly.
+                worstConfidence = g.OrderByDescending(c => ConfidenceRank(c.Confidence)).First().Confidence
             })
             .OrderByDescending(t => t.avgSeverity);
         return Results.Ok(triggers);
     }
+
+    static int ConfidenceRank(string confidence) => confidence switch
+    {
+        "High" => 3,
+        "Medium" => 2,
+        "Low" => 1,
+        _ => 0
+    };
 
     static async Task<IResult> GetFoodDiaryAnalysis(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store, IFoodDiaryAnalysisService analysisService)
     {

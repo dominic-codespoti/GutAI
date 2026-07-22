@@ -32,8 +32,9 @@ public static class FoodEndpoints
         group.MapPost("/custom", CreateCustomFood);
         group.MapPut("/custom/{id:guid}", UpdateCustomFood);
         group.MapDelete("/custom/{id:guid}", DeleteCustomFood);
-        group.MapPost("/describe", DescribeFoodFromText);
+        group.MapPost("/describe", DescribeFoodFromText).RequireRateLimiting("aiExtraction");
         group.MapPost("/parse-label", ParseNutritionLabel)
+            .RequireRateLimiting("aiExtraction")
             .DisableAntiforgery();
 
         group.MapPost("/", CreateFoodProduct).AddEndpointFilter<AdminKeyFilter>();

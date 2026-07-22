@@ -10,7 +10,10 @@ public static class MockTableStoreFactory
         List<User>? users = null,
         List<MealLog>? meals = null,
         List<MealItem>? items = null,
-        List<SymptomLog>? symptoms = null)
+        List<SymptomLog>? symptoms = null,
+        List<FoodProduct>? foodProducts = null,
+        List<FoodAdditive>? additives = null,
+        Dictionary<Guid, List<int>>? additiveIdsByProduct = null)
     {
         var mock = new Mock<ITableStore>();
 
@@ -47,6 +50,16 @@ public static class MockTableStoreFactory
 
         mock.Setup(x => x.GetSymptomTypeAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => symptomTypes.FirstOrDefault(t => t.Id == id));
+
+        mock.Setup(x => x.GetFoodProductAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => (foodProducts ?? []).FirstOrDefault(p => p.Id == id));
+
+        mock.Setup(x => x.GetAdditiveIdsForProductAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid productId, CancellationToken _) =>
+                (additiveIdsByProduct ?? []).GetValueOrDefault(productId, []));
+
+        mock.Setup(x => x.GetFoodAdditiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => (additives ?? []).FirstOrDefault(a => a.Id == id));
 
         return mock;
     }

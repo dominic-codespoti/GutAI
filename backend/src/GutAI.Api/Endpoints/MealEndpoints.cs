@@ -43,7 +43,8 @@ public static class MealEndpoints
         if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
             return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
 
-        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0))
+        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0
+            || i.FiberG < 0 || i.SugarG < 0 || i.SodiumMg < 0 || i.CholesterolMg < 0 || i.SaturatedFatG < 0 || i.PotassiumMg < 0))
             return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
 
         if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
@@ -180,7 +181,8 @@ public static class MealEndpoints
         if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
             return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
 
-        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0))
+        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0
+            || i.FiberG < 0 || i.SugarG < 0 || i.SodiumMg < 0 || i.CholesterolMg < 0 || i.SaturatedFatG < 0 || i.PotassiumMg < 0))
             return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
 
         if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
