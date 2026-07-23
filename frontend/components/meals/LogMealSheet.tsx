@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -26,10 +26,11 @@ import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscript
 import { mapParsedItemToRequest } from "../../src/utils/mealMappers";
 import { normalizeCustomFood, customFoodToMealItem } from "../../src/utils/customFood";
 import type { AiGeneratedFood } from "../../src/utils/customFood";
-import { radius, spacing } from "../../src/utils/theme";
+import { radius, spacing, type ThemeColors } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
 import { buildLoggedAt } from "../../src/utils/date";
 import { scaleNutrition, nutritionSummaryText } from "../../src/utils/nutrition";
+import { deleteItem, getItem, setItem } from "../../src/utils/storage";
 import { maybeRequestReview } from "../../src/utils/review";
 import { SearchResultSkeleton } from "../SkeletonLoader";
 import type { ParsedFoodItem, FoodProduct, FavoriteFood, RecentFood } from "../../src/types";
@@ -78,7 +79,7 @@ function mapFavoriteFoodToProduct(food: FavoriteFood): FoodProduct {
     fat100g: food.fat100g,
     fiber100g: null,
     sugar100g: null,
-    sodium100g: null,
+    sodiumMg100g: null,
     servingSize: food.servingSize,
     servingQuantity: food.servingQuantity ?? food.servingWeightG,
     safetyScore: null,
@@ -112,7 +113,7 @@ function mapRecentFoodToProduct(food: RecentFood): FoodProduct {
     fat100g: toPer100g(food.fatG, food.servingWeightG),
     fiber100g: toPer100g(food.fiberG, food.servingWeightG),
     sugar100g: toPer100g(food.sugarG, food.servingWeightG),
-    sodium100g: toPer100g(food.sodiumMg, food.servingWeightG),
+    sodiumMg100g: toPer100g(food.sodiumMg, food.servingWeightG),
     servingSize: food.servingUnit || "serving",
     servingQuantity: food.servingWeightG ?? null,
     safetyScore: null,
@@ -124,6 +125,51 @@ function mapRecentFoodToProduct(food: RecentFood): FoodProduct {
     additives: [],
     matchConfidence: 1,
   };
+}
+
+type ItemUncertaintyTone = "danger" | "warning" | "muted";
+
+/// Identity, nutrition, and portion confidence are independent signals from the resolver —
+/// a confidently-matched product can still carry an estimated portion, and a food with no
+/// catalog match still deserves its own distinct warning rather than folding everything into
+/// one "estimated match" line. Each returned entry is a plain-text warning (not color-only),
+/// so the uncertainty is legible without relying on color.
+function parsedItemWarnings(
+  item: ParsedFoodItem,
+): { text: string; tone: ItemUncertaintyTone }[] {
+  const warnings: { text: string; tone: ItemUncertaintyTone }[] = [];
+
+  if (item.resolutionStatus === "Unresolved") {
+    warnings.push({
+      text: "No matching product found — will be logged as entered",
+      tone: "danger",
+    });
+  } else if (item.resolutionStatus === "Ambiguous") {
+    warnings.push({
+      text: "Multiple possible matches — verify this item",
+      tone: "warning",
+    });
+  } else if (item.matchConfidence < 0.6) {
+    warnings.push({ text: "Estimated match — verify this item", tone: "warning" });
+  }
+
+  if (item.nutritionProvenance === "Unknown") {
+    warnings.push({ text: "Nutrition unknown — edit values manually", tone: "danger" });
+  } else if (item.nutritionProvenance === "Estimated") {
+    warnings.push({ text: "Nutrition estimated, not from a verified product", tone: "muted" });
+  }
+
+  if (item.portionConfidence < 0.5) {
+    warnings.push({ text: "Portion assumed — default serving size", tone: "muted" });
+  }
+
+  return warnings;
+}
+
+function uncertaintyColor(tone: ItemUncertaintyTone, colors: ThemeColors) {
+  if (tone === "danger") return colors.danger;
+  if (tone === "warning") return colors.warning;
+  return colors.textMuted;
 }
 
 export function LogMealSheet() {
@@ -168,6 +214,9 @@ export function LogMealSheet() {
   const [manualSugar, setManualSugar] = useState("0");
   const [manualSodium, setManualSodium] = useState("0");
   const [manualServings, setManualServings] = useState("1");
+  const [mealNotes, setMealNotes] = useState("");
+  const draftHydrated = useRef(false);
+  const draftKey = "meal-log-draft";
 
   // Search state
   const [searchText, setSearchText] = useState("");
@@ -185,6 +234,54 @@ export function LogMealSheet() {
   const [addToMealCustomText, setAddToMealCustomText] = useState("");
 
   const { createMeal } = useMealMutations();
+  useEffect(() => {
+    if (!visible || draftHydrated.current) return;
+    draftHydrated.current = true;
+    getItem(draftKey).then((raw) => {
+      if (!raw) return;
+      try {
+        const draft = JSON.parse(raw) as Record<string, string>;
+        setNaturalText(draft.naturalText ?? "");
+        setMealNotes(draft.mealNotes ?? "");
+        setManualName(draft.manualName ?? "");
+        setManualCalories(draft.manualCalories ?? "");
+        setManualProtein(draft.manualProtein ?? "0");
+        setManualCarbs(draft.manualCarbs ?? "0");
+        setManualFat(draft.manualFat ?? "0");
+        setManualFiber(draft.manualFiber ?? "0");
+        setManualSugar(draft.manualSugar ?? "0");
+        setManualSodium(draft.manualSodium ?? "0");
+        setManualServings(draft.manualServings ?? "1");
+        setMealHour(draft.mealHour ?? mealHour);
+        setMealMinute(draft.mealMinute ?? mealMinute);
+        toast.info("Recovered an unfinished meal draft");
+      } catch {
+        void deleteItem(draftKey);
+      }
+    });
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !draftHydrated.current) return;
+    const hasDraft = [naturalText, mealNotes, manualName, manualCalories].some(Boolean);
+    const timer = setTimeout(() => {
+      if (!hasDraft) {
+        void deleteItem(draftKey);
+        return;
+      }
+      void setItem(draftKey, JSON.stringify({
+        naturalText, mealNotes, manualName, manualCalories, manualProtein,
+        manualCarbs, manualFat, manualFiber, manualSugar, manualSodium,
+        manualServings, mealHour, mealMinute,
+      }));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [
+    visible, naturalText, mealNotes, manualName, manualCalories, manualProtein,
+    manualCarbs, manualFat, manualFiber, manualSugar, manualSodium,
+    manualServings, mealHour, mealMinute,
+  ]);
+
   const { isPro } = useSubscriptionStore();
 
   // Queries
@@ -253,9 +350,13 @@ export function LogMealSheet() {
       }
       const newConfigs: typeof parsedConfigs = {};
       parsed.forEach((it, idx) => {
+        const quantity = it.servingQuantity ?? 1;
+        const totalWeight = it.servingWeightG ?? 100;
         newConfigs[idx] = {
-          servingG: it.servingWeightG ?? 100,
-          multiplier: it.servingQuantity ?? 1,
+          // The parser returns nutrition and weight for the total quantity.
+          // Keep the review base portion per unit so the multiplier is applied once.
+          servingG: quantity > 0 ? totalWeight / quantity : totalWeight,
+          multiplier: quantity,
           customText: "",
         };
       });
@@ -312,33 +413,40 @@ export function LogMealSheet() {
       toast.error(`Sodium must be ${MAX_SODIUM_MG.toLocaleString()}mg or less`);
       return;
     }
-    createMeal.mutate({
-      mealType: selectedMealType,
-      loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
-      items: [{
-        foodName: manualName.trim(),
-        servings,
-        servingUnit: "serving",
-        calories: cal,
-        proteinG: Number(manualProtein) || 0,
-        carbsG: Number(manualCarbs) || 0,
-        fatG: Number(manualFat) || 0,
-        fiberG: Number(manualFiber) || 0,
-        sugarG: Number(manualSugar) || 0,
-        sodiumMg: Number(manualSodium) || 0,
-      }],
-    });
-    resetForm();
+    createMeal.mutate(
+      {
+        mealType: selectedMealType,
+        loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
+        notes: mealNotes.trim() || undefined,
+        items: [{
+          foodName: manualName.trim(),
+          servings,
+          servingUnit: "serving",
+          calories: cal,
+          proteinG: Number(manualProtein) || 0,
+          carbsG: Number(manualCarbs) || 0,
+          fatG: Number(manualFat) || 0,
+          fiberG: Number(manualFiber) || 0,
+          sugarG: Number(manualSugar) || 0,
+          sodiumMg: Number(manualSodium) || 0,
+        }],
+      },
+      { onSuccess: resetForm },
+    );
   };
 
   const handleLogParsed = () => {
     if (parsedItems.length === 0) return;
-    createMeal.mutate({
-      mealType: selectedMealType,
-      loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
-      items: parsedItems.map((it, idx) => mapParsedItemToRequest(it, parsedConfigs[idx])),
-    });
-    resetForm();
+    createMeal.mutate(
+      {
+        mealType: selectedMealType,
+        loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
+        notes: mealNotes.trim() || undefined,
+        originalText: naturalText.trim() || undefined,
+        items: parsedItems.map((it, idx) => mapParsedItemToRequest(it, parsedConfigs[idx])),
+      },
+      { onSuccess: resetForm },
+    );
   };
 
   const handleAiDescribe = async () => {
@@ -365,7 +473,7 @@ export function LogMealSheet() {
       createMeal.mutate({
         mealType: selectedMealType,
         loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
-        items: [customFoodToMealItem({ ...normalized, id: customFoodId })],
+        items: [customFoodToMealItem({ ...normalized, id: customFoodId }, aiPreview.extractionConfidence)],
       });
       setAiPreview(null);
     } catch {
@@ -411,7 +519,7 @@ export function LogMealSheet() {
               fatG: food.fat100g ?? 0,
               fiberG: food.fiber100g ?? 0,
               sugarG: food.sugar100g ?? 0,
-              sodiumMg: food.sodium100g ?? 0,
+              sodiumMg: food.sodiumMg100g ?? 0,
               servingWeightG: 100,
             }
           : it,
@@ -434,6 +542,7 @@ export function LogMealSheet() {
       return mealApi.create({
         mealType: selectedMealType,
         loggedAt: buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute)),
+        notes: mealNotes.trim() || undefined,
         items: [{
           foodName: product.name,
           barcode: product.barcode ?? undefined,
@@ -492,6 +601,8 @@ export function LogMealSheet() {
   };
 
   const resetForm = () => {
+    draftHydrated.current = false;
+    void deleteItem(draftKey);
     setNaturalText("");
     setParsedItems([]);
     setParsedConfigs({});
@@ -505,6 +616,7 @@ export function LogMealSheet() {
     setManualFiber("0");
     setManualSugar("0");
     setManualSodium("0");
+    setMealNotes("");
     setManualServings("1");
     setSearchText("");
     setDebouncedSearch("");
@@ -731,10 +843,48 @@ export function LogMealSheet() {
                 }}
               />
               <Text style={{ fontSize: 11, color: colors.textMuted, marginLeft: 2 }}>
-                {Number(mealHour) >= 12 ? "PM" : "AM"}
+                24h
               </Text>
             </View>
           </View>
+          <TextInput
+            placeholder="Add a note (optional)"
+            placeholderTextColor={colors.textLight}
+            value={mealNotes}
+            onChangeText={setMealNotes}
+            maxLength={1000}
+            multiline
+            accessibilityLabel="Meal notes"
+            style={{
+              minHeight: 42,
+              maxHeight: 80,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.sm,
+              padding: spacing.sm,
+              marginBottom: spacing.md,
+              color: colors.text,
+              backgroundColor: colors.bg,
+              fontSize: 13,
+            }}
+          />
+          {createMeal.isError && createMeal.variables && (
+            <TouchableOpacity
+              onPress={() => createMeal.mutate(createMeal.variables!)}
+              accessibilityRole="button"
+              accessibilityLabel="Retry meal submission"
+              style={{
+                marginBottom: spacing.md,
+                padding: spacing.sm,
+                borderRadius: radius.sm,
+                backgroundColor: colors.danger + "18",
+              }}
+            >
+              <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "700", textAlign: "center" }}>
+                Submission failed — Retry
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* ── Tab bar ── */}
           <View
@@ -983,13 +1133,33 @@ export function LogMealSheet() {
                 return (
                   <View key={idx} style={{ borderWidth: 1, borderColor: colors.borderLight, borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.sm }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <Text style={{ fontWeight: "600", fontSize: 14, color: colors.text, flex: 1 }} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <TouchableOpacity onPress={() => { setSwapIndex(idx); setSubView("swap"); }} style={{ marginLeft: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: "600", fontSize: 14, color: colors.text }} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        {parsedItemWarnings(item).map((w, wIdx) => (
+                          <Text
+                            key={wIdx}
+                            style={{ fontSize: 11, color: uncertaintyColor(w.tone, colors), marginTop: 3 }}
+                          >
+                            {w.text}
+                          </Text>
+                        ))}
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => { setSwapIndex(idx); setSubView("swap"); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Change match for ${item.name}`}
+                        style={{ marginLeft: 8 }}
+                      >
                         <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => removeParsedItem(idx)} style={{ marginLeft: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => removeParsedItem(idx)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${item.name}`}
+                        style={{ marginLeft: 8 }}
+                      >
                         <Ionicons name="close-circle" size={22} color={colors.danger} />
                       </TouchableOpacity>
                     </View>
@@ -1238,6 +1408,28 @@ export function LogMealSheet() {
                   { label: "Protein", value: manualProtein, set: (t: string) => setManualProtein(sanitizeInt(t)), ml: 4 },
                   { label: "Carbs", value: manualCarbs, set: (t: string) => setManualCarbs(sanitizeInt(t)), ml: 4 },
                   { label: "Fat", value: manualFat, set: (t: string) => setManualFat(sanitizeInt(t)), ml: 4 },
+                ].map(({ label, value, set, ml }) => (
+                  <View key={label} style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 2 }}>{label}</Text>
+                    <TextInput
+                      placeholder="0"
+                      value={value}
+                      onChangeText={set}
+                      keyboardType="numeric"
+                      autoCorrect={false}
+                      maxLength={ml}
+                      accessibilityLabel={label}
+                      style={editFieldStyle}
+                    />
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+                {[
+                  { label: "Fiber", value: manualFiber, set: (t: string) => setManualFiber(sanitizeInt(t)), ml: 4 },
+                  { label: "Sugar", value: manualSugar, set: (t: string) => setManualSugar(sanitizeInt(t)), ml: 4 },
+                  { label: "Sodium mg", value: manualSodium, set: (t: string) => setManualSodium(sanitizeInt(t)), ml: 5 },
+                  { label: "Servings", value: manualServings, set: (t: string) => setManualServings(sanitizeDecimal(t)), ml: 4 },
                 ].map(({ label, value, set, ml }) => (
                   <View key={label} style={{ flex: 1 }}>
                     <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 2 }}>{label}</Text>

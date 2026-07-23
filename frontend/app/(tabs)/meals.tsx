@@ -23,16 +23,21 @@ import { SwipeHint } from "../../components/meals/SwipeHint";
 import { MealGroup } from "../../components/meals/MealGroup";
 import { MealFab } from "../../components/meals/MealFab";
 import { useDefaultMealFabActions } from "../../components/meals/useDefaultMealFabActions";
-import type { MealLog } from "../../src/types";
+import { MealTemplatesSheet } from "../../components/meals/MealTemplatesSheet";
+import { saveMealTemplate } from "../../src/utils/mealTemplates";
+import { buildLoggedAt } from "../../src/utils/date";
+import { toast } from "../../src/stores/toast";
+import type { MealLog, MealTemplate } from "../../src/types";
 
 const MEAL_TYPE_ORDER = ["Breakfast", "Lunch", "Dinner", "Snack"];
 
 export default function MealsScreen() {
   const colors = useThemeColors();
+  const [templatesVisible, setTemplatesVisible] = useState(false);
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
   const fabActions = useDefaultMealFabActions();
 
-  const { deleteMeal, removeItem } = useMealMutations();
+  const { createMeal, deleteMeal, removeItem } = useMealMutations();
 
   const {
     data: meals,
@@ -61,6 +66,18 @@ export default function MealsScreen() {
   }, [refetch, refetchSummary]);
 
   const handleEdit = (meal: MealLog) => mealSheet.openEdit(meal);
+  const handleSaveTemplate = async (meal: MealLog) => {
+    await saveMealTemplate(meal);
+    toast.success("Saved as meal template");
+  };
+  const handleUseTemplate = (template: MealTemplate) => {
+    createMeal.mutate({
+      mealType: template.mealType,
+      loggedAt: buildLoggedAt(selectedDate),
+      notes: template.notes,
+      items: template.items,
+    }, { onSuccess: () => setTemplatesVisible(false) });
+  };
   const handleCopy = (meal: MealLog) => mealSheet.openCopy(meal);
   const handleDelete = (mealId: string) => deleteMeal.mutate(mealId);
   const handleSwapItem = (meal: MealLog, idx: number) =>
@@ -94,6 +111,15 @@ export default function MealsScreen() {
 
           <QuickAddRow />
 
+          <TouchableOpacity
+            onPress={() => setTemplatesVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open meal templates"
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.md }}
+          >
+            <Ionicons name="copy-outline" size={17} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>Meal templates</Text>
+          </TouchableOpacity>
           <SwipeHint />
 
           {isLoading ? (
@@ -120,6 +146,7 @@ export default function MealsScreen() {
               <MealGroup
                 key={type}
                 type={type}
+                onSaveTemplate={handleSaveTemplate}
                 meals={typeMeals}
                 totalCalories={typeMeals.reduce((sum, m) => sum + m.totalCalories, 0)}
                 onEdit={handleEdit}
@@ -134,6 +161,11 @@ export default function MealsScreen() {
       </ScrollView>
 
       <MealFab actions={fabActions} />
+      <MealTemplatesSheet
+        visible={templatesVisible}
+        onClose={() => setTemplatesVisible(false)}
+        onUse={handleUseTemplate}
+      />
 
     </SafeScreen>
   );

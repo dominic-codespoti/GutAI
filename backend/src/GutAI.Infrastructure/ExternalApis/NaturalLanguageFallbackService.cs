@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using GutAI.Infrastructure.Data;
@@ -10,13 +11,13 @@ namespace GutAI.Infrastructure.ExternalApis;
 
 public partial class NaturalLanguageFallbackService
 {
-    private readonly IFoodApiService _foodApi;
+    private readonly IFoodSearchService _foodApi;
     private readonly ITableStore _store;
     private readonly ILogger<NaturalLanguageFallbackService> _logger;
 
     private static readonly TimeSpan SearchTimeout = TimeSpan.FromSeconds(4);
 
-    public NaturalLanguageFallbackService(IFoodApiService foodApi, ITableStore store, ILogger<NaturalLanguageFallbackService> logger)
+    public NaturalLanguageFallbackService(IFoodSearchService foodApi, ITableStore store, ILogger<NaturalLanguageFallbackService> logger)
     {
         _foodApi = foodApi;
         _store = store;
@@ -26,70 +27,30 @@ public partial class NaturalLanguageFallbackService
     public virtual async Task<List<ParsedFoodItemDto>> ParseAsync(string text, CancellationToken ct = default)
     {
         var cleaned = PreprocessText(text);
-        var segments = SplitIntoFoodSegments(cleaned);
+        var rawSegments = SplitIntoSegmentsWithJoins(cleaned);
+        var parsedSegments = ParseSegments(rawSegments);
+        var mergedSegments = await MergeConjunctionSegmentsAsync(parsedSegments, ct);
         var results = new List<ParsedFoodItemDto>();
 
-        foreach (var segment in segments)
+        foreach (var seg in mergedSegments)
         {
-            if (string.IsNullOrWhiteSpace(segment))
-                continue;
-
-            var (quantity, unit, foodName) = ExtractQuantityAndFood(segment.Trim());
-
-            if (string.IsNullOrWhiteSpace(foodName))
-                continue;
-
-            var sizeMultiplier = ExtractSizeMultiplier(ref foodName);
-            foodName = CleanFoodName(foodName);
-
-            if (string.IsNullOrWhiteSpace(foodName))
-                continue;
-
             try
             {
-                using var searchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                searchCts.CancelAfter(SearchTimeout);
+                var resolution = seg.Precomputed ?? await TryResolveAsync(seg.FoodName, ct)
+                    ?? new FoodResolutionDto { OriginalQuery = seg.FoodName };
 
-                var searchResults = await _foodApi.SearchAsync(foodName, searchCts.Token);
-                var match = PickBestMatch(searchResults, foodName);
-
-                if (match is not null)
+                if (resolution.Selected is not null)
                 {
-                    var confidence = ComputeConfidence(searchResults, match, foodName);
-                    var unitWeightG = EstimateUnitWeightG(match, unit, foodName) * sizeMultiplier;
-                    var totalWeightG = unitWeightG * quantity;
+                    var match = resolution.Selected;
+                    var unitWeightG = EstimateUnitWeightG(match, seg.Unit, seg.FoodName) * seg.SizeMultiplier;
+                    var totalWeightG = unitWeightG * seg.Quantity;
                     var scale = totalWeightG / 100m;
+                    var portionConfidence = ServingEstimator.EstimatePortionConfidence(match.ServingQuantity, seg.Unit, seg.FoodName);
 
                     Guid? foodProductId = null;
                     try
                     {
-                        var product = new FoodProduct
-                        {
-                            Id = Guid.NewGuid(),
-                            Name = match.Name,
-                            Barcode = match.Barcode,
-                            Brand = match.Brand,
-                            Ingredients = match.Ingredients,
-                            ImageUrl = match.ImageUrl,
-                            NovaGroup = match.NovaGroup,
-                            NutriScore = match.NutriScore,
-                            AllergensTags = match.AllergensTags ?? [],
-                            Calories100g = match.Calories100g,
-                            Protein100g = match.Protein100g,
-                            Carbs100g = match.Carbs100g,
-                            Fat100g = match.Fat100g,
-                            Fiber100g = match.Fiber100g,
-                            Sugar100g = match.Sugar100g,
-                            Sodium100g = match.Sodium100g,
-                            ServingSize = match.ServingSize,
-                            ServingQuantity = match.ServingQuantity,
-                            DataSource = match.DataSource ?? "OpenFoodFacts",
-                            ExternalId = match.ExternalId ?? match.Barcode,
-                            CachedAt = DateTime.UtcNow,
-                            CacheTtlHours = 168
-                        };
-                        await _store.UpsertFoodProductAsync(product, ct);
-                        foodProductId = product.Id;
+                        foodProductId = await FoodProductPersistence.ResolveOrPersistAsync(match, _store, ct);
                     }
                     catch (Exception ex)
                     {
@@ -106,32 +67,137 @@ public partial class NaturalLanguageFallbackService
                         FatG = Round(match.Fat100g, scale),
                         FiberG = Round(match.Fiber100g, scale),
                         SugarG = Round(match.Sugar100g, scale),
-                        SodiumMg = Round(match.Sodium100g, scale),
+                        SodiumMg = Round(match.SodiumMg100g, scale),
                         ServingWeightG = totalWeightG,
-                        ServingSize = FormatServingSize(quantity, unit),
-                        ServingQuantity = quantity,
-                        MatchConfidence = confidence
+                        ServingSize = FormatServingSize(seg.Quantity, seg.Unit),
+                        ServingQuantity = seg.Quantity,
+                        MatchConfidence = resolution.MatchConfidence,
+                        PortionConfidence = portionConfidence,
+                        NutritionProvenance = nameof(NutritionProvenance.Sourced),
+                        ResolutionStatus = resolution.Status.ToString(),
                     });
                 }
                 else
                 {
-                    _logger.LogDebug("No food match found for '{Segment}', using generic estimate", segment);
-                    results.Add(CreateGenericEstimate(foodName, quantity, unit, sizeMultiplier));
+                    // Unresolved: nothing in the catalog had meaningful overlap with this food
+                    // name. Falling back to a generic estimate here (rather than omitting the
+                    // item) matches existing meal-logging UX, but NutritionProvenance.Estimated
+                    // and zero MatchConfidence distinguish it from a real sourced match.
+                    _logger.LogDebug("No food match found for '{FoodName}', using generic estimate", seg.FoodName);
+                    results.Add(CreateGenericEstimate(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier));
                 }
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                _logger.LogWarning("Food search timed out for '{Segment}', using generic estimate", segment);
-                results.Add(CreateGenericEstimate(foodName, quantity, unit, sizeMultiplier));
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to look up food for segment '{Segment}'", segment);
-                results.Add(CreateGenericEstimate(foodName, quantity, unit, sizeMultiplier));
+                _logger.LogWarning(ex, "Failed to process segment '{FoodName}'", seg.FoodName);
+                results.Add(CreateGenericEstimate(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier));
             }
         }
 
         return results;
+    }
+
+    private async Task<FoodResolutionDto?> TryResolveAsync(string foodName, CancellationToken ct)
+    {
+        try
+        {
+            using var searchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            searchCts.CancelAfter(SearchTimeout);
+            return await _foodApi.ResolveAsync(foodName, [], searchCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Food search timed out for '{FoodName}', using generic estimate", foodName);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to look up food for '{FoodName}'", foodName);
+            return null;
+        }
+    }
+
+    private readonly record struct ParsedSegment(
+        string FoodName, decimal Quantity, string Unit, decimal SizeMultiplier, bool JoinedByConjunction, bool HasExplicitQuantity);
+
+    private readonly record struct MergedSegment(
+        string FoodName, decimal Quantity, string Unit, decimal SizeMultiplier, FoodResolutionDto? Precomputed);
+
+    private static List<ParsedSegment> ParseSegments(List<FoodSegment> rawSegments)
+    {
+        var result = new List<ParsedSegment>();
+        foreach (var raw in rawSegments)
+        {
+            var trimmed = raw.Text.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+                continue;
+
+            var hasExplicitQuantity = HasExplicitQuantity(trimmed);
+            var (quantity, unit, foodName) = ExtractQuantityAndFood(trimmed);
+
+            if (string.IsNullOrWhiteSpace(foodName))
+                continue;
+
+            var sizeMultiplier = ExtractSizeMultiplier(ref foodName);
+            foodName = CleanFoodName(foodName);
+
+            if (string.IsNullOrWhiteSpace(foodName))
+                continue;
+
+            result.Add(new ParsedSegment(foodName, quantity, unit, sizeMultiplier, raw.JoinedByConjunction, hasExplicitQuantity));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Real compound dish names ("macaroni and cheese", "fish and chips") get destroyed by
+    /// unconditionally splitting on "and"/"&" — each half is logged as an unrelated food with
+    /// wrong nutrition instead of the one dish it actually names. This merges an "and"/"&"-joined
+    /// pair back into one segment only when: neither side carries its own explicit quantity
+    /// (so they read as one dish name, not two counted items like "2 eggs and a banana"), the
+    /// first half resolves weakly alone, and the combined phrase resolves decisively. Any other
+    /// case (both halves resolve well independently, or the combined phrase doesn't either)
+    /// falls back to treating them as separate items — never silently drops or invents a merge.
+    /// </summary>
+    private async Task<List<MergedSegment>> MergeConjunctionSegmentsAsync(List<ParsedSegment> parsed, CancellationToken ct)
+    {
+        var merged = new List<MergedSegment>();
+        var i = 0;
+        while (i < parsed.Count)
+        {
+            var seg = parsed[i];
+            var canConsiderMerge = i + 1 < parsed.Count
+                && parsed[i + 1].JoinedByConjunction
+                && !seg.HasExplicitQuantity
+                && !parsed[i + 1].HasExplicitQuantity;
+
+            if (!canConsiderMerge)
+            {
+                merged.Add(new MergedSegment(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier, null));
+                i++;
+                continue;
+            }
+
+            var next = parsed[i + 1];
+            var individual = await TryResolveAsync(seg.FoodName, ct);
+            var isWeak = individual is null || individual.Status is FoodResolutionStatus.Unresolved or FoodResolutionStatus.Ambiguous;
+
+            if (isWeak)
+            {
+                var combinedName = $"{seg.FoodName} and {next.FoodName}";
+                var combined = await TryResolveAsync(combinedName, ct);
+                if (combined is not null && combined.Status is FoodResolutionStatus.Exact or FoodResolutionStatus.Probable)
+                {
+                    merged.Add(new MergedSegment(combinedName, seg.Quantity, seg.Unit, seg.SizeMultiplier, combined));
+                    i += 2;
+                    continue;
+                }
+            }
+
+            merged.Add(new MergedSegment(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier, individual));
+            i++;
+        }
+        return merged;
     }
 
     internal static string PreprocessText(string text)
@@ -158,15 +224,49 @@ public partial class NaturalLanguageFallbackService
         return string.IsNullOrEmpty(unit) ? qtyStr : $"{qtyStr} {unit}";
     }
 
-    internal static List<string> SplitIntoFoodSegments(string text)
+    internal readonly record struct FoodSegment(string Text, bool JoinedByConjunction);
+
+    internal static List<string> SplitIntoFoodSegments(string text) =>
+        SplitIntoSegmentsWithJoins(text).Select(s => s.Text).ToList();
+
+    /// <summary>Splits on every recognized separator (same set as before) but additionally
+    /// reports which pairs were joined specifically by "and"/"&" — the only delimiters common
+    /// in real compound dish names — so <see cref="MergeConjunctionSegmentsAsync"/> knows which
+    /// adjacent pairs are merge candidates. Comma/semicolon/period/"then"/"plus"/"with" are
+    /// treated as unambiguous item separators, same as before.</summary>
+    internal static List<FoodSegment> SplitIntoSegmentsWithJoins(string text)
     {
         var normalized = text.Trim();
-        var parts = SplitPattern().Split(normalized);
-        return parts
-            .Select(p => p.Trim())
-            .Select(p => LeadingAndOrPattern().Replace(p, "").Trim())
-            .Where(p => p.Length > 0)
-            .ToList();
+        var parts = SplitPatternCapturing().Split(normalized);
+        var result = new List<FoodSegment>();
+
+        for (var i = 0; i < parts.Length; i += 2)
+        {
+            var raw = parts[i].Trim();
+            var cleaned = LeadingAndOrPattern().Replace(raw, "").Trim();
+            if (cleaned.Length == 0)
+                continue;
+
+            var joinedByConjunction = i > 0 && IsConjunctionDelimiter(parts[i - 1]);
+            result.Add(new FoodSegment(cleaned, joinedByConjunction));
+        }
+
+        return result;
+    }
+
+    private static bool IsConjunctionDelimiter(string delimiter) =>
+        delimiter.Contains("and", StringComparison.OrdinalIgnoreCase) || delimiter.Contains('&');
+
+    /// <summary>True if <paramref name="segment"/> starts with a number, fraction, or word
+    /// quantity ("2", "1/2", "a", "some", ...) — used to tell a genuinely counted item ("2 eggs")
+    /// apart from a bare compound-dish noun phrase ("macaroni") when deciding whether an
+    /// "and"/"&amp;"-joined pair may name one dish instead of two separate items.</summary>
+    internal static bool HasExplicitQuantity(string segment)
+    {
+        var cleaned = LeadingFillerWordPattern().Replace(segment, "").Trim();
+        if (string.IsNullOrWhiteSpace(cleaned))
+            cleaned = segment;
+        return WordQuantityPattern().IsMatch(cleaned) || FractionPattern().IsMatch(cleaned) || NumericQuantityPattern().IsMatch(cleaned);
     }
 
     internal static (decimal quantity, string unit, string foodName) ExtractQuantityAndFood(string segment)
@@ -236,8 +336,12 @@ public partial class NaturalLanguageFallbackService
 
     internal static string CleanFoodName(string foodName)
     {
-        // Remove parenthetical descriptions: "(grilled)", "(raw)", "(cooked)"
-        var result = ParentheticalPattern().Replace(foodName, "").Trim();
+        // Unwrap parenthetical descriptions into plain trailing tokens instead of discarding
+        // them outright — "(grilled)" carries real preparation-method evidence the resolver
+        // needs to distinguish "Grilled chicken breast" from a raw/generic match. Only the
+        // truly non-food trailing phrases below ("on the side") are dropped.
+        var result = ParentheticalPattern().Replace(foodName, m => $" {m.Groups[1].Value.Trim()} ");
+        result = CollapseWhitespacePattern().Replace(result, " ").Trim();
 
         // Strip trailing preposition phrases if the core food was already captured
         // e.g., "chicken on the side" → "chicken"
@@ -291,7 +395,11 @@ public partial class NaturalLanguageFallbackService
             SodiumMg = 0m,
             ServingWeightG = totalG,
             ServingSize = FormatServingSize(quantity, unit),
-            ServingQuantity = quantity
+            ServingQuantity = quantity,
+            MatchConfidence = 0m,
+            PortionConfidence = ServingEstimator.EstimatePortionConfidence(null, unit, foodName),
+            NutritionProvenance = nameof(NutritionProvenance.Estimated),
+            ResolutionStatus = FoodResolutionStatus.Unresolved.ToString(),
         };
     }
 
@@ -375,9 +483,10 @@ public partial class NaturalLanguageFallbackService
     private static decimal Round(decimal? value, decimal scale) =>
         Math.Round((value ?? 0m) * scale, 1);
 
-    // Split on comma, "and", "plus", "with", "&", "+", newline, semicolon, period-followed-by-space, "then"
-    [GeneratedRegex(@"\s*(?:,\s*|\s+and\s+|\s+plus\s+|\s+with\s+|\s+then\s+|\s*&\s*|\s*\+\s*|\s*;\s*|\.\s+|\n+)\s*", RegexOptions.IgnoreCase)]
-    private static partial Regex SplitPattern();
+    // Split on comma, "and", "plus", "with", "&", "+", newline, semicolon, period-followed-by-space, "then" —
+    // captured so SplitIntoSegmentsWithJoins can tell which delimiter joined each pair.
+    [GeneratedRegex(@"\s*(,\s*|\s+and\s+|\s+plus\s+|\s+with\s+|\s+then\s+|\s*&\s*|\s*\+\s*|\s*;\s*|\.\s+|\n+)\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex SplitPatternCapturing();
 
     // Put longer alternations first to avoid partial matches (e.g. "lbs" before "lb", "ounces" before "oz")
     private const string UnitGroup = @"cups?|tablespoons?|tbsp|teaspoons?|tsp|ounces?|oz|grams?|g|kilograms?|kg|lbs|lb|pounds?|slices?|pieces?|milliliters?|ml|liters?|litres?|l|glass(?:es)?|bowls?|handfuls?|servings?|cans?|bottles?|scoops?|bars?|packets?|strips?|fillets?|patt(?:y|ies)|wings?|thighs?|drumsticks?|breasts?|cloves?|stalks?|sprigs?|lea(?:f|ves)|wedges?|chunks?|rings?|sticks?|pints?|quarts?|gallons?|fl\s?oz";
@@ -397,8 +506,11 @@ public partial class NaturalLanguageFallbackService
     [GeneratedRegex(@"^(?:(?:for\s+)?(?:breakfast|lunch|dinner|supper|brunch|snack|my\s+snack|my\s+meal)\s+)?(?:i\s+)?(?:just\s+)?(?:had|ate|eaten|consumed|grabbed|munched|snacked\s+on|drank|drunk|downed)\s+", RegexOptions.IgnoreCase)]
     private static partial Regex LeadingFillerPattern();
 
-    [GeneratedRegex(@"\s*\([^)]*\)\s*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\s*\(([^)]*)\)\s*", RegexOptions.IgnoreCase)]
     private static partial Regex ParentheticalPattern();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex CollapseWhitespacePattern();
 
     [GeneratedRegex(@"\s+(?:on the side|on top|for dessert|for dinner|for lunch|for breakfast|for supper|for snack|this morning|tonight|yesterday|today|last night|earlier)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex TrailingPrepPattern();
@@ -409,189 +521,4 @@ public partial class NaturalLanguageFallbackService
     [GeneratedRegex(@"^(?:and|or)\s+", RegexOptions.IgnoreCase)]
     private static partial Regex LeadingAndOrPattern();
 
-    internal static FoodProductDto? PickBestMatch(List<FoodProductDto> results, string query)
-    {
-        if (results.Count == 0) return null;
-        if (results.Count == 1) return results[0];
-
-        var queryLower = query.ToLowerInvariant().Trim();
-        var queryTokens = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var queryNorm = FoodSearchIndex.NormalizeFoodName(query);
-        var normTokens = queryNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        return results
-            .OrderByDescending(r => ScoreMatch(r, queryLower, queryTokens, queryNorm, normTokens))
-            .First();
-    }
-
-    internal static decimal ComputeConfidence(List<FoodProductDto> results, FoodProductDto chosen, string query)
-    {
-        if (results.Count == 0) return 0m;
-
-        var queryLower = query.ToLowerInvariant().Trim();
-        var queryTokens = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var queryNorm = FoodSearchIndex.NormalizeFoodName(query);
-        var normTokens = queryNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var nameNorm = FoodSearchIndex.NormalizeFoodName(chosen.Name);
-        var nameLower = chosen.Name.ToLowerInvariant();
-
-        if (nameLower == queryLower || nameNorm == queryNorm)
-            return 1.0m;
-
-        var nameNormTokens = nameNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int matched = 0;
-        foreach (var qt in normTokens)
-        {
-            foreach (var nt in nameNormTokens)
-            {
-                if (nt == qt || nt.StartsWith(qt) || qt.StartsWith(nt))
-                { matched++; break; }
-            }
-        }
-        float coverage = normTokens.Length > 0 ? (float)matched / normTokens.Length : 0f;
-
-        if (coverage >= 1f && nameLower.StartsWith(queryLower))
-            return 0.95m;
-        if (coverage >= 1f)
-            return 0.85m;
-        if (coverage >= 0.5f)
-            return 0.6m;
-
-        string[] penaltyTerms = [
-            "frozen", "canned", "dehydrated", "powder", "powdered",
-            "mix", "mixture", "substitute", "imitation", "instant",
-            "baby food", "infant", "formula",
-            "alaska native", "industrial", "fast food",
-            "ns as to", "usda commodity", "as purchased", "not further specified",
-            "nfs", "ready-to-eat", "glucose reduced", "stabilized"
-        ];
-        bool hasPenalty = penaltyTerms.Any(t => nameLower.Contains(t));
-        if (hasPenalty)
-            return Math.Max(0.1m, (decimal)coverage * 0.3m);
-
-        return Math.Max(0.2m, (decimal)coverage * 0.5m);
-    }
-
-    private static double ScoreMatch(FoodProductDto food, string queryLower, string[] queryTokens,
-        string queryNorm, string[] normTokens)
-    {
-        var name = food.Name;
-        var nameLower = name.ToLowerInvariant();
-        var nameNorm = FoodSearchIndex.NormalizeFoodName(name);
-        var nameNormTokens = nameNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        double score = 0;
-
-        // Exact match is perfect
-        if (nameLower == queryLower || nameNorm == queryNorm)
-            return 1000;
-
-        // --- Token coverage (biggest differentiator) ---
-        int matched = 0;
-        foreach (var qt in normTokens)
-        {
-            foreach (var nt in nameNormTokens)
-            {
-                if (nt == qt || nt.StartsWith(qt) || qt.StartsWith(nt))
-                { matched++; break; }
-            }
-        }
-        float coverage = normTokens.Length > 0 ? (float)matched / normTokens.Length : 0f;
-        score += coverage * 80;
-        if (coverage >= 1f) score += 30;
-
-        // --- Token order bonus ---
-        if (normTokens.Length > 1 && matched > 1)
-        {
-            int lastIdx = -1;
-            bool inOrder = true;
-            foreach (var qt in normTokens)
-            {
-                int foundAt = -1;
-                for (int i = 0; i < nameNormTokens.Length; i++)
-                {
-                    if (nameNormTokens[i] == qt || nameNormTokens[i].StartsWith(qt))
-                    { foundAt = i; break; }
-                }
-                if (foundAt >= 0)
-                {
-                    if (foundAt <= lastIdx) { inOrder = false; break; }
-                    lastIdx = foundAt;
-                }
-            }
-            if (inOrder) score += 20;
-        }
-
-        // Strong bonus: name starts with query
-        if (nameLower.StartsWith(queryLower))
-            score += 100;
-        if (nameNorm.StartsWith(queryNorm))
-            score += 80;
-
-        // --- Name length: prefer shorter, non-linear penalty for long ---
-        if (name.Length <= 30)
-            score += Math.Max(0, 50 - name.Length * 0.5);
-        else
-            score += 50 - 15 - (name.Length - 30) * (name.Length - 30) / 40.0;
-
-        // Fewer commas
-        var commaCount = name.Count(c => c == ',');
-        score -= commaCount * 6;
-
-        // Parenthetical penalty
-        var parenCount = name.Count(c => c == '(');
-        score -= parenCount * 8;
-
-        // --- Hard weirdness penalties ---
-        string[] hardPenalty = [
-            "frozen", "canned", "dehydrated", "powder", "powdered",
-            "mix", "mixture", "substitute", "imitation", "instant",
-            "baby food", "infant", "formula",
-            "alaska native", "industrial", "fast food",
-            "ns as to", "usda commodity", "as purchased", "not further specified",
-            "nfs", "ready-to-eat", "glucose reduced", "stabilized"
-        ];
-        foreach (var term in hardPenalty)
-            if (nameLower.Contains(term))
-                score -= 35;
-
-        string[] softPenalty = [
-            "navajo", "hopi", "southwest", "shoshone", "apache",
-            "pasteurized", "restaurant", "commercial", "institutional"
-        ];
-        foreach (var term in softPenalty)
-            if (nameLower.Contains(term))
-                score -= 18;
-
-        // --- Preparation modifier handling ---
-        // For simple queries (1-2 tokens), treat prep terms as secondary
-        string[] prepTerms = ["raw", "fresh", "whole", "plain"];
-        if (queryTokens.Length <= 2)
-        {
-            foreach (var term in prepTerms)
-                if (nameLower.Contains(term))
-                    score += 8;
-        }
-
-        // --- Data quality ---
-        if (food.DataSource == "USDA")
-            score += food.FoodKind == GutAI.Domain.Enums.FoodKind.Branded ? 3 : 10;
-        if (food.Calories100g.HasValue)
-            score += 5;
-        if (food.Protein100g.HasValue && food.Carbs100g.HasValue && food.Fat100g.HasValue)
-            score += 5;
-
-        // --- Nutrition plausibility (delegate to shared implementation) ---
-        score += (double)FoodScoring.NutritionPlausibilityScore(food, queryLower);
-
-        // --- Brand penalty for generic queries ---
-        if (!string.IsNullOrEmpty(food.Brand) && food.Brand.Length > 1)
-        {
-            bool queryMentionsBrand = queryTokens.Any(t =>
-                food.Brand.Contains(t, StringComparison.OrdinalIgnoreCase));
-            if (!queryMentionsBrand)
-                score -= 10;
-        }
-
-        return score;
-    }
 }

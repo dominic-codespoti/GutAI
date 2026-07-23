@@ -79,6 +79,8 @@ export function mapParsedItemToRequest(
     servingUnit: cfg ? `${totalG}g` : (it.servingSize ?? "serving"),
     servingWeightG: totalG,
     foodProductId: it.foodProductId ?? undefined,
+    matchConfidence: it.matchConfidence,
+    nutritionProvenance: it.nutritionProvenance,
     ...scaleNutrition(it, scale),
   };
 }

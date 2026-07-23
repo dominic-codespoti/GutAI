@@ -268,8 +268,8 @@ public class FoodContractTests(GutAiWebFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-        json.AssertHasNumberProperty("fodmapScore");
-        json.AssertHasStringProperty("fodmapRating");
+        json.AssertHasStringProperty("status");
+        json.AssertHasNumberProperty("ingredientScreeningScore");
         json.AssertHasStringProperty("confidence");
         json.AssertHasNumberProperty("triggerCount");
         json.AssertHasNumberProperty("highCount");
@@ -277,6 +277,7 @@ public class FoodContractTests(GutAiWebFactory factory)
         json.AssertHasNumberProperty("lowCount");
         json.AssertHasProperty("categories", JsonValueKind.Array);
         json.AssertHasProperty("triggers", JsonValueKind.Array);
+        json.AssertHasProperty("missingEvidence", JsonValueKind.Array);
         json.AssertHasStringProperty("summary");
     }
 
@@ -351,5 +352,108 @@ public class FoodContractTests(GutAiWebFactory factory)
 
         var deleteResp = await client.DeleteAsync($"/api/food/{productId}");
         deleteResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+    [Fact]
+    public async Task CreateCustomFood_ValidInput_ReturnsCorrectShape()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "Homemade Granola",
+            servingSize = 50,
+            servingSizeUnit = "g",
+            calories = 220,
+            proteinG = 5,
+            carbG = 30,
+            fatG = 8
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("id");
+        json.AssertHasStringProperty("name");
+        json.AssertHasNumberProperty("calories");
+    }
+
+    [Fact]
+    public async Task CreateCustomFood_EmptyName_Returns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "",
+            servingSize = 50,
+            servingSizeUnit = "g",
+            calories = 220,
+            proteinG = 5,
+            carbG = 30,
+            fatG = 8
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("error");
+    }
+
+    [Fact]
+    public async Task CreateCustomFood_NegativeCalories_Returns400()
+    {
+        // Guards against a misread nutrition-label photo (OCR sign errors) or a hand-typed
+        // negative value from ever reaching stored nutrition totals.
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "Bad Data Food",
+            servingSize = 50,
+            servingSizeUnit = "g",
+            calories = -100,
+            proteinG = 5,
+            carbG = 30,
+            fatG = 8
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("error");
+    }
+
+    [Fact]
+    public async Task CreateCustomFood_UnrealisticCalories_Returns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "Implausible Food",
+            servingSize = 50,
+            servingSizeUnit = "g",
+            calories = 999999,
+            proteinG = 5,
+            carbG = 30,
+            fatG = 8
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("error");
+    }
+
+    [Fact]
+    public async Task CreateCustomFood_ZeroServingSize_Returns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "No Serving Food",
+            servingSize = 0,
+            servingSizeUnit = "g",
+            calories = 100,
+            proteinG = 5,
+            carbG = 10,
+            fatG = 2
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("error");
     }
 }

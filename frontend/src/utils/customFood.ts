@@ -23,6 +23,7 @@ export function normalizeCustomFood(data: AiGeneratedFood): CustomFood {
 
 export function customFoodToMealItem(
   food: CustomFood & { id?: string },
+  aiExtractionConfidence?: number | null,
 ): CreateMealItemRequest {
   return {
     foodName: food.name,
@@ -37,5 +38,11 @@ export function customFoodToMealItem(
     fiberG: food.fiberG ?? 0,
     sugarG: food.sugarG ?? 0,
     sodiumMg: food.sodiumMg ?? 0,
+    // Carries the AI extraction confidence through so a meal logged straight from an
+    // uncertain photo/description generation doesn't look identical to a manually
+    // entered, fully-deterministic item to the symptom-association engine. Undefined
+    // (not 0) for manual entry — a real "no confidence signal" case, not "zero confidence".
+    matchConfidence: aiExtractionConfidence ?? undefined,
+    nutritionProvenance: aiExtractionConfidence != null ? "Estimated" : undefined,
   };
 }

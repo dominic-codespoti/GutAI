@@ -4,13 +4,15 @@ using System.Text.Json.Serialization;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Constants;
+using GutAI.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.ExternalApis;
 
-public class OpenFoodFactsClient : IFoodApiService
+public class OpenFoodFactsClient : IFoodProvider
 {
     public string SourceName => DataSources.OpenFoodFacts;
+    public FoodProviderCapabilities Capabilities => FoodProviderCapabilities.Search | FoodProviderCapabilities.Barcode;
 
     private readonly HttpClient _http;
     private readonly ILogger<OpenFoodFactsClient> _logger;
@@ -99,7 +101,7 @@ public class OpenFoodFactsClient : IFoodApiService
         }
     }
 
-    public async Task<List<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
+    public async Task<IReadOnlyList<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
     {
         try
         {
@@ -218,10 +220,14 @@ public class OpenFoodFactsClient : IFoodApiService
             Fat100g = p.Nutriments?.Fat100g,
             Fiber100g = p.Nutriments?.Fiber100g,
             Sugar100g = p.Nutriments?.Sugars100g,
-            Sodium100g = p.Nutriments?.Sodium100g,
+            SodiumMg100g = p.Nutriments?.SodiumMg100g * 1000m,
             ServingSize = p.ServingSize,
             ServingQuantity = p.ServingQuantity,
             DataSource = DataSources.OpenFoodFacts,
+            SourceVersion = "live-api",
+            LicenseType = "Open Food Facts ODbL",
+            Attribution = "Open Food Facts",
+            RetrievedAt = DateTime.UtcNow,
             FoodKind = GutAI.Domain.Enums.FoodKind.Branded,
             SourceUrl = barcode is not null ? $"https://world.openfoodfacts.org/product/{barcode}" : null,
             ExternalId = barcode ?? p.Code,
@@ -273,5 +279,5 @@ public record OffNutriments
     [JsonPropertyName("sugars_100g")]
     public decimal? Sugars100g { get; init; }
     [JsonPropertyName("sodium_100g")]
-    public decimal? Sodium100g { get; init; }
+    public decimal? SodiumMg100g { get; init; }
 }

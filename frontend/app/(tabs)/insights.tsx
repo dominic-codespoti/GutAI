@@ -552,6 +552,11 @@ export default function InsightsScreen() {
                           color: colors.secondary,
                         },
                         {
+                          val: `${c.baselineFrequencyPercent.toFixed(0)}%`,
+                          label: "baseline",
+                          color: colors.textMuted,
+                        },
+                        {
                           val: c.averageSeverity.toFixed(1),
                           label: "severity",
                           color: severityColor(c.averageSeverity),
@@ -570,6 +575,19 @@ export default function InsightsScreen() {
                         </View>
                       ))}
                     </View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: colors.textMuted,
+                        marginTop: spacing.sm,
+                        lineHeight: 15,
+                      }}
+                    >
+                      {c.attributionMethod === "UserLinked"
+                        ? "Based on symptoms you linked directly to this meal."
+                        : "Inferred from a 1-6 hour onset window, not user-confirmed."}
+                      {c.limitations.length > 0 ? ` ${c.limitations.join(" ")}` : ""}
+                    </Text>
                   </View>
                 ))}
                 {correlations.length > 5 && (

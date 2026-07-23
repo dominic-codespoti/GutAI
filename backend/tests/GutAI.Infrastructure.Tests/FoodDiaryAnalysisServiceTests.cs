@@ -43,7 +43,7 @@ public class FoodDiaryAnalysisServiceTests
         result.TotalMealsAnalyzed.Should().Be(1);
         result.TotalSymptomsAnalyzed.Should().Be(0);
         result.PatternsFound.Should().Be(0);
-        result.Summary.Should().Contain("No symptoms were reported");
+        result.Summary.Should().Contain("incomplete logging cannot establish tolerance");
     }
 
     // ─── AnalyzeAsync — correlations ───────────────────────────────────
@@ -100,7 +100,38 @@ public class FoodDiaryAnalysisServiceTests
     // ─── Confidence levels ─────────────────────────────────────────────
 
     [Fact]
-    public async Task Analyze_HighConfidence_When5PlusOccurrencesAndHighSeverity()
+    public async Task Analyze_HighConfidence_When10PlusExposuresAndFullAssociation()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var from = DateOnly.FromDateTime(now.AddDays(-60));
+        var to = DateOnly.FromDateTime(now);
+
+        var meals = new List<MealLog>();
+        var symptoms = new List<SymptomLog>();
+        for (int i = 0; i < 10; i++)
+        {
+            var mealTime = now.AddDays(-55 + i * 5);
+            meals.AddRange(MakeMeals(userId, mealTime, "Garlic Bread"));
+            symptoms.AddRange(MakeSymptoms(userId, mealTime.AddHours(3), "Bloating", 7));
+        }
+
+        // Baseline (non-exposure) meals with no symptom nearby — without a comparison group,
+        // confidence is capped at Medium regardless of how many times the food was eaten.
+        for (int i = 0; i < 5; i++)
+            meals.AddRange(MakeMeals(userId, now.AddDays(-58 + i * 5), "Rice"));
+
+        var store = MockTableStoreFactory.Create(meals: meals, symptoms: symptoms).Object;
+        var result = await _sut.AnalyzeAsync(userId, from, to, store);
+
+        var pattern = result.Patterns.First(p => p.FoodName == "Garlic Bread");
+        pattern.Confidence.Should().Be("High");
+        pattern.ExposureMeals.Should().BeGreaterOrEqualTo(10);
+        pattern.AssociationRatePercent.Should().Be(100m);
+    }
+
+    [Fact]
+    public async Task Analyze_MediumConfidence_WhenModerateExposureBelowHighThreshold()
     {
         var userId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -120,8 +151,11 @@ public class FoodDiaryAnalysisServiceTests
         var result = await _sut.AnalyzeAsync(userId, from, to, store);
 
         var pattern = result.Patterns.First(p => p.FoodName == "Garlic Bread");
-        pattern.Confidence.Should().Be("High");
+        pattern.Confidence.Should().Be("Medium");
         pattern.Occurrences.Should().BeGreaterOrEqualTo(5);
+        pattern.ExposureMeals.Should().BeGreaterOrEqualTo(5);
+        pattern.ExposureMeals.Should().BeLessThan(10);
+        pattern.AssociationRatePercent.Should().Be(100m);
     }
 
     [Fact]
@@ -140,6 +174,63 @@ public class FoodDiaryAnalysisServiceTests
 
         var pattern = result.Patterns.First(p => p.FoodName == "Sushi");
         pattern.Confidence.Should().Be("Low");
+    }
+
+    [Fact]
+    public async Task Analyze_CappedAtMedium_WhenNoBaselineMealsExist()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var from = DateOnly.FromDateTime(now.AddDays(-60));
+        var to = DateOnly.FromDateTime(now);
+
+        // 12 exposures with a symptom every time would ordinarily clear the "High"
+        // support/rate thresholds, but every logged meal contains this food — there is no
+        // baseline (non-exposure) period to compare against, so confidence must be capped.
+        var meals = new List<MealLog>();
+        var symptoms = new List<SymptomLog>();
+        for (int i = 0; i < 12; i++)
+        {
+            var mealTime = now.AddDays(-55 + i * 4);
+            meals.AddRange(MakeMeals(userId, mealTime, "Oatmeal"));
+            symptoms.AddRange(MakeSymptoms(userId, mealTime.AddHours(3), "Bloating", 7));
+        }
+
+        var store = MockTableStoreFactory.Create(meals: meals, symptoms: symptoms).Object;
+        var result = await _sut.AnalyzeAsync(userId, from, to, store);
+
+        var pattern = result.Patterns.First(p => p.FoodName == "Oatmeal");
+        pattern.Confidence.Should().Be("Medium");
+        pattern.Explanation.Should().Contain("baseline");
+    }
+
+    [Fact]
+    public async Task Analyze_CoConsumedFood_SurfacesLimitationInExplanation()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var from = DateOnly.FromDateTime(now.AddDays(-40));
+        var to = DateOnly.FromDateTime(now);
+
+        var meals = new List<MealLog>();
+        var symptoms = new List<SymptomLog>();
+        for (int i = 0; i < 5; i++)
+        {
+            var mealTime = now.AddDays(-35 + i * 5);
+            // Pizza and Garlic Bread are always logged together — neither can be singled
+            // out as responsible from this data alone.
+            meals.AddRange(MakeMeals(userId, mealTime, "Pizza", "Garlic Bread"));
+            symptoms.AddRange(MakeSymptoms(userId, mealTime.AddHours(3), "Bloating", 6));
+        }
+        // A handful of baseline meals without either food, so confidence isn't itself capped.
+        for (int i = 0; i < 4; i++)
+            meals.AddRange(MakeMeals(userId, now.AddDays(-33 + i * 5), "Rice"));
+
+        var store = MockTableStoreFactory.Create(meals: meals, symptoms: symptoms).Object;
+        var result = await _sut.AnalyzeAsync(userId, from, to, store);
+
+        var pizza = result.Patterns.First(p => p.FoodName == "Pizza");
+        pizza.Explanation.Should().Contain("Garlic Bread");
     }
 
     // ─── Timing insights ───────────────────────────────────────────────
@@ -283,7 +374,8 @@ public class FoodDiaryAnalysisServiceTests
         var result = await _sut.GetEliminationStatusAsync(userId, store);
 
         result.Phase.Should().Be("Assessment");
-        result.FoodsToEliminate.Should().Contain("Garlic Bread");
+        result.FoodsToEliminate.Should().BeEmpty();
+        result.FoodsToReintroduce.Should().Contain("Garlic Bread");
     }
 
     [Fact]

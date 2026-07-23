@@ -2,14 +2,16 @@ using System.Net.Http.Json;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Constants;
+using GutAI.Domain.Enums;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.ExternalApis;
 
-public class UsdaFoodDataClient : IFoodApiService
+public class UsdaFoodDataClient : IFoodProvider
 {
     public string SourceName => DataSources.Usda;
+    public FoodProviderCapabilities Capabilities => FoodProviderCapabilities.Search;
 
     private readonly HttpClient _http;
     private readonly ILogger<UsdaFoodDataClient> _logger;
@@ -27,7 +29,7 @@ public class UsdaFoodDataClient : IFoodApiService
         return Task.FromResult<FoodProductDto?>(null);
     }
 
-    public async Task<List<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
+    public async Task<IReadOnlyList<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
@@ -88,8 +90,12 @@ public class UsdaFoodDataClient : IFoodApiService
                     Fat100g = Nutrient(f, 1004),
                     Fiber100g = Nutrient(f, 1079),
                     Sugar100g = Nutrient(f, 2000),
-                    Sodium100g = Nutrient(f, 1093) is decimal mg ? mg / 1000m : null,
+                    SodiumMg100g = Nutrient(f, 1093),
                     DataSource = DataSources.Usda,
+                    SourceVersion = "live-api",
+                    LicenseType = "USDA FoodData Central terms",
+                    Attribution = "USDA FoodData Central",
+                    RetrievedAt = DateTime.UtcNow,
                     SourceUrl = $"https://fdc.nal.usda.gov/fdc-app.html#/food-details/{f.FdcId}/nutrients",
                     ExternalId = f.FdcId.ToString()
                 };

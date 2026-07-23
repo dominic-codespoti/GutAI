@@ -90,6 +90,29 @@ internal static class ServingEstimator
         return EstimateDefaultServingG(foodName);
     }
 
+    /// <summary>
+    /// Confidence tier for the portion-weight estimate <see cref="EstimateUnitWeightG"/> would
+    /// produce for the same inputs — mirrors its branches exactly so the two never disagree
+    /// about which estimation path was taken. An explicit weight unit is a deterministic unit
+    /// conversion (no estimation); a bare noun with no product serving data is a pure guess.
+    /// </summary>
+    internal static decimal EstimatePortionConfidence(decimal? productServingQty, string unit, string foodName)
+    {
+        if (!string.IsNullOrEmpty(unit) && IsWeightUnit(unit))
+            return 1.0m;
+
+        if (!string.IsNullOrEmpty(unit) && IsVolumeUnit(unit))
+            return 0.75m;
+
+        if (!string.IsNullOrEmpty(unit) && IsCountUnit(unit))
+            return productServingQty is > 0 ? 0.7m : 0.4m;
+
+        if (productServingQty is > 0)
+            return 0.6m;
+
+        return 0.3m;
+    }
+
     internal static decimal EstimateCupWeightG(string foodName)
     {
         var lower = foodName.ToLowerInvariant();

@@ -83,7 +83,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
         {
             try
             {
-                var modelName = _config["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
+                var modelName = ResolveVisionDeploymentName(_config);
                 _logger?.LogInformation("LLM fallback starting with deployment {DeploymentName}.", modelName);
 
                 // Create new stream for LLM to avoid potential position issues
@@ -458,8 +458,13 @@ public class ContentUnderstandingService : IContentUnderstandingService
     internal static string ResolveTextDeploymentName(IConfiguration? config)
         => config?["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
 
+    /// <summary>Falls back onto the same deployment used for text completions when no
+    /// dedicated vision deployment is configured — a hardcoded model name here would
+    /// silently point at a deployment that may not exist on a given Azure OpenAI resource,
+    /// even though the configured text deployment (already proven reachable) is equally
+    /// capable of multimodal (vision) input for the common single-deployment setup.</summary>
     internal static string ResolveVisionDeploymentName(IConfiguration? config)
-        => config?["AzureOpenAI:VisionDeploymentName"] ?? "gpt-4o";
+        => config?["AzureOpenAI:VisionDeploymentName"] ?? ResolveTextDeploymentName(config);
 
     internal static void FinalizeGeneratedFood(CustomFoodDto dto, string? fallbackName = null)
     {

@@ -150,6 +150,34 @@ public class PersonalizedScoringServiceTests
     }
 
     [Fact]
+    public async Task AllergenMatch_CapsCompositeAtAvoid()
+    {
+        var userId = Guid.NewGuid();
+        var product = MakeProduct("Peanut Snack", "peanuts", novaGroup: 1, fiber: 8m, allergensTags: ["en:peanuts"]);
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "test@test.com", Allergies = ["peanuts"] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.CompositeScore.Should().BeLessThan(20);
+        result.Rating.Should().Be("Avoid");
+        result.Summary.Should().Contain("matches an allergen");
+    }
+
+    [Fact]
+    public async Task MissingAllergenData_IsDisclosed()
+    {
+        var userId = Guid.NewGuid();
+        var product = MakeProduct("Unlabelled Food", "rice");
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "test@test.com", Allergies = ["peanuts"] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.PersonalWarnings.Should().Contain(warning => warning.Contains("unavailable"));
+        result.Explanations.Single(explanation => explanation.Component == "Allergen Match")
+            .Explanation.Should().Contain("cannot establish safety");
+    }
+
+    [Fact]
     public async Task NoAllergenMatch_FullScore()
     {
         var userId = Guid.NewGuid();
@@ -373,7 +401,22 @@ public class PersonalizedScoringServiceTests
         var result = await _sut.ScoreAsync(product, userId, store);
 
         result.CompositeScore.Should().BeGreaterOrEqualTo(0);
-        result.CompositeScore.Should().BeLessOrEqualTo(100);
+        result.CompositeScore.Should().BeLessOrEqualTo(19); // allergen match caps the Avoid band
+        result.Rating.Should().Be("Avoid");
+    }
+
+    [Fact]
+    public async Task FodmapIngredients_DoNotAlsoReduceAdditiveComponent()
+    {
+        var product = MakeProduct("Garlic Rice", "rice, garlic", novaGroup: 1, fiber: 3m);
+        var store = MockTableStoreFactory.Create().Object;
+
+        var result = await _sut.ScoreAsync(product, Guid.NewGuid(), store);
+
+        result.FodmapComponent.Should().BeLessThan(100);
+        result.AdditiveRiskComponent.Should().Be(100);
+        result.Explanations.Single(explanation => explanation.Component == "Sugar Alcohols")
+            .Weight.Should().Be(0);
     }
 
     // ─── Weight calculations ───────────────────────────────────────────

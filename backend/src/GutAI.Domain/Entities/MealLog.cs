@@ -15,6 +15,8 @@ public class MealLog
     public decimal TotalCarbsG { get; set; }
     public decimal TotalFatG { get; set; }
     public string? OriginalText { get; set; }
+    public int CorrectionCount { get; set; }
+    public DateTime? LastCorrectedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public bool IsDeleted { get; set; }

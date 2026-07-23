@@ -14,7 +14,7 @@ public class GutRiskServiceTests
         List<FoodAdditiveDto>? additives = null,
         string? ingredients = null,
         int? novaGroup = null,
-        decimal? sodium100g = null,
+        decimal? sodiumMg100g = null,
         decimal? sugar100g = null,
         decimal? fiber100g = null) => new()
         {
@@ -24,7 +24,7 @@ public class GutRiskServiceTests
             Additives = additives ?? [],
             Ingredients = ingredients,
             NovaGroup = novaGroup,
-            Sodium100g = sodium100g,
+            SodiumMg100g = sodiumMg100g,
             Sugar100g = sugar100g,
             Fiber100g = fiber100g,
         };
@@ -40,7 +40,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().Be("Good");
         result.FlagCount.Should().Be(0);
         result.Flags.Should().BeEmpty();
-        result.Summary.Should().Contain("gut-friendly");
+        result.Summary.Should().Contain("does not prove");
     }
 
     // ─── Additive Tags Matching ────────────────────────────────────────
@@ -282,7 +282,7 @@ public class GutRiskServiceTests
     [Fact]
     public void HighSodium_Above600mg_Flagged()
     {
-        var result = _sut.Assess(MakeProduct(sodium100g: 0.7m)); // 700mg
+        var result = _sut.Assess(MakeProduct(sodiumMg100g: 700m)); // 700mg
 
         result.Flags.Should().ContainSingle();
         result.Flags[0].Name.Should().Be("High Sodium");
@@ -293,7 +293,7 @@ public class GutRiskServiceTests
     [Fact]
     public void NormalSodium_NotFlagged()
     {
-        var result = _sut.Assess(MakeProduct(sodium100g: 0.3m)); // 300mg
+        var result = _sut.Assess(MakeProduct(sodiumMg100g: 300m)); // 300mg
 
         result.Flags.Should().BeEmpty();
     }
@@ -301,7 +301,7 @@ public class GutRiskServiceTests
     [Fact]
     public void ExactThresholdSodium_600mg_NotFlagged()
     {
-        var result = _sut.Assess(MakeProduct(sodium100g: 0.6m));
+        var result = _sut.Assess(MakeProduct(sodiumMg100g: 600m));
 
         result.Flags.Should().BeEmpty();
     }
@@ -447,7 +447,7 @@ public class GutRiskServiceTests
     {
         var result = _sut.Assess(MakeProduct());
 
-        result.Summary.Should().Contain("gut-friendly");
+        result.Summary.Should().Contain("does not prove");
     }
 
     [Fact]
@@ -455,7 +455,7 @@ public class GutRiskServiceTests
     {
         var result = _sut.Assess(MakeProduct(additivesTags: ["en:e433"]));
 
-        result.Summary.Should().Contain("digestive sensitivities may want to explore alternatives");
+        result.Summary.Should().Contain("dose- and person-dependent");
     }
 
     [Fact]
@@ -463,7 +463,7 @@ public class GutRiskServiceTests
     {
         var result = _sut.Assess(MakeProduct(additivesTags: ["en:e955"]));
 
-        result.Summary.Should().Contain("digestive sensitivities may want to be mindful");
+        result.Summary.Should().Contain("not a diagnosis or proof of harm");
     }
 
     // ─── Flag Ordering ─────────────────────────────────────────────────
@@ -488,7 +488,7 @@ public class GutRiskServiceTests
             additivesTags: ["en:e951", "en:e950", "en:e338", "en:e150d"],
             ingredients: "carbonated water, aspartame, acesulfame k, phosphoric acid, caramel color",
             novaGroup: 4,
-            sodium100g: 0.02m,
+            sodiumMg100g: 20m,
             sugar100g: 0m));
 
         result.FlagCount.Should().BeGreaterOrEqualTo(3);
@@ -520,7 +520,7 @@ public class GutRiskServiceTests
             ingredients: "rolled oats, water, salt",
             novaGroup: 1,
             fiber100g: 10m,
-            sodium100g: 0.005m,
+            sodiumMg100g: 5m,
             sugar100g: 0.5m));
 
         result.GutScore.Should().Be(100);
@@ -535,7 +535,7 @@ public class GutRiskServiceTests
             additivesTags: ["en:e250", "en:e252"],
             ingredients: "pork, water, salt, sodium nitrite, potassium nitrate, dextrose",
             novaGroup: 4,
-            sodium100g: 1.2m));
+            sodiumMg100g: 1200m));
 
         result.Flags.Should().Contain(f => f.Name == "Sodium Nitrite");
         result.Flags.Should().Contain(f => f.Name == "Ultra-Processed Food");
@@ -584,7 +584,7 @@ public class GutRiskServiceTests
     [Fact]
     public void NullSodium_NotFlagged()
     {
-        var result = _sut.Assess(MakeProduct(sodium100g: null));
+        var result = _sut.Assess(MakeProduct(sodiumMg100g: null));
 
         result.Flags.Should().NotContain(f => f.Code == "HIGH-NA");
     }
@@ -1408,7 +1408,7 @@ public class GutRiskServiceTests
     [Fact]
     public void Flag_Sodium_HasNutrientTriggerType()
     {
-        var result = _sut.Assess(MakeProduct(sodium100g: 0.8m));
+        var result = _sut.Assess(MakeProduct(sodiumMg100g: 800m));
 
         result.Flags[0].TriggerType.Should().Be("Nutrient");
     }
@@ -1721,9 +1721,13 @@ public class GutRiskServiceTests
     }
 
     // ─── v1.5: Confidence Heuristic ────────────────────────────────────
+    // ComputeConfidence is a ceiling on how much the rule-based screen can claim to know,
+    // not a function of flag count: any ingredient or additive data caps at "Medium",
+    // and only whole foods with no ingredient/additive data at all can differ (Medium if
+    // from a trusted whole-food source, Low otherwise). "High" is never returned.
 
     [Fact]
-    public void Confidence_NoFodmapFlags_ReturnsHigh()
+    public void Confidence_AnyAdditiveTagPresent_ReturnsMedium()
     {
         var result = _sut.Assess(MakeProduct(additivesTags: ["en:e433"]));
 
@@ -1731,39 +1735,50 @@ public class GutRiskServiceTests
     }
 
     [Fact]
-    public void Confidence_TwoFodmapFlags_ReturnsMedium()
+    public void Confidence_AnyIngredientsPresent_ReturnsMedium_RegardlessOfFlagCount()
     {
-        // 2 FODMAP flags: onion (Fructans) + skim milk (Lactose)
-        var result = _sut.Assess(MakeProduct(ingredients: "water, onion, skim milk, salt"));
+        var singleFlag = _sut.Assess(MakeProduct(ingredients: "water, onion, salt"));
+        var threeFlags = _sut.Assess(MakeProduct(ingredients: "water, onion, skim milk, honey, salt"));
+
+        singleFlag.Confidence.Should().Be("Medium");
+        threeFlags.Confidence.Should().Be("Medium");
+    }
+
+    [Fact]
+    public void Confidence_NoIngredientsNoAdditives_TrustedWholeFoodSource_ReturnsMedium()
+    {
+        var product = MakeProduct() with
+        {
+            DataSource = "USDA",
+            FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
+        };
+
+        var result = _sut.Assess(product);
 
         result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
-    public void Confidence_ThreeFodmapFlags_ReturnsLow()
+    public void Confidence_NoIngredientsNoAdditives_UntrustedBrandedSource_ReturnsLow()
     {
-        // 3+ FODMAP flags: onion (Fructans) + skim milk (Lactose) + honey (ExcessFructose)
-        var result = _sut.Assess(MakeProduct(ingredients: "water, onion, skim milk, honey, salt"));
+        var product = MakeProduct() with
+        {
+            DataSource = "OpenFoodFacts",
+            FoodKind = GutAI.Domain.Enums.FoodKind.Branded,
+        };
 
-        result.Confidence.Should().Be("Medium");
+        var result = _sut.Assess(product);
+
+        result.Confidence.Should().Be("Low");
     }
 
     [Fact]
-    public void Confidence_OneBroadTerm_ReturnsMedium()
+    public void Confidence_NeverReturnsHigh()
     {
-        // "Onion" is a broad term
-        var result = _sut.Assess(MakeProduct(ingredients: "water, onion, salt"));
+        var wellDocumented = _sut.Assess(MakeProduct(
+            ingredients: "Water, wheat flour, sugar, palm oil, salt, emulsifier (soy lecithin), natural flavouring."));
 
-        result.Confidence.Should().Be("Medium");
-    }
-
-    [Fact]
-    public void Confidence_TwoBroadTerms_ReturnsLow()
-    {
-        // "Onion" + "Garlic" = 2 broad terms
-        var result = _sut.Assess(MakeProduct(ingredients: "water, onion, garlic, salt"));
-
-        result.Confidence.Should().Be("Medium");
+        wellDocumented.Confidence.Should().NotBe("High");
     }
 
     // ─── v1.5: DoseSensitiveFlagsCount ─────────────────────────────────
@@ -1821,7 +1836,7 @@ public class GutRiskServiceTests
     public void IbsWeighting_NutrientPenalty_LessThan5()
     {
         // High sodium = Nutrient, Low → 5 × 0.8 = 4 penalty
-        var result = _sut.Assess(MakeProduct(sodium100g: 3m));
+        var result = _sut.Assess(MakeProduct(sodiumMg100g: 3000m));
 
         // Single low Nutrient flag: score = 100 - 4 = 96
         result.GutScore.Should().Be(96);
@@ -1902,7 +1917,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.FodmapClass == "Fructans");
         result.Flags.Should().Contain(f => f.Code == "STACK-FRUCTAN");
         result.Flags.Should().Contain(f => f.Code == "AMP-DOSE"); // "powder" keyword
-        result.Confidence.Should().Be("High"); // detailed ingredients (>50 chars, has commas)
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2413,7 +2428,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Xylitol");
         result.Flags.Where(f => f.FodmapClass == "Polyols").Should().HaveCountGreaterThanOrEqualTo(3);
         result.Flags.Should().Contain(f => f.Code == "STACK-POLYOL");
-        result.Confidence.Should().BeOneOf("High", "Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2427,7 +2442,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Sorbitol");
         result.Flags.Should().Contain(f => f.Name == "Mannitol");
         result.Flags.Should().Contain(f => f.Code == "STACK-POLYOL");
-        result.Confidence.Should().BeOneOf("High", "Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── C. Fructans — Powders, Extracts, Seasoning, Hidden ───────────
@@ -2444,7 +2459,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Garlic Powder");
         result.Flags.Should().Contain(f => f.Code == "STACK-FRUCTAN");
         result.Flags.Should().Contain(f => f.Category == "Hidden FODMAP Risk");
-        result.Confidence.Should().BeOneOf("Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2472,7 +2487,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Poor", "Bad");
         result.Flags.Should().Contain(f => f.Name == "Garlic Extract" && f.FodmapClass == "Fructans");
         result.Flags.Should().Contain(f => f.Name == "Onion Flavour" && f.FodmapClass == "Fructans");
-        result.Confidence.Should().BeOneOf("Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2485,7 +2500,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Good", "Fair", "Poor");
         result.Flags.Should().Contain(f => f.Name == "Rye" && f.FodmapClass == "Fructans");
         result.Flags.Should().Contain(f => f.Name == "Barley" && f.FodmapClass == "Fructans");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── D. GOS (Legumes/Soy/Cashew/Pistachio) ────────────────────────
@@ -2499,7 +2514,7 @@ public class GutRiskServiceTests
 
         result.GutRating.Should().BeOneOf("Fair", "Poor", "Bad");
         result.Flags.Should().Contain(f => f.Name == "Chickpea Flour" && f.FodmapClass == "GOS");
-        result.Confidence.Should().BeOneOf("Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2514,7 +2529,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Chickpea" && f.FodmapClass == "GOS");
         result.Flags.Should().Contain(f => f.Name == "Kidney Bean" && f.FodmapClass == "GOS");
         result.Flags.Should().Contain(f => f.Code == "STACK-GOS");
-        result.Confidence.Should().BeOneOf("Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2527,7 +2542,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Fair", "Poor", "Bad");
         result.Flags.Should().Contain(f => f.Name == "Soy Protein Isolate" && f.FodmapClass == "GOS");
         result.Flags.Should().Contain(f => f.Code == "AMP-DOSE");
-        result.Confidence.Should().BeOneOf("Low", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2545,7 +2560,7 @@ public class GutRiskServiceTests
             .Where(f => f.TriggerType == "Fodmap" && f.FodmapClass != "")
             .Select(f => f.FodmapClass).Distinct().Count();
         fodmapClasses.Should().BeGreaterThanOrEqualTo(2);
-        result.Confidence.Should().BeOneOf("High", "Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2557,7 +2572,7 @@ public class GutRiskServiceTests
 
         result.GutRating.Should().BeOneOf("Good", "Fair", "Poor");
         result.Flags.Should().Contain(f => f.Name == "Pistachio" && f.FodmapClass == "GOS");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── E. Lactose / Dairy Powders ────────────────────────────────────
@@ -2585,7 +2600,7 @@ public class GutRiskServiceTests
 
         result.GutRating.Should().BeOneOf("Fair", "Poor");
         result.Flags.Should().Contain(f => f.Name == "Whey Concentrate" && f.FodmapClass == "Lactose");
-        result.Confidence.Should().BeOneOf("Medium", "Low");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2599,7 +2614,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Casein" && f.FodmapClass == "Lactose");
         result.Flags.First(f => f.Name == "Casein").RiskLevel.Should().Be("Low");
         result.GutRating.Should().NotBe("Bad");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── F. Excess Fructose ────────────────────────────────────────────
@@ -2629,7 +2644,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Apple Juice" && f.FodmapClass == "ExcessFructose");
         result.Flags.Should().Contain(f => f.Name == "Fruit Juice Concentrate" && f.FodmapClass == "ExcessFructose");
         result.Flags.Should().Contain(f => f.Name == "Mango" && f.FodmapClass == "ExcessFructose");
-        result.Confidence.Should().BeOneOf("Low", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2642,7 +2657,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Good", "Fair", "Poor");
         result.Flags.Should().Contain(f => f.Name == "Fructose" && f.FodmapClass == "ExcessFructose");
         result.Flags.Should().Contain(f => f.Category == "Hidden FODMAP Risk");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── G. Polyol Natural Sources ─────────────────────────────────────
@@ -2657,7 +2672,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Good", "Fair", "Poor", "Bad");
         result.Flags.Should().Contain(f => f.Name == "Prune" && f.FodmapClass == "Polyols");
         result.Flags.First(f => f.Name == "Prune").RiskLevel.Should().Be("High");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2691,7 +2706,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Xanthan Gum");
         result.Flags.Should().Contain(f => f.Code == "STACK-HYDROCOL");
         result.Flags.Should().Contain(f => f.Code == "AMP-DOSE");
-        result.Confidence.Should().Be("High");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2707,7 +2722,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Polydextrose");
         result.Flags.Should().Contain(f => f.Name == "Xanthan Gum");
         result.Flags.Should().Contain(f => f.Code == "STACK-POLYOL");
-        result.Confidence.Should().BeOneOf("Low", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── I. Additive Sanity ───────────────────────────────────────────
@@ -2725,7 +2740,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == "Polysorbate 80");
         result.Flags.Should().Contain(f => f.Name == "Mono- and Diglycerides");
         result.Flags.Should().Contain(f => f.Code == "STACK-EMUL");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2739,7 +2754,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Good", "Fair", "Poor");
         result.Flags.Should().Contain(f => f.Name == "Potassium Metabisulfite" && f.Category == "Preservative/Sulfite");
         result.Flags.Should().Contain(f => f.Name == "Apricot" && f.FodmapClass == "Polyols");
-        result.Confidence.Should().BeOneOf("High", "Medium");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── J. Non-FODMAP IBS Triggers ────────────────────────────────────
@@ -2753,7 +2768,7 @@ public class GutRiskServiceTests
 
         result.GutRating.Should().BeOneOf("Fair", "Poor");
         result.Flags.Should().Contain(f => f.Category == "Stimulant/Motility");
-        result.Confidence.Should().BeOneOf("Medium", "High");
+        result.Confidence.Should().Be("Medium");
     }
 
     [Fact]
@@ -2766,7 +2781,7 @@ public class GutRiskServiceTests
         result.GutRating.Should().BeOneOf("Fair", "Poor");
         result.Flags.Should().Contain(f => f.Name == "Chili" && f.Category == "Spicy/Irritant");
         result.Flags.Should().Contain(f => f.Name == "Cayenne" && f.Category == "Spicy/Irritant");
-        result.Confidence.Should().BeOneOf("Medium", "High");
+        result.Confidence.Should().Be("Medium");
     }
 
     // ─── K. Dedupe / Precedence Checks ─────────────────────────────────

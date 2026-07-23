@@ -219,7 +219,7 @@ public class AzureTableOfflineDatabase : IOfflineFoodDatabase
             Fat100g = nutriments?.TryGetValue("fat_100g", out var fat) == true ? fat : null,
             Fiber100g = nutriments?.TryGetValue("fiber_100g", out var fiber) == true ? fiber : null,
             Sugar100g = nutriments?.TryGetValue("sugars_100g", out var sugar) == true ? sugar : null,
-            Sodium100g = nutriments?.TryGetValue("sodium_100g", out var sodium) == true ? sodium : null,
+            SodiumMg100g = nutriments?.TryGetValue("sodium_100g", out var sodium) == true ? sodium * 1000m : null,
             ServingSize = e.GetString("ServingSize"),
             DataSource = DataSources.OpenFoodFacts,
             FoodKind = FoodKind.Branded,

@@ -11,30 +11,47 @@ namespace GutAI.Infrastructure.Tests;
 
 public class NaturalLanguageFallbackServiceTests
 {
-    private readonly Mock<IFoodApiService> _foodApiMock = new();
+    private readonly Mock<IFoodSearchService> _foodApiMock = new();
     private readonly Mock<ITableStore> _storeMock = new();
     private readonly Mock<ILogger<NaturalLanguageFallbackService>> _loggerMock = new();
     private NaturalLanguageFallbackService CreateService() => new(_foodApiMock.Object, _storeMock.Object, _loggerMock.Object);
 
     private static FoodProductDto MakeFood(string name, decimal cal = 100, decimal protein = 10,
-        decimal carbs = 20, decimal fat = 5, decimal? servingQty = null) => new()
-        {
-            Name = name,
-            Calories100g = cal,
-            Protein100g = protein,
-            Carbs100g = carbs,
-            Fat100g = fat,
-            Fiber100g = 3,
-            Sugar100g = 8,
-            Sodium100g = 200,
-            ServingQuantity = servingQty
-        };
+        decimal carbs = 20, decimal fat = 5, decimal? servingQty = null, decimal sodium100g = 200) => new()
+    {
+        Name = name,
+        Calories100g = cal,
+        Protein100g = protein,
+        Carbs100g = carbs,
+        Fat100g = fat,
+        Fiber100g = 3,
+        Sugar100g = 8,
+        SodiumMg100g = sodium100g,
+        ServingQuantity = servingQty
+    };
 
     private void SetupFood(string query, string name, decimal cal = 100, decimal protein = 10,
-        decimal carbs = 20, decimal fat = 5, decimal? servingQty = null)
+        decimal carbs = 20, decimal fat = 5, decimal? servingQty = null, decimal sodium100g = 200)
     {
-        _foodApiMock.Setup(x => x.SearchAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([MakeFood(name, cal, protein, carbs, fat, servingQty)]);
+        var food = MakeFood(name, cal, protein, carbs, fat, servingQty, sodium100g);
+        _foodApiMock.Setup(x => x.ResolveAsync(query, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto
+            {
+                OriginalQuery = query,
+                Status = FoodResolutionStatus.Exact,
+                Selected = food,
+                MatchConfidence = 1.0m,
+            });
+    }
+
+    private void SetupUnresolved(string? query = null)
+    {
+        if (query is null)
+            _foodApiMock.Setup(x => x.ResolveAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new FoodResolutionDto());
+        else
+            _foodApiMock.Setup(x => x.ResolveAsync(query, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new FoodResolutionDto { OriginalQuery = query });
     }
 
     // ════════════════════════════════════════════════════════
@@ -319,14 +336,16 @@ public class NaturalLanguageFallbackServiceTests
     // ════════════════════════════════════════════════════════
 
     [Theory]
-    [InlineData("chicken (grilled)", "chicken")]
-    [InlineData("eggs (scrambled)", "eggs")]
-    [InlineData("salmon (raw)", "salmon")]
-    [InlineData("steak (medium rare)", "steak")]
-    [InlineData("broccoli (steamed)", "broccoli")]
+    [InlineData("chicken (grilled)", "chicken grilled")]
+    [InlineData("eggs (scrambled)", "eggs scrambled")]
+    [InlineData("salmon (raw)", "salmon raw")]
+    [InlineData("steak (medium rare)", "steak medium rare")]
+    [InlineData("broccoli (steamed)", "broccoli steamed")]
     [InlineData("chicken breast", "chicken breast")]
-    public void CleanFoodName_RemovesParentheticals(string input, string expected)
+    public void CleanFoodName_UnwrapsParentheticalsAsTokens(string input, string expected)
     {
+        // Parenthetical content is preparation-method evidence ("grilled", "raw") the resolver
+        // needs, not noise — unwrapped into plain tokens instead of discarded.
         NaturalLanguageFallbackService.CleanFoodName(input).Should().Be(expected);
     }
 
@@ -432,8 +451,7 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_NoResults_ReturnsGenericEstimate()
     {
-        _foodApiMock.Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        SetupUnresolved();
 
         var result = await CreateService().ParseAsync("xyznonexistentfood");
         result.Should().HaveCount(1);
@@ -455,6 +473,17 @@ public class NaturalLanguageFallbackServiceTests
     }
 
     [Fact]
+    public async Task ParseAsync_PreservesCanonicalSodiumMilligrams()
+    {
+        SetupFood("soup", "Soup", cal: 50, sodium100g: 656m);
+
+        var result = await CreateService().ParseAsync("100g soup");
+
+        result.Should().ContainSingle();
+        result[0].SodiumMg.Should().Be(656m);
+    }
+
+    [Fact]
     public async Task ParseAsync_CommaSeparated()
     {
         SetupFood("chicken", "Chicken");
@@ -467,7 +496,7 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_ApiException_FallsBackToGenericEstimate()
     {
-        _foodApiMock.Setup(x => x.SearchAsync("eggs", It.IsAny<CancellationToken>()))
+        _foodApiMock.Setup(x => x.ResolveAsync("eggs", It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("timeout"));
         SetupFood("banana", "Banana");
 
@@ -596,7 +625,7 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_ParentheticalDescription()
     {
-        SetupFood("chicken", "Chicken", cal: 165, protein: 31, carbs: 0, fat: 3.6m);
+        SetupFood("chicken grilled", "Chicken", cal: 165, protein: 31, carbs: 0, fat: 3.6m);
 
         var result = await CreateService().ParseAsync("200g chicken (grilled)");
 
@@ -758,6 +787,55 @@ public class NaturalLanguageFallbackServiceTests
         result[1].ServingWeightG.Should().Be(195m); // large = 1.3 * 150
     }
 
+    // ─── Regional dishes (Phase 7 parser corpus) ────────────────────────
+
+    [Fact]
+    public async Task ParseAsync_MultiWordRegionalDishNames_ResolveAsSingleSegmentsNotSplitOnInternalWords()
+    {
+        // Multi-word ethnic/regional dish names must not be shredded into their component
+        // words by the segmenter (e.g. "pad" and "thai" as separate foods) — the whole
+        // phrase is the food name and must resolve as one segment.
+        SetupFood("pad thai", "Pad Thai", cal: 375, protein: 12, carbs: 44, fat: 17);
+        SetupFood("chicken tikka masala", "Chicken Tikka Masala", cal: 195, protein: 15, carbs: 8, fat: 12);
+        SetupFood("beef pho", "Beef Pho", cal: 90, protein: 6, carbs: 12, fat: 2);
+
+        foreach (var (query, expectedName) in new[]
+        {
+            ("pad thai", "Pad Thai"),
+            ("chicken tikka masala", "Chicken Tikka Masala"),
+            ("beef pho", "Beef Pho"),
+        })
+        {
+            var result = await CreateService().ParseAsync(query);
+            result.Should().HaveCount(1, $"\"{query}\" is one dish, not several separate foods");
+            result[0].Name.Should().Be(expectedName);
+            result[0].ResolutionStatus.Should().Be(nameof(FoodResolutionStatus.Exact));
+        }
+    }
+
+    [Fact]
+    public async Task ParseAsync_PreparationModifierPrefix_ResolvesUnderlyingFoodNotTheModifier()
+    {
+        // "grilled", "fried", "steamed", "roasted" are preparation modifiers, not separate
+        // foods — the segment must still resolve against the underlying food name.
+        SetupFood("grilled salmon", "Salmon", cal: 208, protein: 20, carbs: 0, fat: 13);
+        SetupFood("steamed broccoli", "Broccoli", cal: 35, protein: 2.4m, carbs: 7.2m, fat: 0.4m);
+        SetupFood("roasted sweet potato", "Sweet Potato", cal: 86, protein: 1.6m, carbs: 20, fat: 0.1m);
+
+        foreach (var (query, expectedName) in new[]
+        {
+            ("grilled salmon", "Salmon"),
+            ("steamed broccoli", "Broccoli"),
+            ("roasted sweet potato", "Sweet Potato"),
+        })
+        {
+            var result = await CreateService().ParseAsync(query);
+            result.Should().HaveCount(1);
+            result[0].Name.Should().Be(expectedName);
+            result[0].NutritionProvenance.Should().Be(nameof(NutritionProvenance.Sourced));
+        }
+    }
+
     [Fact]
     public async Task ParseAsync_UnicodeFractionHalfCupRice()
     {
@@ -885,7 +963,7 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_GrilledChickenParenthetical()
     {
-        SetupFood("chicken breast", "Chicken Breast", cal: 165, protein: 31, carbs: 0, fat: 3.6m);
+        SetupFood("chicken breast grilled", "Chicken Breast", cal: 165, protein: 31, carbs: 0, fat: 3.6m);
 
         var result = await CreateService().ParseAsync("6 oz chicken breast (grilled)");
 
@@ -1129,8 +1207,7 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_UnknownBrand_ReturnsGenericEstimate()
     {
-        _foodApiMock.Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        SetupUnresolved();
 
         var result = await CreateService().ParseAsync("a rokeby protein shake");
         result.Should().HaveCount(1);
@@ -1142,8 +1219,7 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_UnknownBrandMultiple_ReturnsEstimatesForAll()
     {
-        _foodApiMock.Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        SetupUnresolved();
 
         var result = await CreateService().ParseAsync("a protein shake and a banana");
         result.Should().HaveCount(2);
@@ -1160,121 +1236,39 @@ public class NaturalLanguageFallbackServiceTests
     [InlineData("USDA commodity, chicken", "chicken")]
     public void NormalizeFoodName_Works(string input, string expected)
     {
-        FoodSearchIndex.NormalizeFoodName(input).Should().Be(expected);
+        FoodTextNormalizer.NormalizeFoodName(input).Should().Be(expected);
     }
 
     // ════════════════════════════════════════════════════════
-    //  PickBestMatch — prefers plain over weird
+    //  ParseAsync consumes the shared resolver's decision directly — no parser-local
+    //  re-ranking/re-filtering. The picking/plausibility logic itself (PickBestMatch,
+    //  FilterImplausibleMeatMatches, ComputeConfidence — all now deleted) is tested once,
+    //  at its actual home: FoodMatchIndexTests / FoodQualityScorerTests / FoodMacroArchetypesTests.
     // ════════════════════════════════════════════════════════
 
     [Fact]
-    public void PickBestMatch_PrefersPlainChicken_OverFrozenNuggets()
+    public async Task ParseAsync_UsesResolverSelection_OverExactNameMatchWithBadMacros()
     {
-        var candidates = new List<FoodProductDto>
-        {
-            MakeFood("Chicken, broilers or fryers, breast, skinless, boneless, meat only, raw"),
-            MakeFood("Chicken, nuggets, frozen, breaded, reheated"),
-            MakeFood("Chicken, breast, raw"),
-        };
+        // Reproduces the real OpenFoodFacts-vs-USDA bug at the parser boundary: the resolver
+        // (already verified elsewhere to prefer the nutritionally plausible candidate — see
+        // FoodMatchIndexTests.Search_ImplausibleMeatMacros_RanksBelowPlausibleAlternative) hands
+        // back its selection, and ParseAsync must use exactly that, not re-decide anything.
+        var plausible = MakeFood("Grilled chicken breast", cal: 119, protein: 22.6m, carbs: 2.38m, fat: 1.79m);
+        _foodApiMock.Setup(x => x.ResolveAsync("grilled chicken breast", It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto
+            {
+                OriginalQuery = "grilled chicken breast",
+                Status = FoodResolutionStatus.Probable,
+                Selected = plausible,
+                MatchConfidence = 0.9m,
+            });
 
-        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "chicken");
-        result!.Name.Should().NotContain("nuggets");
-        result.Name.Should().NotContain("frozen");
-    }
+        var result = await CreateService().ParseAsync("grilled chicken breast");
 
-    [Fact]
-    public void PickBestMatch_PrefersExactMatch()
-    {
-        var candidates = new List<FoodProductDto>
-        {
-            MakeFood("Egg, dried, whole, stabilized, glucose reduced"),
-            MakeFood("Egg, whole, raw, fresh"),
-            MakeFood("Egg"),
-        };
-
-        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "egg");
-        result!.Name.Should().Be("Egg");
-    }
-
-    [Fact]
-    public void PickBestMatch_PenalizesAlaskaNative()
-    {
-        var candidates = new List<FoodProductDto>
-        {
-            MakeFood("Fish, salmon, sockeye (red), raw (Alaska Native)"),
-            MakeFood("Salmon, Atlantic, wild, raw"),
-        };
-
-        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "salmon");
-        result!.Name.Should().Be("Salmon, Atlantic, wild, raw");
-    }
-
-    [Fact]
-    public void PickBestMatch_PenalizesBabyFood()
-    {
-        var candidates = new List<FoodProductDto>
-        {
-            MakeFood("Bananas, raw"),
-            MakeFood("Babyfood, fruit, bananas, strained"),
-        };
-
-        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "banana");
-        result!.Name.Should().Be("Bananas, raw");
-    }
-
-    [Fact]
-    public void PickBestMatch_MultiWordQuery_TokenCoverage()
-    {
-        var candidates = new List<FoodProductDto>
-        {
-            MakeFood("Chicken, raw"),
-            MakeFood("Grilled chicken breast"),
-            MakeFood("Chicken, canned, drained"),
-        };
-
-        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "grilled chicken");
-        result!.Name.Should().Be("Grilled chicken breast");
-    }
-
-    [Fact]
-    public void PickBestMatch_PenalizesHighCarbChicken()
-    {
-        var candidates = new List<FoodProductDto>
-        {
-            new() { Name = "Chicken, breaded, frozen", Calories100g = 250, Protein100g = 12, Carbs100g = 45, Fat100g = 10 },
-            new() { Name = "Chicken, breast, raw", Calories100g = 165, Protein100g = 31, Carbs100g = 0, Fat100g = 3.6m },
-        };
-
-        var result = NaturalLanguageFallbackService.PickBestMatch(candidates, "chicken");
-        result!.Name.Should().Be("Chicken, breast, raw");
-    }
-
-    // ════════════════════════════════════════════════════════
-    //  ComputeConfidence
-    // ════════════════════════════════════════════════════════
-
-    [Fact]
-    public void ComputeConfidence_ExactMatch_Returns1()
-    {
-        var food = MakeFood("Egg");
-        var confidence = NaturalLanguageFallbackService.ComputeConfidence([food], food, "egg");
-        confidence.Should().Be(1.0m);
-    }
-
-    [Fact]
-    public void ComputeConfidence_GoodMatch_ReturnsHigh()
-    {
-        var food = MakeFood("Egg, whole, raw, fresh");
-        var confidence = NaturalLanguageFallbackService.ComputeConfidence([food], food, "egg");
-        confidence.Should().BeGreaterOrEqualTo(0.5m);
-    }
-
-    [Fact]
-    public void ComputeConfidence_WeirdMatch_ReturnsLow()
-    {
-        var food = MakeFood("Agutuk, fish with shortening (Alaskan ice cream) (Alaska Native)");
-        var confidence = NaturalLanguageFallbackService.ComputeConfidence([food], food, "ice cream");
-        confidence.Should().BeLessThan(0.5m);
+        result.Should().ContainSingle();
+        result[0].Name.Should().Be("Grilled chicken breast");
+        result[0].CarbsG.Should().BeLessThan(5m);
+        result[0].MatchConfidence.Should().Be(0.9m);
     }
 
     // ════════════════════════════════════════════════════════
@@ -1294,12 +1288,166 @@ public class NaturalLanguageFallbackServiceTests
     [Fact]
     public async Task ParseAsync_GenericEstimate_HasZeroConfidence()
     {
-        _foodApiMock.Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        SetupUnresolved();
 
         var result = await CreateService().ParseAsync("xyznonexistentfood");
         result.Should().HaveCount(1);
         result[0].MatchConfidence.Should().Be(0m);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  Conjunction-aware compound-dish segmentation
+    // ════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ParseAsync_CompoundDishJoinedByAnd_MergesIntoSingleItem_WhenCombinedResolvesButPartsDoNot()
+    {
+        // "macaroni" alone has no meaningful match; the combined phrase names an actual dish
+        // and must be logged as one item with that dish's real nutrition, not two disconnected
+        // halves ("plain macaroni" + "plain cheese") with wrong macros.
+        _foodApiMock.Setup(x => x.ResolveAsync("macaroni", It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto());
+        _foodApiMock.Setup(x => x.ResolveAsync("macaroni and cheese", It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto
+            {
+                OriginalQuery = "macaroni and cheese",
+                Status = FoodResolutionStatus.Exact,
+                Selected = MakeFood("Macaroni and cheese, canned", cal: 164, protein: 5, carbs: 20, fat: 6),
+                MatchConfidence = 1.0m,
+            });
+
+        var result = await CreateService().ParseAsync("macaroni and cheese");
+
+        result.Should().ContainSingle();
+        result[0].Name.Should().Be("Macaroni and cheese, canned");
+    }
+
+    [Fact]
+    public async Task ParseAsync_TwoStrongFoodsJoinedByAnd_StaysAsSeparateItems()
+    {
+        // Both halves resolve well independently — no reason to merge, even without quantities.
+        SetupFood("chicken", "Chicken");
+        SetupFood("rice", "Rice");
+
+        var result = await CreateService().ParseAsync("chicken and rice");
+
+        result.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ParseAsync_AndJoinedUnknownSegments_FallsBackToSeparateEstimates_WhenCombinedAlsoUnresolved()
+    {
+        // Neither half nor the combined phrase resolves — must fall back to two separate
+        // generic estimates, never merge into a nonsense combined name or drop an item.
+        _foodApiMock.Setup(x => x.ResolveAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto());
+
+        var result = await CreateService().ParseAsync("xyzfood1 and xyzfood2");
+
+        result.Should().HaveCount(2);
+        result[0].Name.Should().Be("xyzfood1");
+        result[1].Name.Should().Be("xyzfood2");
+    }
+
+    [Fact]
+    public async Task ParseAsync_ExplicitQuantitiesJoinedByAnd_NeverMerges()
+    {
+        // "2 eggs and a banana" are two counted items, never a candidate for dish-merging,
+        // regardless of how either half resolves.
+        SetupFood("eggs", "Egg");
+        SetupFood("banana", "Banana");
+
+        var result = await CreateService().ParseAsync("2 eggs and a banana");
+
+        result.Should().HaveCount(2);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  Evidence provenance — NutritionProvenance, ResolutionStatus, PortionConfidence
+    // ════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ParseAsync_SourcedMatch_SetsProvenanceAndResolutionStatus()
+    {
+        SetupFood("banana", "Banana", cal: 89, protein: 1.1m, carbs: 23, fat: 0.3m);
+
+        var result = await CreateService().ParseAsync("banana");
+
+        result[0].NutritionProvenance.Should().Be(nameof(NutritionProvenance.Sourced));
+        result[0].ResolutionStatus.Should().Be(nameof(FoodResolutionStatus.Exact));
+    }
+
+    [Fact]
+    public async Task ParseAsync_GenericEstimate_SetsProvenanceEstimatedAndUnresolvedStatus()
+    {
+        SetupUnresolved();
+
+        var result = await CreateService().ParseAsync("xyznonexistentfood");
+
+        result[0].NutritionProvenance.Should().Be(nameof(NutritionProvenance.Estimated));
+        result[0].ResolutionStatus.Should().Be(nameof(FoodResolutionStatus.Unresolved));
+    }
+
+    [Fact]
+    public async Task ParseAsync_AmbiguousMatch_PreservesAmbiguousStatus_NotConflatedWithConfidentOrUnresolved()
+    {
+        // Two near-identical-scoring candidates (e.g. "Chocolate Cake" vs "Carrot Cake" for
+        // the query "cake") — the resolver can't confidently pick one, but still returns its
+        // best guess plus alternatives rather than nothing. The parser must carry that
+        // uncertainty through as ResolutionStatus.Ambiguous, distinct from a confident
+        // Sourced match (Exact/Probable) and from a true Unresolved catalog miss — the
+        // frontend review step relies on this distinction to decide whether to surface
+        // alternatives for the user to pick from.
+        var chocolateCake = MakeFood("Chocolate Cake", cal: 371, protein: 5, carbs: 50, fat: 17);
+        var carrotCake = MakeFood("Carrot Cake", cal: 349, protein: 4, carbs: 43, fat: 18);
+        _foodApiMock.Setup(x => x.ResolveAsync("cake", It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto
+            {
+                OriginalQuery = "cake",
+                Status = FoodResolutionStatus.Ambiguous,
+                Selected = chocolateCake,
+                MatchConfidence = 0.5m,
+                Alternatives = [carrotCake],
+            });
+
+        var result = await CreateService().ParseAsync("cake");
+
+        result[0].ResolutionStatus.Should().Be(nameof(FoodResolutionStatus.Ambiguous));
+        result[0].NutritionProvenance.Should().Be(nameof(NutritionProvenance.Sourced));
+        result[0].Name.Should().Be("Chocolate Cake");
+        result[0].Calories.Should().BeGreaterThan(0,
+            "an ambiguous match still delivers usable sourced nutrition from its top candidate — it flags the identity as uncertain, it does not withhold the data");
+    }
+
+    [Fact]
+    public async Task ParseAsync_ExplicitGramWeight_HasFullPortionConfidence()
+    {
+        SetupFood("chicken", "Chicken Breast", cal: 165, protein: 31, carbs: 0, fat: 3.6m);
+
+        var result = await CreateService().ParseAsync("200g chicken");
+
+        result[0].PortionConfidence.Should().Be(1.0m);
+    }
+
+    [Fact]
+    public async Task ParseAsync_BareNounWithNoProductServingData_HasLowPortionConfidence()
+    {
+        // No unit, and the mocked product carries no ServingQuantity — a pure default-serving guess.
+        SetupFood("banana", "Banana", cal: 89, protein: 1.1m, carbs: 23, fat: 0.3m);
+
+        var result = await CreateService().ParseAsync("a banana");
+
+        result[0].PortionConfidence.Should().BeLessThan(0.7m);
+    }
+
+    [Fact]
+    public async Task ParseAsync_CountUnitBackedByProductServingData_HasHigherPortionConfidenceThanDefaultGuess()
+    {
+        SetupFood("tuna", "Tuna", cal: 116, protein: 26, carbs: 0, fat: 0.8m, servingQty: 85);
+
+        var result = await CreateService().ParseAsync("a can of tuna");
+
+        result[0].PortionConfidence.Should().BeGreaterThan(0.5m);
     }
 
     // ════════════════════════════════════════════════════════

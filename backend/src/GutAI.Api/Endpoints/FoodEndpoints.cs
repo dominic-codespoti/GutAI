@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GutAI.Api.Middleware;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Constants;
 using GutAI.Domain.Entities;
@@ -43,7 +44,7 @@ public static class FoodEndpoints
         return group;
     }
 
-    static async Task<IResult> SearchFoodProducts(string? q, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, ICacheService cache, ILogger<Program> logger)
+    internal static async Task<IResult> SearchFoodProducts(string? q, string? region, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodAggregator, IFoodRanker ranker, ICacheService cache, ILogger<Program> logger)
     {
         var userId = user.FindFirstValue("sub");
         var query = QuerySanitizer.Sanitize(q ?? string.Empty);
@@ -66,7 +67,13 @@ public static class FoodEndpoints
         }
 
         // Incorporate boostIds into cache key to avoid mixed results for different users
-        var cacheKey = $"food-search:{query.ToLowerInvariant()}:{userId ?? "anonymous"}";
+        var normalizedRegion = region?.Trim().ToUpperInvariant() switch
+        {
+            "AU" or "US" => region!.Trim().ToUpperInvariant(),
+            _ => "DEFAULT"
+        };
+        var regionPolicy = FoodSourcePolicy.ParseRegion(normalizedRegion);
+        var cacheKey = $"food-search:{query.ToLowerInvariant()}:{normalizedRegion}:{userId ?? "anonymous"}";
         var cached = await cache.GetAsync<List<FoodProductDto>>(cacheKey);
         if (cached is not null)
             return Results.Ok(cached);
@@ -77,7 +84,7 @@ public static class FoodEndpoints
         // Search-a-licious responds in 2-3s; USDA in 1-5s.
         // 10s gives plenty of headroom for degraded conditions.
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var externalTask = foodApi.SearchPersonalizedAsync(query, boostIds, cts.Token);
+        var externalTask = foodAggregator.SearchAsync(query, cts.Token);
 
         try
         {
@@ -90,122 +97,44 @@ public static class FoodEndpoints
         var localResults = await localTask;
         var additives = await additivesTask;
 
-        List<FoodProductDto> externalResults = [];
+        IReadOnlyList<FoodProductDto> externalResults = [];
         if (externalTask.IsCompletedSuccessfully)
         {
-            externalResults = externalTask.Result;
+            var outcome = externalTask.Result;
+            externalResults = outcome.Candidates;
+            var failedProviders = outcome.ProviderOutcomes.Where(o => o.Status == ProviderSearchStatus.Failed).ToList();
+            if (failedProviders.Count > 0)
+                logger.LogWarning("Food search providers failed for query '{Query}': {Providers}", query,
+                    string.Join(", ", failedProviders.Select(p => p.Source)));
         }
         cts.Dispose();
 
-        var existingNames = localResults.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var newProducts = new List<FoodProduct>();
+        var localDtos = localResults.Select(f => MapToDto(f, additives));
 
-        foreach (var dto in externalResults)
+        // Single canonicalization pass: same-identity duplicates collapse to the
+        // highest region-aware source priority; distinct same-name products survive.
+        var allCandidates = FoodCandidateCanonicalizer.Canonicalize(localDtos.Concat(externalResults), regionPolicy);
+
+        // ranker.Rank already applies eligibility filtering (an ineligible candidate set
+        // returns empty rather than a confident wrong guess) and source-kind preference for
+        // whole foods — a single ranking pass, no endpoint-local re-ranking on top of it.
+        var ranked = ranker.Rank(allCandidates, query, boostIds, 20);
+
+        // Persist canonical identity only for the candidates actually being returned to the
+        // user — not every raw external candidate the providers returned. FoodProductPersistence
+        // resolves existing identity (barcode -> source+externalId -> name+brand) first, so a
+        // product already seen under a different query reuses its row instead of duplicating.
+        var finalResults = new List<FoodProductDto>(ranked.Count);
+        foreach (var dto in ranked)
         {
-            if (existingNames.Contains(dto.Name))
+            if (dto.Id != Guid.Empty)
+            {
+                finalResults.Add(dto);
                 continue;
-
-            var product = new FoodProduct
-            {
-                Id = Guid.NewGuid(),
-                Name = dto.Name,
-                Barcode = dto.Barcode,
-                Brand = dto.Brand,
-                Ingredients = dto.Ingredients,
-                NovaGroup = dto.NovaGroup,
-                ServingSize = dto.ServingSize,
-                NutritionInfo = dto.NutritionInfo,
-                Calories100g = dto.Calories100g,
-                Protein100g = dto.Protein100g,
-                Carbs100g = dto.Carbs100g,
-                Fat100g = dto.Fat100g,
-                Fiber100g = dto.Fiber100g,
-                Sugar100g = dto.Sugar100g,
-                Sodium100g = dto.Sodium100g,
-                DataSource = dto.DataSource,
-                SourceUrl = dto.SourceUrl,
-                ExternalId = dto.ExternalId,
-                ImageUrl = dto.ImageUrl,
-                NutriScore = dto.NutriScore,
-                ServingQuantity = dto.ServingQuantity,
-                AllergensTags = dto.AllergensTags,
-                FoodKind = dto.FoodKind
-            };
-            newProducts.Add(product);
-            existingNames.Add(dto.Name);
-        }
-
-        // Batch upserts in parallel
-        if (newProducts.Count > 0)
-            await Task.WhenAll(newProducts.Select(p => store.UpsertFoodProductAsync(p)));
-
-        // Convert local DB results to DTOs and merge with already-ranked external results
-        var localDtos = localResults.Concat(newProducts)
-            .Select(f => MapToDto(f, additives))
-            .ToList();
-
-        // Merge local + external, deduplicating by name.
-        // Use a single Lucene pass instead of re-ranking already-ranked external results.
-        // External results were already ranked by CompositeFoodApiService — we just need
-        // to incorporate local DB results into the same ranking space.
-        var allCandidates = new List<FoodProductDto>(localDtos.Count + externalResults.Count);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // Local DB results go first (they include USDA whole foods)
-        foreach (var dto in localDtos)
-            if (seen.Add(dto.Name))
-                allCandidates.Add(dto);
-        // External results that aren't already in local
-        foreach (var dto in externalResults)
-            if (seen.Add(dto.Name))
-                allCandidates.Add(dto);
-
-        List<FoodProductDto> finalResults;
-        if (allCandidates.Count > 1)
-        {
-            // Single Lucene ranking pass over all candidates
-            using var rankIndex = new FoodSearchIndex(allCandidates);
-            finalResults = rankIndex.SearchPersonalized(query, boostIds, 20);
-
-            // For simple whole-food queries (1-2 tokens, no brand), ensure the best
-            // local whole-food match appears at position #1 to prevent branded products
-            // from outranking basic whole foods (e.g. "banana" → "Banana, raw" not "Banana chocolate bar").
-            var queryTokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (queryTokens.Length <= 2 && !queryTokens.Any(t => t.Length <= 2))
-            {
-                var queryLower = query.ToLowerInvariant().Trim();
-                var queryStem = Depluralize(queryLower);
-                var bestWholeFood = allCandidates
-                    .Where(c => c.FoodKind == FoodKind.WholeFood ||
-                                (c.DataSource is "USDA" or "AUSNUT" && c.FoodKind != FoodKind.Branded))
-                    .Where(c =>
-                    {
-                        var primary = ExtractPrimaryNoun(c.Name).ToLowerInvariant();
-                        var primaryStem = Depluralize(primary);
-                        return primary.StartsWith(queryLower) || primaryStem.StartsWith(queryStem)
-                            || primary.Contains(queryLower) || primaryStem.Contains(queryStem);
-                    })
-                    .OrderByDescending(c =>
-                    {
-                        var primary = ExtractPrimaryNoun(c.Name).ToLowerInvariant();
-                        if (primary == queryLower || Depluralize(primary) == queryStem) return 1000;
-                        if (primary.StartsWith(queryLower)) return 500;
-                        return 500 - c.Name.Length;
-                    })
-                    .FirstOrDefault();
-
-                if (bestWholeFood is not null && finalResults.Count > 0 && finalResults[0].Id != bestWholeFood.Id)
-                {
-                    finalResults.RemoveAll(r => r.Id == bestWholeFood.Id);
-                    finalResults.Insert(0, bestWholeFood);
-                    if (finalResults.Count > 20)
-                        finalResults.RemoveAt(finalResults.Count - 1);
-                }
             }
-        }
-        else
-        {
-            finalResults = allCandidates.Take(20).ToList();
+
+            var persistedId = await FoodProductPersistence.ResolveOrPersistAsync(dto, store);
+            finalResults.Add(dto with { Id = persistedId });
         }
 
         // Only cache results that appear meaningful (at least 2 results or non-empty)
@@ -218,7 +147,8 @@ public static class FoodEndpoints
         return Results.Ok(finalResults);
     }
 
-    static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService? foodApi = null, IOfflineFoodDatabase? offlineDb = null)
+
+    static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator? foodApi = null, IOfflineFoodDatabase? offlineDb = null)
     {
         var product = await store.GetFoodProductAsync(id);
         if (product != null)
@@ -248,7 +178,7 @@ public static class FoodEndpoints
         return null;
     }
 
-    static async Task EnrichFromOffBarcodeAsync(FoodProduct product, IOfflineFoodDatabase? offlineDb, IFoodApiService? foodApi, ITableStore store)
+    static async Task EnrichFromOffBarcodeAsync(FoodProduct product, IOfflineFoodDatabase? offlineDb, IExternalFoodAggregator? foodApi, ITableStore store)
     {
         try
         {
@@ -268,7 +198,7 @@ public static class FoodEndpoints
             product.Fat100g = enriched.Fat100g ?? product.Fat100g;
             product.Fiber100g = enriched.Fiber100g ?? product.Fiber100g;
             product.Sugar100g = enriched.Sugar100g ?? product.Sugar100g;
-            product.Sodium100g = enriched.Sodium100g ?? product.Sodium100g;
+            product.SodiumMg100g = enriched.SodiumMg100g ?? product.SodiumMg100g;
 
             // Re-persist enriched data so subsequent views don't need another lookup
             await store.UpsertFoodProductAsync(product);
@@ -280,7 +210,7 @@ public static class FoodEndpoints
         }
     }
 
-    static async Task<FoodProductDto?> LookupOffProductAsync(string barcode, IOfflineFoodDatabase? offlineDb, IFoodApiService? foodApi)
+    static async Task<FoodProductDto?> LookupOffProductAsync(string barcode, IOfflineFoodDatabase? offlineDb, IExternalFoodAggregator? foodApi)
     {
         // 1. Try offline database (Azure Table "offproducts", unlimited lookups)
         if (offlineDb is not null)
@@ -297,7 +227,7 @@ public static class FoodEndpoints
         return null;
     }
 
-    static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb)
+    static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb)
     {
         if (string.IsNullOrWhiteSpace(barcode) || barcode.Length > 50)
             return Results.BadRequest(new { error = "Barcode must be between 1 and 50 characters" });
@@ -337,10 +267,19 @@ public static class FoodEndpoints
             Fat100g = externalDto.Fat100g,
             Fiber100g = externalDto.Fiber100g,
             Sugar100g = externalDto.Sugar100g,
-            Sodium100g = externalDto.Sodium100g,
+            SodiumMg100g = externalDto.SodiumMg100g,
             DataSource = externalDto.DataSource,
             SourceUrl = externalDto.SourceUrl,
             ExternalId = externalDto.ExternalId,
+            SourceVersion = externalDto.SourceVersion ?? externalDto.DataSource,
+            LicenseType = externalDto.LicenseType ?? externalDto.DataSource switch
+            {
+                "USDA" => "USDA FoodData Central terms",
+                "OpenFoodFacts" => "Open Food Facts ODbL",
+                _ => null
+            },
+            Attribution = externalDto.Attribution ?? externalDto.DataSource,
+            RetrievedAt = externalDto.RetrievedAt ?? DateTime.UtcNow,
             ImageUrl = externalDto.ImageUrl,
             NutriScore = externalDto.NutriScore,
             ServingQuantity = externalDto.ServingQuantity,
@@ -398,13 +337,13 @@ public static class FoodEndpoints
 
 
 
-    static async Task<IResult> GetFoodProduct(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb)
+    static async Task<IResult> GetFoodProduct(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         return dto != null ? Results.Ok(dto) : Results.NotFound();
     }
 
-    static async Task<IResult> GetSafetyReport(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, GutRiskService gutRiskService, FodmapService fodmapService, SubstitutionService substitutionService, GlycemicIndexService glycemicService)
+    static async Task<IResult> GetSafetyReport(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, GutRiskService gutRiskService, FodmapService fodmapService, SubstitutionService substitutionService, GlycemicIndexService glycemicService)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
@@ -412,8 +351,6 @@ public static class FoodEndpoints
         var gutRisk = gutRiskService.Assess(dto);
         var fodmap = fodmapService.Assess(dto);
 
-        // Reconcile scores bidirectionally to prevent contradictory ratings
-        (fodmap, gutRisk) = ScoreReconciler.Reconcile(fodmap, gutRisk);
 
         return Results.Ok(new
         {
@@ -430,7 +367,7 @@ public static class FoodEndpoints
         });
     }
 
-    static async Task<IResult> GetGutRisk(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, GutRiskService gutRiskService)
+    static async Task<IResult> GetGutRisk(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, GutRiskService gutRiskService)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
@@ -438,7 +375,7 @@ public static class FoodEndpoints
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetFodmap(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, FodmapService fodmapService)
+    static async Task<IResult> GetFodmap(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, FodmapService fodmapService)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
@@ -446,7 +383,7 @@ public static class FoodEndpoints
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetSubstitutions(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, SubstitutionService substitutionService)
+    static async Task<IResult> GetSubstitutions(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, SubstitutionService substitutionService)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
@@ -454,7 +391,7 @@ public static class FoodEndpoints
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetGlycemic(Guid id, ClaimsPrincipal user, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, GlycemicIndexService glycemicService)
+    static async Task<IResult> GetGlycemic(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, GlycemicIndexService glycemicService)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, user, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
@@ -462,7 +399,7 @@ public static class FoodEndpoints
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetPersonalizedScore(Guid id, ClaimsPrincipal principal, ITableStore store, IFoodApiService foodApi, IOfflineFoodDatabase offlineDb, PersonalizedScoringService scoringService)
+    static async Task<IResult> GetPersonalizedScore(Guid id, ClaimsPrincipal principal, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, PersonalizedScoringService scoringService)
     {
         var dto = await GetResolvedFoodProductDtoAsync(id, principal, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
@@ -573,6 +510,7 @@ public static class FoodEndpoints
                 EpaCancerClass = a?.EpaCancerClass,
                 FdaAdverseEventCount = a?.FdaAdverseEventCount,
                 FdaRecallCount = a?.FdaRecallCount,
+                EvidenceSources = a?.EvidenceSources ?? [],
                 LastUpdated = a?.LastUpdated
             };
         }).ToList();
@@ -598,35 +536,20 @@ public static class FoodEndpoints
             Fat100g = f.Fat100g,
             Fiber100g = f.Fiber100g,
             Sugar100g = f.Sugar100g,
-            Sodium100g = f.Sodium100g,
+            SodiumMg100g = f.SodiumMg100g,
             DataSource = f.DataSource,
             FoodKind = f.FoodKind,
             SourceUrl = f.SourceUrl,
             ExternalId = f.ExternalId,
+            SourceVersion = f.SourceVersion,
+            LicenseType = f.LicenseType,
+            Attribution = f.Attribution,
+            RetrievedAt = f.RetrievedAt,
             ImageUrl = f.ImageUrl,
             NutriScore = f.NutriScore,
             ServingQuantity = f.ServingQuantity,
             AdditivesTags = additiveDtos.Where(a => a.ENumber != null).Select(a => $"en:{a.ENumber!.ToLowerInvariant()}").ToList(),
         };
-    }
-
-    // ── Text helpers for whole-food search pinning ──
-
-    static string ExtractPrimaryNoun(string name)
-    {
-        var commaIdx = name.IndexOf(',');
-        return commaIdx > 0 ? name[..commaIdx].Trim() : name.Trim();
-    }
-
-    static string Depluralize(string word)
-    {
-        if (word.Length <= 3) return word;
-        if (word.EndsWith("ies") && word.Length > 4) return word[..^3] + "y";
-        if (word.EndsWith("oes") && word.Length > 4) return word[..^2];
-        if (word.EndsWith("ses") && word.Length > 4) return word[..^1];
-        if (word.EndsWith("es") && word.Length > 4 && !word.EndsWith("ches") && !word.EndsWith("shes")) return word[..^1];
-        if (word.EndsWith('s') && !word.EndsWith("ss") && !word.EndsWith("us") && !word.EndsWith("is")) return word[..^1];
-        return word;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -702,7 +625,7 @@ public static class FoodEndpoints
             Fat100g = Math.Round(customFood.FatG * ratio, 2),
             Fiber100g = customFood.FiberG.HasValue ? Math.Round(customFood.FiberG.Value * ratio, 2) : null,
             Sugar100g = customFood.SugarG.HasValue ? Math.Round(customFood.SugarG.Value * ratio, 2) : null,
-            Sodium100g = customFood.SodiumMg.HasValue ? Math.Round(customFood.SodiumMg.Value * ratio, 2) : null,
+            SodiumMg100g = customFood.SodiumMg.HasValue ? Math.Round(customFood.SodiumMg.Value * ratio, 2) : null,
             FoodKind = GutAI.Domain.Enums.FoodKind.Unknown,
             DataSource = "Custom"
         };
@@ -720,8 +643,29 @@ public static class FoodEndpoints
         return Results.Unauthorized();
     }
 
+    static string? ValidateCustomFoodDto(CustomFoodDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name) || dto.Name.Length > 300)
+            return "Name is required and must not exceed 300 characters.";
+        if (dto.ServingSize <= 0 || dto.ServingSize > 10000)
+            return "Serving size must be greater than 0 and not exceed 10000.";
+        if (dto.Calories < 0 || dto.ProteinG < 0 || dto.CarbG < 0 || dto.FatG < 0
+            || dto.FiberG < 0 || dto.SugarG < 0 || dto.SodiumMg < 0)
+            return "Nutrition values cannot be negative.";
+        if (dto.Calories > MealValidation.MaxCalories || dto.ProteinG > MealValidation.MaxMacroG
+            || dto.CarbG > MealValidation.MaxMacroG || dto.FatG > MealValidation.MaxMacroG)
+            return "Nutrition values are unrealistically high.";
+        if (dto.Ingredients is { Length: > 2000 })
+            return "Ingredients must not exceed 2000 characters.";
+        return null;
+    }
+
     static async Task<IResult> CreateCustomFood(CustomFoodDto dto, ClaimsPrincipal user, ITableStore store)
     {
+        var validationError = ValidateCustomFoodDto(dto);
+        if (validationError is not null)
+            return Results.BadRequest(new { error = validationError });
+
         var uid = Guid.Parse(user.FindFirstValue("sub")!);
         var customFood = new CustomFood
         {
@@ -749,6 +693,10 @@ public static class FoodEndpoints
 
     static async Task<IResult> UpdateCustomFood(Guid id, CustomFoodDto dto, ClaimsPrincipal user, ITableStore store)
     {
+        var validationError = ValidateCustomFoodDto(dto);
+        if (validationError is not null)
+            return Results.BadRequest(new { error = validationError });
+
         var uid = Guid.Parse(user.FindFirstValue("sub")!);
         var existing = await store.GetCustomFoodAsync(uid, id);
         if (existing == null)
@@ -811,7 +759,7 @@ public static class FoodEndpoints
         return Results.Ok(result);
     }
 
-    [Microsoft.AspNetCore.Mvc.DisableRequestSizeLimit]
+    [Microsoft.AspNetCore.Mvc.RequestSizeLimit(20_000_000)] // 20 MB — generous for a phone photo, bounded against abuse
     static async Task<IResult> ParseNutritionLabel(Microsoft.AspNetCore.Http.HttpRequest request, ClaimsPrincipal principal, ITableStore store, IContentUnderstandingService aiService, ILogger<Program> logger)
     {
         try
@@ -831,6 +779,13 @@ public static class FoodEndpoints
             {
                 logger.LogWarning("ParseNutritionLabel received an empty file from user {UserId}.", uid);
                 return Results.BadRequest("No image provided.");
+            }
+
+            const long MaxUploadBytes = 20_000_000;
+            if (file.Length > MaxUploadBytes)
+            {
+                logger.LogWarning("ParseNutritionLabel rejected oversized file {FileName} ({Size} bytes) from user {UserId}.", file.FileName, file.Length, uid);
+                return Results.BadRequest("Image is too large. Please use a photo under 20MB.");
             }
 
             logger.LogInformation("Processing nutrition label image {FileName} of original size {Size} bytes for user {UserId}.", file.FileName, file.Length, uid);

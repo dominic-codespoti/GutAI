@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
@@ -6,36 +7,50 @@ namespace GutAI.Infrastructure.Services;
 
 public class FodmapService : IFodmapService
 {
-    static bool HasTrigger(List<FodmapTriggerDto> triggers, FodmapTriggerDto info)
-    {
-        // Deduplicate by SubCategory — e.g. "Sorbitol" from ingredients and "Sorbitol (E420)" from additive tags
-        // are the same FODMAP trigger. Also match by exact name.
-        return triggers.Any(t =>
-            t.Name.Equals(info.Name, StringComparison.OrdinalIgnoreCase) ||
-            (!string.IsNullOrEmpty(t.SubCategory) && t.SubCategory.Equals(info.SubCategory, StringComparison.OrdinalIgnoreCase) && t.Category.Equals(info.Category, StringComparison.OrdinalIgnoreCase)));
-    }
+    static bool HasTrigger(List<FodmapTriggerDto> triggers, FodmapTriggerDto info) =>
+        triggers.Any(t =>
+            t.Category.Equals(info.Category, StringComparison.OrdinalIgnoreCase) &&
+            t.SubCategory.Equals(info.SubCategory, StringComparison.OrdinalIgnoreCase));
 
-    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> _wholeFoodRegexCache = new();
+    static readonly ConcurrentDictionary<string, Regex> _wholeFoodRegexCache = new();
     static bool WholeFoodRegexMatch(string text, string pattern)
     {
-        var regex = _wholeFoodRegexCache.GetOrAdd(pattern, p =>
-            new Regex(@"\b" + Regex.Escape(p) + @"\b", RegexOptions.Compiled | RegexOptions.IgnoreCase));
+        if (!_wholeFoodRegexCache.TryGetValue(pattern, out var regex))
+        {
+            regex = new Regex($@"\b{Regex.Escape(pattern)}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            _wholeFoodRegexCache[pattern] = regex;
+        }
         return regex.IsMatch(text);
     }
 
-    public FodmapAssessmentDto Assess(FoodProductDto product)
+    static readonly Regex GarlicOilPattern = new(
+        @"garlic\s+oil|garlic[\s-]*infused\s+(?:\w+\s+)?oil", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    static readonly Regex GarlicWordPattern = new(@"\bgarlic\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    static readonly Regex FirmTofuPattern = new(@"\b(?:firm|extra[\s-]firm)\s+tofu\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    /// <summary>Leek green tops/leaves are low-FODMAP per Monash lab testing — the fructans
+    /// concentrate in the white bulb, not the green portion.</summary>
+    static readonly Regex LeekGreenTopsPattern = new(
+        @"\b(?:green\s+(?:tops?\s+of\s+)?leek|leek\s+(?:greens?|tops?|leaves))\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Single evidence-gathering pipeline shared by <see cref="Assess"/> and <see cref="AssessText"/>
+    /// — previously each re-implemented ingredient/whole-food scanning with different matching
+    /// rules and different mitigation coverage.
+    /// </summary>
+    static List<FodmapTriggerDto> ScanTriggers(
+        string? ingredientsOrDescription, string wholeFoodScanText, decimal? sugar100g,
+        List<string>? additivesTags, List<FoodAdditiveDto>? additives)
     {
         var triggers = new List<FodmapTriggerDto>();
+        var lower = (ingredientsOrDescription ?? "").ToLowerInvariant();
+        var combined = (lower + " " + wholeFoodScanText).Trim();
+        var isLactoseFree = MatchUtils.IsLactoseFree(combined);
+        var isDairyFree = MatchUtils.IsDairyFree(combined);
+        var isGlutenFree = MatchUtils.IsGlutenFree(combined);
 
-        // 1. Scan ingredients text against FODMAP trigger database
-        if (!string.IsNullOrWhiteSpace(product.Ingredients))
+        // 1. Scan ingredients/description text against the FODMAP trigger database
+        if (!string.IsNullOrWhiteSpace(lower))
         {
-            var lower = product.Ingredients.ToLowerInvariant();
-            var combined = lower + " " + (product.Name ?? "").ToLowerInvariant();
-            var isLactoseFree = MatchUtils.IsLactoseFree(combined);
-            var isDairyFree = MatchUtils.IsDairyFree(combined);
-            var isGlutenFree = MatchUtils.IsGlutenFree(combined);
-
             foreach (var (pattern, regex, info) in IngredientTriggers)
             {
                 bool matched = regex != null ? regex.IsMatch(lower) : lower.Contains(pattern);
@@ -43,7 +58,7 @@ public class FodmapService : IFodmapService
                 {
                     if ((isLactoseFree || isDairyFree) && info.SubCategory == "Lactose")
                         continue;
-                    if (isGlutenFree && (info.SubCategory == "Fructan") &&
+                    if (isGlutenFree && info.SubCategory == "Fructan" &&
                         (pattern == "wheat" || pattern == "wheat flour" || pattern == "whole wheat" ||
                          pattern == "wheat starch" || pattern == "barley" || pattern == "rye"))
                         continue;
@@ -53,9 +68,9 @@ public class FodmapService : IFodmapService
         }
 
         // 2. Check additive tags for FODMAP-relevant additives (sugar alcohols = polyols)
-        if (product.AdditivesTags is { Count: > 0 })
+        if (additivesTags is { Count: > 0 })
         {
-            foreach (var tag in product.AdditivesTags)
+            foreach (var tag in additivesTags)
             {
                 var norm = tag.Replace("en:", "", StringComparison.OrdinalIgnoreCase).Trim().ToUpperInvariant();
                 if (FodmapAdditives.TryGetValue(norm, out var info) && !HasTrigger(triggers, info))
@@ -64,9 +79,9 @@ public class FodmapService : IFodmapService
         }
 
         // 3. Check linked additives by name
-        if (product.Additives is { Count: > 0 })
+        if (additives is { Count: > 0 })
         {
-            foreach (var add in product.Additives)
+            foreach (var add in additives)
             {
                 var lowerName = add.Name.ToLowerInvariant();
                 foreach (var (pattern, info) in AdditiveNameTriggers)
@@ -81,128 +96,164 @@ public class FodmapService : IFodmapService
         }
 
         // 4. Check for high sugar (potential excess fructose)
-        if (product.Sugar100g > 30m)
+        if (sugar100g > 30m &&
+            (lower.Contains("fructose") || lower.Contains("fruit juice") || lower.Contains("apple juice") || lower.Contains("pear juice")))
         {
-            var lower = (product.Ingredients ?? "").ToLowerInvariant();
-            if (lower.Contains("fructose") || lower.Contains("fruit juice") || lower.Contains("apple juice") || lower.Contains("pear juice"))
-                triggers.Add(new FodmapTriggerDto
-                {
-                    Name = "Excess Fructose (from fruit juice/fructose)",
-                    Category = "Monosaccharide",
-                    SubCategory = "Excess Fructose",
-                    Severity = "High",
-                    Explanation = "High sugar content combined with fructose sources may overwhelm absorption capacity, triggering bloating and diarrhea.",
-                });
+            triggers.Add(new FodmapTriggerDto
+            {
+                Name = "Excess Fructose (from fruit juice/fructose)",
+                Category = "Monosaccharide",
+                SubCategory = "Excess Fructose",
+                Severity = "High",
+                Explanation = "High sugar content combined with fructose sources may overwhelm absorption capacity, triggering bloating and diarrhea.",
+            });
         }
 
-        // 5. Score by product name (whole food matching) — skip generic names when real ingredients exist
-        var productName = product.Name.ToLowerInvariant();
-        var hasRealIngredients = !string.IsNullOrWhiteSpace(product.Ingredients) && product.Ingredients.Contains(',');
+        // 5. Whole-food name matching — skip generic names when real ingredients exist
+        var hasRealIngredients = !string.IsNullOrWhiteSpace(ingredientsOrDescription) && ingredientsOrDescription.Contains(',');
         foreach (var (pattern, info) in WholeFood_Triggers)
         {
-            if (WholeFoodRegexMatch(productName, pattern) && !HasTrigger(triggers, info))
+            if (WholeFoodRegexMatch(wholeFoodScanText, pattern) && !HasTrigger(triggers, info))
             {
                 if (hasRealIngredients && GenericWholeFoodPatterns.Any(g => pattern.Contains(g, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if ((isLactoseFree || isDairyFree) && info.SubCategory == "Lactose")
+                    continue;
+                if (isGlutenFree && info.SubCategory == "Fructan" &&
+                    (pattern == "wheat" || pattern == "wheat flour" || pattern == "whole wheat" ||
+                     pattern == "wheat starch" || pattern == "barley" || pattern == "rye"))
                     continue;
                 triggers.Add(info);
             }
         }
 
-        // 6. Lactase enzyme mitigation — if "lactase" in ingredients, downgrade lactose triggers
-        if (!string.IsNullOrWhiteSpace(product.Ingredients) &&
-            product.Ingredients.Contains("lactase", StringComparison.OrdinalIgnoreCase))
+        // 6. Lactase enzyme mitigation
+        if (!string.IsNullOrWhiteSpace(ingredientsOrDescription) &&
+            ingredientsOrDescription.Contains("lactase", StringComparison.OrdinalIgnoreCase))
         {
             for (var i = 0; i < triggers.Count; i++)
             {
                 if (triggers[i].SubCategory == "Lactose" && triggers[i].Severity != "Low")
-                {
-                    triggers[i] = new FodmapTriggerDto
+                    triggers[i] = triggers[i] with
                     {
-                        Name = triggers[i].Name,
-                        Category = triggers[i].Category,
-                        SubCategory = triggers[i].SubCategory,
                         Severity = "Low",
                         Explanation = triggers[i].Explanation + " (Contains lactase enzyme — lactose impact likely reduced.)",
                     };
-                }
             }
         }
 
-        var score = CalculateFodmapScore(triggers);
-        var rating = score switch
+        ApplyProcessingMitigations(triggers, combined);
+
+        return triggers;
+    }
+
+    static void ApplyProcessingMitigations(List<FodmapTriggerDto> triggers, string lower)
+    {
+        // Garlic-infused/garlic oil: fructans are not oil-soluble.
+        if (GarlicOilPattern.IsMatch(lower))
         {
-            >= 75 => "Low FODMAP",
-            >= 60 => "Moderate FODMAP",
-            >= 30 => "High FODMAP",
-            _ => "Very High FODMAP",
-        };
+            var withoutGarlicOil = GarlicOilPattern.Replace(lower, "");
+            if (!GarlicWordPattern.IsMatch(withoutGarlicOil))
+                triggers.RemoveAll(t => t.Name == "Garlic (Fructan)");
+        }
 
-        var categories = triggers.Select(t => t.Category).Distinct().OrderBy(c => c).ToList();
+        // Firm/extra-firm tofu: GOS leaches out during pressing.
+        if (FirmTofuPattern.IsMatch(lower))
+            triggers.RemoveAll(t => t.Name == "Soybean (GOS)");
 
-        var confidence = ComputeFodmapConfidence(product, triggers);
+        // Leek green tops/leaves are low-FODMAP — fructans concentrate in the white bulb.
+        if (LeekGreenTopsPattern.IsMatch(lower))
+            triggers.RemoveAll(t => t.Name.Contains("Leek", StringComparison.OrdinalIgnoreCase));
 
-        return new FodmapAssessmentDto
+        // Canned + rinsed legumes: downgrade rather than remove.
+        if (lower.Contains("canned"))
         {
-            FodmapScore = score,
-            FodmapRating = rating,
-            TriggerCount = triggers.Count,
-            HighCount = triggers.Count(t => t.Severity == "High"),
-            ModerateCount = triggers.Count(t => t.Severity == "Moderate"),
-            LowCount = triggers.Count(t => t.Severity == "Low"),
-            Categories = categories,
-            Triggers = triggers.OrderByDescending(t => SeverityWeight(t.Severity)).ToList(),
-            Summary = GenerateSummary(triggers, rating, categories),
-            Confidence = confidence,
-        };
+            foreach (var legume in CannedLegumeNames)
+            {
+                if (!lower.Contains(legume)) continue;
+                for (var i = 0; i < triggers.Count; i++)
+                {
+                    if (triggers[i].Name.Contains(legume, StringComparison.OrdinalIgnoreCase) && triggers[i].Severity == "High")
+                        triggers[i] = triggers[i] with
+                        {
+                            Severity = "Moderate",
+                            Explanation = triggers[i].Explanation + " (Canned — GOS content is somewhat reduced versus dried/boiled.)",
+                        };
+                }
+            }
+        }
+    }
+
+    static readonly string[] CannedLegumeNames = ["chickpea", "garbanzo", "lentil"];
+
+    static (FodmapAssessmentStatus Status, string Confidence, List<string> MissingEvidence) Resolve(
+        int triggerCount, bool hasIngredients, bool hasDetailedIngredients, bool hasVerifiedIdentity,
+        bool isTextCall, bool hasNonTrivialEvidence)
+    {
+        var confidence = isTextCall ? "Medium" : hasDetailedIngredients ? "Medium" : hasVerifiedIdentity ? "Medium" : "Low";
+
+        if (triggerCount > 0)
+            return (FodmapAssessmentStatus.PotentialTriggersDetected, confidence, []);
+
+        if (hasIngredients || hasVerifiedIdentity || hasNonTrivialEvidence)
+            return (FodmapAssessmentStatus.NoKnownTriggersDetected, confidence, []);
+
+        var missing = new List<string>();
+        if (isTextCall) missing.Add("a non-empty food description");
+        else
+        {
+            missing.Add("an ingredient list");
+            missing.Add("a verified catalog identity");
+        }
+        return (FodmapAssessmentStatus.InsufficientInformation, "Low", missing);
+    }
+
+    public FodmapAssessmentDto Assess(FoodProductDto product)
+    {
+        var triggers = ScanTriggers(product.Ingredients, product.Name.ToLowerInvariant(), product.Sugar100g,
+            product.AdditivesTags, product.Additives);
+
+        var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients);
+        var hasDetailedIngredients = hasIngredients && product.Ingredients!.Contains(',') && product.Ingredients.Length > 50;
+        var hasVerifiedIdentity = (product.DataSource is "USDA" or "AUSNUT" && product.FoodKind != GutAI.Domain.Enums.FoodKind.Branded)
+            || product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
+
+        var (status, confidence, missingEvidence) = Resolve(triggers.Count, hasIngredients, hasDetailedIngredients,
+            hasVerifiedIdentity, isTextCall: false, hasNonTrivialEvidence: false);
+        return BuildDto(triggers, status, confidence, missingEvidence);
     }
 
     public FodmapAssessmentDto AssessText(string foodDescription)
     {
-        var lower = foodDescription.ToLowerInvariant();
-        var triggers = new List<FodmapTriggerDto>();
+        var triggers = ScanTriggers(foodDescription, foodDescription.ToLowerInvariant(), null, null, null);
+        var hasNonTrivialEvidence = !string.IsNullOrWhiteSpace(foodDescription);
 
-        foreach (var (pattern, regex, info) in IngredientTriggers)
-        {
-            bool matched = regex != null ? regex.IsMatch(lower) : lower.Contains(pattern);
-            if (matched && !HasTrigger(triggers, info))
-                triggers.Add(info);
-        }
+        var (status, confidence, missingEvidence) = Resolve(triggers.Count, hasIngredients: false,
+            hasDetailedIngredients: false, hasVerifiedIdentity: false, isTextCall: true, hasNonTrivialEvidence);
+        return BuildDto(triggers, status, confidence, missingEvidence);
+    }
 
-        foreach (var (pattern, info) in WholeFood_Triggers)
-        {
-            if (lower.Contains(pattern) && !HasTrigger(triggers, info))
-                triggers.Add(info);
-        }
-
-        var score = CalculateFodmapScore(triggers);
-        var rating = score switch
-        {
-            >= 75 => "Low FODMAP",
-            >= 60 => "Moderate FODMAP",
-            >= 30 => "High FODMAP",
-            _ => "Very High FODMAP",
-        };
-
+    static FodmapAssessmentDto BuildDto(List<FodmapTriggerDto> triggers, FodmapAssessmentStatus status,
+        string confidence, List<string> missingEvidence)
+    {
         var categories = triggers.Select(t => t.Category).Distinct().OrderBy(c => c).ToList();
-
-        var confidence = "Medium"; // Text-only assessment always medium confidence
-
         return new FodmapAssessmentDto
         {
-            FodmapScore = score,
-            FodmapRating = rating,
+            Status = status.ToString(),
+            IngredientScreeningScore = CalculateIngredientScreeningScore(triggers),
+            Confidence = confidence,
             TriggerCount = triggers.Count,
             HighCount = triggers.Count(t => t.Severity == "High"),
             ModerateCount = triggers.Count(t => t.Severity == "Moderate"),
             LowCount = triggers.Count(t => t.Severity == "Low"),
             Categories = categories,
             Triggers = triggers.OrderByDescending(t => SeverityWeight(t.Severity)).ToList(),
-            Summary = GenerateSummary(triggers, rating, categories),
-            Confidence = confidence,
+            MissingEvidence = missingEvidence,
+            Summary = GenerateSummary(status, triggers, categories, missingEvidence),
         };
     }
 
-    static int CalculateFodmapScore(List<FodmapTriggerDto> triggers)
+    static int CalculateIngredientScreeningScore(List<FodmapTriggerDto> triggers)
     {
         if (triggers.Count == 0) return 100;
 
@@ -218,7 +269,6 @@ public class FodmapService : IFodmapService
             };
         }
 
-        // Category stacking penalty — if 3+ distinct FODMAP categories, apply extra penalty
         var distinctCategories = triggers.Select(t => t.SubCategory?.Split('+', ' ').FirstOrDefault() ?? t.Category)
             .Where(c => !string.IsNullOrEmpty(c))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -237,43 +287,28 @@ public class FodmapService : IFodmapService
         _ => 0,
     };
 
-    static string GenerateSummary(List<FodmapTriggerDto> triggers, string rating, List<string> categories)
+    static string GenerateSummary(FodmapAssessmentStatus status, List<FodmapTriggerDto> triggers,
+        List<string> categories, List<string> missingEvidence)
     {
+        if (status == FodmapAssessmentStatus.InsufficientInformation)
+            return $"Not enough information to screen this item for FODMAP triggers (missing: {string.Join(", ", missingEvidence)}). " +
+                "This does not mean it is Low FODMAP — it means the screen could not run.";
+
         if (triggers.Count == 0)
-            return "No known FODMAP triggers detected. This product appears suitable for a low-FODMAP diet.";
+            return "No known FODMAP trigger names were detected in the available name/ingredient information. This is an ingredient-screening result, not a serving-size FODMAP classification; tolerance and FODMAP load depend on portion.";
 
         var highCount = triggers.Count(t => t.Severity == "High");
 
         if (highCount > 0)
         {
             var names = string.Join(", ", triggers.Where(t => t.Severity == "High").Select(t => t.Name).Take(3));
-            return $"Contains {highCount} high-FODMAP trigger(s): {names}. FODMAP categories affected: {string.Join(", ", categories)}. Often reduced during a FODMAP elimination phase.";
+            return $"Detected {highCount} higher-concern FODMAP source(s): {names}. Categories: {string.Join(", ", categories)}. Actual FODMAP load is portion-dependent and individual tolerance varies.";
         }
 
-        return $"Contains {triggers.Count} FODMAP concern(s) in {string.Join(", ", categories)}. May be better tolerated in smaller portions — personal experience can vary.";
+        return $"Detected {triggers.Count} potential FODMAP source(s) in {string.Join(", ", categories)}. This screen cannot classify a serving without measured FODMAP quantities.";
     }
-
-    static string ComputeFodmapConfidence(FoodProductDto product, List<FodmapTriggerDto> triggers)
-    {
-        var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients);
-        var hasDetailedIngredients = hasIngredients && product.Ingredients!.Contains(',') && product.Ingredients.Length > 50;
-
-        if (!hasIngredients)
-        {
-            // Trusted whole foods (USDA/AUSNUT) — the name IS the ingredient; no hidden ambiguity.
-            bool isTrustedWholeFood = (product.DataSource is "USDA" or "AUSNUT" &&
-                product.FoodKind != GutAI.Domain.Enums.FoodKind.Branded) ||
-                product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
-            return isTrustedWholeFood ? "Medium" : "Low";
-        }
-        if (!hasDetailedIngredients)
-            return "Medium";
-        return "High";
-    }
-
 
     // ─── FODMAP Trigger Database ────────────────────────────────────
-    // Data sourced from FodmapData.cs — single source of truth.
 
     static readonly (string pattern, Regex? regex, FodmapTriggerDto info)[] IngredientTriggers =
         FodmapData.IngredientTriggers.Select(e => (e.Pattern, e.Regex, e.Trigger)).ToArray();

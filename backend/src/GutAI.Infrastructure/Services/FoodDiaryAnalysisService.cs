@@ -6,66 +6,30 @@ namespace GutAI.Infrastructure.Services;
 
 public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
 {
-    // Onset window and food-name grouping now live in FoodSymptomMatching, shared with
-    // CorrelationEngine, so the two features can no longer silently disagree about
-    // whether a given food correlates with a given symptom.
+    // Onset window, food-name grouping, evidence allocation, and confidence tiers now live
+    // in FoodSymptomAssociationService, shared with CorrelationEngine, so the two features
+    // can no longer silently disagree about whether a given food correlates with a given
+    // symptom, or double-count one symptom event as full-strength evidence across every
+    // candidate meal in its onset window.
 
     public async Task<FoodDiaryAnalysisDto> AnalyzeAsync(Guid userId, DateOnly from, DateOnly to, ITableStore store)
     {
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, from, to);
-        foreach (var meal in meals)
-            meal.Items = await store.GetMealItemsAsync(userId, meal.Id);
+        var result = await FoodSymptomAssociationService.ComputeAsync(userId, from, to, store, includeAdditives: false);
+        var meals = result.Meals;
+        var symptoms = result.Symptoms;
 
-        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, from, to);
-        foreach (var s in symptoms)
-            s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
-
-        var correlations = new List<(string FoodName, string NormFoodName, string SymptomName, int Severity, double OnsetHours)>();
-
-        foreach (var symptom in symptoms)
-        {
-            var precedingMeals = meals.Where(m => FoodSymptomMatching.IsWithinOnsetWindow(m.LoggedAt, symptom.OccurredAt));
-
-            foreach (var meal in precedingMeals)
+        var patterns = result.Associations
+            .Select(a => new FoodSymptomPatternDto
             {
-                var onsetHours = (symptom.OccurredAt - meal.LoggedAt).TotalHours;
-                foreach (var item in meal.Items)
-                {
-                    correlations.Add((
-                        item.FoodName,
-                        FoodSymptomMatching.NormalizeForGrouping(item.FoodName),
-                        symptom.SymptomType?.Name ?? "Unknown",
-                        symptom.Severity,
-                        onsetHours));
-                }
-            }
-        }
-
-        // Group by normalized food name so "Chicken Breast" / "chicken breasts" / "CHICKEN BREAST!"
-        // count as one pattern instead of fragmenting below the confidence thresholds below.
-        var patterns = correlations
-            .GroupBy(c => (c.NormFoodName, c.SymptomName))
-            .Select(g =>
-            {
-                var occurrences = g.Count();
-                var avgSeverity = (decimal)g.Average(x => x.Severity);
-                var avgOnset = (decimal)g.Average(x => x.OnsetHours);
-                var confidence = occurrences >= 5 && avgSeverity >= 5m ? "High"
-                    : occurrences >= 3 || avgSeverity >= 6m ? "Medium"
-                    : "Low";
-                var displayName = g.First().FoodName;
-
-                return new FoodSymptomPatternDto
-                {
-                    FoodName = displayName,
-                    SymptomName = g.Key.SymptomName,
-                    Occurrences = occurrences,
-                    AverageSeverity = Math.Round(avgSeverity, 1),
-                    AverageOnsetHours = Math.Round(avgOnset, 1),
-                    Confidence = confidence,
-                    Explanation = $"{displayName} was followed by {g.Key.SymptomName} {occurrences} time(s) " +
-                        $"with avg severity {Math.Round(avgSeverity, 1)}/10, typically {Math.Round(avgOnset, 1)}h after eating."
-                };
+                FoodName = a.FoodName,
+                SymptomName = a.SymptomName,
+                Occurrences = (int)Math.Round(a.AssociatedMealWeight),
+                ExposureMeals = a.ExposureMeals,
+                AssociationRatePercent = a.ExposedSymptomRate,
+                AverageSeverity = a.AverageSeverity,
+                AverageOnsetHours = a.AverageOnsetHours,
+                Confidence = a.Confidence,
+                Explanation = BuildPatternExplanation(a)
             })
             .OrderByDescending(p => p.Confidence == "High" ? 3 : p.Confidence == "Medium" ? 2 : 1)
             .ThenByDescending(p => p.Occurrences)
@@ -87,6 +51,17 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             Recommendations = recommendations,
             Summary = summary
         };
+    }
+
+    private static string BuildPatternExplanation(FoodSymptomAssociationDto a)
+    {
+        var attribution = a.AttributionMethod == "UserLinked"
+            ? "Based on symptoms you linked directly to this meal."
+            : "Inferred from a 1-6 hour onset window, not user-confirmed.";
+        var baseText = $"{a.FoodName} was linked to {a.SymptomName} after {a.ExposedSymptomRate}% of meals that included it " +
+            $"(vs {a.BaselineSymptomRate}% without it), based on {a.AssociatedMealWeight:0.#} symptom events across {a.ExposureMeals} exposures. " +
+            $"Average severity was {a.AverageSeverity}/10. This is a temporal association, not proof of causation. {attribution}";
+        return a.Limitations.Count > 0 ? $"{baseText} {string.Join(" ", a.Limitations)}" : baseText;
     }
 
     public async Task<EliminationDietStatusDto> GetEliminationStatusAsync(Guid userId, ITableStore store)
@@ -173,7 +148,9 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
                 followingSymptoms.AddRange(triggered);
             }
 
-            var result = followingSymptoms.Count > 0 ? "Reacted" : "Tolerated";
+            var result = reintroMeals.Count < 3
+                ? "Insufficient data"
+                : followingSymptoms.Count >= 2 ? "Possible association" : "No repeated association";
             var avgSev = followingSymptoms.Count > 0 ? (decimal)followingSymptoms.Average() : 0m;
 
             reintroductionResults.Add(new ReintroductionResultDto
@@ -215,16 +192,17 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
 
         var stillEatingTriggers = highConfidence.Any(f => recentFoods.Contains(f));
 
-        if (stillEatingTriggers && reintroResults.Count == 0)
+        var conclusiveReintroductions = reintroResults.Count(result => result.Result != "Insufficient data");
+        if (stillEatingTriggers && conclusiveReintroductions == 0)
             return "Assessment";
 
-        if (!stillEatingTriggers && reintroResults.Count == 0)
+        if (!stillEatingTriggers && conclusiveReintroductions == 0)
             return "Elimination";
 
-        if (reintroResults.Count > 0 && reintroResults.Count < highConfidence.Count)
+        if (conclusiveReintroductions > 0 && conclusiveReintroductions < highConfidence.Count)
             return "Reintroduction";
 
-        if (reintroResults.Count >= highConfidence.Count)
+        if (conclusiveReintroductions >= highConfidence.Count)
             return "Maintenance";
 
         return "Assessment";
@@ -358,7 +336,7 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             return $"No meals or symptoms logged between {from} and {to}.";
 
         if (symptomCount == 0)
-            return $"Analyzed {mealCount} meals between {from} and {to}. No symptoms were reported during this period — great!";
+            return $"Analyzed {mealCount} meals between {from} and {to}. No symptoms were logged during this period; incomplete logging cannot establish tolerance.";
 
         if (patterns.Count == 0)
             return $"Analyzed {mealCount} meals and {symptomCount} symptoms between {from} and {to}. " +
@@ -372,8 +350,8 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
         if (highCount > 0)
             sb += $", {highCount} with high confidence";
 
-        sb += $". Top trigger: {topTrigger.FoodName} → {topTrigger.SymptomName} " +
-            $"({topTrigger.Occurrences}x, avg severity {topTrigger.AverageSeverity}/10).";
+        sb += $". Strongest association: {topTrigger.FoodName} → {topTrigger.SymptomName} " +
+            $"({topTrigger.Occurrences}/{topTrigger.ExposureMeals} exposure meals, avg severity {topTrigger.AverageSeverity}/10). Associations do not establish causation.";
 
         return sb;
     }
@@ -405,25 +383,26 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             case "Elimination":
                 recs.Add("It looks like you've stopped eating these foods. Continuing to log symptoms may help you spot any changes.");
                 if (safeFoods.Count > 0)
-                    recs.Add($"Safe foods to rely on: {string.Join(", ", safeFoods.Take(5))}.");
+                    recs.Add($"Foods with repeated logged exposure and no detected pattern: {string.Join(", ", safeFoods.Take(5))}. This does not prove medical safety or tolerance.");
                 recs.Add("When you feel ready, reintroducing foods one at a time can help you understand your personal tolerances — a dietitian can guide this process.");
                 break;
             case "Reintroduction":
-                recs.Add("During reintroduction, many experts suggest spacing new foods about 3 days apart to help distinguish reactions.");
-                var reacted = reintroResults.Where(r => r.Result == "Reacted").Select(r => r.FoodName).ToList();
-                var tolerated = reintroResults.Where(r => r.Result == "Tolerated").Select(r => r.FoodName).ToList();
+                recs.Add("During reintroduction, change one variable at a time and consider clinician or dietitian guidance.");
+                var reacted = reintroResults.Where(r => r.Result == "Possible association").Select(r => r.FoodName).ToList();
+                var noRepeatedAssociation = reintroResults.Where(r => r.Result == "No repeated association").Select(r => r.FoodName).ToList();
                 if (reacted.Count > 0)
-                    recs.Add($"Foods associated with reactions in your logs: {string.Join(", ", reacted)} — you may want to continue being mindful of these.");
-                if (tolerated.Count > 0)
-                    recs.Add($"Foods tolerated so far: {string.Join(", ", tolerated)} — safe to keep.");
+                    recs.Add($"Foods with repeated symptom associations after reintroduction: {string.Join(", ", reacted)}.");
+                if (noRepeatedAssociation.Count > 0)
+                    recs.Add($"Foods without a repeated association across the logged tests: {string.Join(", ", noRepeatedAssociation)}. Continue observing; this is not proof of tolerance.");
                 if (mediumConfidence.Count > 0)
                     recs.Add($"Still to test: {string.Join(", ", mediumConfidence)}.");
                 break;
             case "Maintenance":
-                recs.Add("You've completed reintroduction testing for your identified triggers.");
-                var avoid = reintroResults.Where(r => r.Result == "Reacted").Select(r => r.FoodName).ToList();
+                recs.Add("Logged reintroduction observations are complete for the current candidates.");
+                var avoid = reintroResults.Where(r => r.Result == "Possible association").Select(r => r.FoodName).ToList();
                 if (avoid.Count > 0)
-                    recs.Add($"These foods were associated with reactions in your logs: {string.Join(", ", avoid)}.");
+                    recs.Add($"These foods retained repeated temporal associations: {string.Join(", ", avoid)}.");
+                recs.Add("Review restrictive diet changes with a qualified clinician or dietitian.");
                 recs.Add("Keep logging periodically to catch any new patterns.");
                 break;
         }
@@ -444,14 +423,14 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
                 ? $"Assessment phase: {highConfidence.Count} potential trigger food(s) identified ({string.Join(", ", highConfidence)}). " +
                   "You may find it helpful to discuss these patterns with a healthcare provider or dietitian."
                 : "Assessment phase: still gathering data to identify trigger foods.",
-            "Elimination" => $"Elimination phase: avoiding {highConfidence.Count} trigger food(s). " +
-                $"{safeFoods.Count} safe food(s) identified. Continuing to log symptoms may help track changes.",
-            "Reintroduction" => $"Reintroduction phase: {reintroResults.Count}/{highConfidence.Count} trigger food(s) tested. " +
-                $"{reintroResults.Count(r => r.Result == "Tolerated")} tolerated, " +
-                $"{reintroResults.Count(r => r.Result == "Reacted")} caused reactions.",
-            "Maintenance" => $"Maintenance phase: testing complete. " +
-                $"{reintroResults.Count(r => r.Result == "Tolerated")} food(s) can be safely reintroduced, " +
-                $"{reintroResults.Count(r => r.Result == "Reacted")} were associated with reactions in your logs.",
+            "Elimination" => $"Observation phase: {highConfidence.Count} stronger food-symptom association(s) are no longer present in recent meals. " +
+                $"{safeFoods.Count} repeatedly logged food(s) had no detected association; neither result establishes causation or safety.",
+            "Reintroduction" => $"Reintroduction observation phase: {reintroResults.Count(r => r.Result != "Insufficient data")}/{highConfidence.Count} candidate food(s) have enough repeated observations. " +
+                $"{reintroResults.Count(r => r.Result == "No repeated association")} had no repeated association and " +
+                $"{reintroResults.Count(r => r.Result == "Possible association")} retained a possible association.",
+            "Maintenance" => $"Observation cycle complete. " +
+                $"{reintroResults.Count(r => r.Result == "No repeated association")} food(s) had no repeated logged association and " +
+                $"{reintroResults.Count(r => r.Result == "Possible association")} retained possible associations. These results are not medical clearance.",
             _ => "Unable to determine elimination diet status."
         };
     }

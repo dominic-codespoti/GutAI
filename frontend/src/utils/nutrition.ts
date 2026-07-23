@@ -19,7 +19,7 @@ export function scaleNutrition(
     | "fat100g"
     | "fiber100g"
     | "sugar100g"
-    | "sodium100g"
+    | "sodiumMg100g"
   >,
   grams: number,
 ): ScaledNutrition {
@@ -31,7 +31,7 @@ export function scaleNutrition(
     fatG: Math.round((product.fat100g ?? 0) * s),
     fiberG: Math.round((product.fiber100g ?? 0) * s),
     sugarG: Math.round((product.sugar100g ?? 0) * s),
-    sodiumMg: Math.round((product.sodium100g ?? 0) * s),
+    sodiumMg: Math.round((product.sodiumMg100g ?? 0) * s),
   };
 }
 

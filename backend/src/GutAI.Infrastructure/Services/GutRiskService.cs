@@ -159,9 +159,9 @@ public class GutRiskService : IGutRiskService
                 "Ultra-processed foods (NOVA 4) have been studied for potential links to changes in gut microbiome diversity and digestive comfort."));
 
         // 5. Flag high sodium (>600mg per 100g)
-        if (product.Sodium100g > 0.6m)
+        if (product.SodiumMg100g > 600m)
             flags.Add(MakeFlag("Nutrient", "HIGH-NA", "High Sodium", "Nutrient Concern", "Low",
-                $"Contains {product.Sodium100g * 1000:0}mg sodium per 100g. Some research has explored links between sodium intake and gut function."));
+                $"Contains {product.SodiumMg100g:0}mg sodium per 100g. Some research has explored links between sodium intake and gut function."));
 
         // 6. Flag very high sugar (>25g per 100g)
         if (product.Sugar100g > 25m)
@@ -381,33 +381,32 @@ public class GutRiskService : IGutRiskService
     static string GenerateSummary(List<GutRiskFlagDto> flags, int score, string rating)
     {
         if (flags.Count == 0)
-            return "No gut-concerning additives or ingredients detected. This product appears gut-friendly.";
+            return "No configured gut-concern signals were detected in the available product data. This screening result does not prove the product is symptom-free or suitable for every person.";
 
         var highCount = flags.Count(f => f.RiskLevel == "High");
         var categories = flags.Select(f => f.Category).Distinct().ToList();
 
         if (highCount > 0)
-            return $"Contains {highCount} ingredient(s) of higher concern including {string.Join(", ", flags.Where(f => f.RiskLevel == "High").Select(f => f.Name).Take(3))}. Individuals with digestive sensitivities may want to explore alternatives.";
+            return $"Detected {highCount} higher-concern signal(s), including {string.Join(", ", flags.Where(f => f.RiskLevel == "High").Select(f => f.Name).Take(3))}. Effects are dose- and person-dependent.";
 
-        return $"Contains {flags.Count} item(s) of note in categories: {string.Join(", ", categories.Take(3))}. Individuals with digestive sensitivities may want to be mindful.";
+        return $"Detected {flags.Count} signal(s) in: {string.Join(", ", categories.Take(3))}. These are screening flags, not a diagnosis or proof of harm.";
     }
 
     static string ComputeConfidence(FoodProductDto product, List<GutRiskFlagDto> flags)
     {
         var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients);
         var hasAdditives = product.AdditivesTags is { Count: > 0 } || product.Additives is { Count: > 0 };
-        var hasDetailedIngredients = hasIngredients && product.Ingredients!.Contains(',') && product.Ingredients.Length > 50;
 
         if (!hasIngredients && !hasAdditives)
         {
-            // Trusted whole foods (USDA/AUSNUT) — the name IS the ingredient; no hidden ambiguity.
             bool isTrustedWholeFood = (product.DataSource is "USDA" or "AUSNUT" &&
                 product.FoodKind != GutAI.Domain.Enums.FoodKind.Branded) ||
                 product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood;
             return isTrustedWholeFood ? "Medium" : "Low";
         }
-        if (!hasDetailedIngredients)
-            return "Medium";
-        return "High";
+
+        // Ingredient rules establish presence, not dose, causality, or personal response.
+        // Medium is the ceiling for this rule-based screen.
+        return "Medium";
     }
 }

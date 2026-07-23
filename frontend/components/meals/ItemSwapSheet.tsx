@@ -38,7 +38,7 @@ export function ItemSwapSheet() {
       fatG: Math.round((((food.fat100g ?? 0) * g) / 100) * 10) / 10,
       fiberG: Math.round((((food.fiber100g ?? 0) * g) / 100) * 10) / 10,
       sugarG: Math.round((((food.sugar100g ?? 0) * g) / 100) * 10) / 10,
-      sodiumMg: Math.round(((food.sodium100g ?? 0) * g) / 100),
+      sodiumMg: Math.round(((food.sodiumMg100g ?? 0) * g) / 100),
     });
     toast.success(`Swapped to "${food.name}"`);
     close();

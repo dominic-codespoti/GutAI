@@ -168,10 +168,15 @@ public static class DependencyInjection
         services.AddScoped<AustralianFoodApiService>();
         services.AddScoped<BrandedFoodApiService>();
 
-        // Register the composite orchestrator as the primary IFoodApiService
-        services.AddScoped<IFoodApiService>(sp =>
+        // Single ranking owner — stateless, safe as a singleton (no shared/cached
+        // state across requests; builds a throwaway in-memory candidate index per call).
+        services.AddSingleton<IFoodRanker, FoodRanker>();
+
+        // Fan-out to every registered provider; isolates failures, propagates
+        // cancellation, reports structured per-provider outcomes. No ranking/caching.
+        services.AddScoped<IExternalFoodAggregator>(sp =>
         {
-            var providers = new List<IFoodApiService>
+            var providers = new List<IFoodProvider>
             {
                 sp.GetRequiredService<OpenFoodFactsClient>(),
                 sp.GetRequiredService<UsdaFoodDataClient>(),
@@ -179,9 +184,13 @@ public static class DependencyInjection
                 sp.GetRequiredService<AustralianFoodApiService>(),
                 sp.GetRequiredService<BrandedFoodApiService>()
             };
-            var logger = sp.GetRequiredService<ILogger<CompositeFoodApiService>>();
-            return new CompositeFoodApiService(providers, logger);
+            var logger = sp.GetRequiredService<ILogger<ExternalFoodProviderAggregator>>();
+            return new ExternalFoodProviderAggregator(providers, logger);
         });
+
+        // General-purpose search service for consumers with no local-store concerns
+        // (chat tools, MCP tools, NLP meal parsing): aggregate -> canonicalize -> rank once.
+        services.AddScoped<IFoodSearchService, FoodSearchService>();
 
         // Nutrition specific
         services.AddScoped<INutritionApiService, CompositeNutritionService>();
@@ -248,6 +257,7 @@ public static class DependencyInjection
                     aiDeployment,
                     AssistantInstructions,
                     ChatTools.All,
+                    sp.GetRequiredService<TableServiceClient>(),
                     logger
                 );
             });
@@ -260,12 +270,11 @@ public static class DependencyInjection
                     sp.GetRequiredService<ITableStore>(),
                     sp.GetRequiredService<ICorrelationEngine>(),
                     sp.GetRequiredService<IFoodDiaryAnalysisService>(),
-                    sp.GetRequiredService<IFoodApiService>(),
+                    sp.GetRequiredService<IFoodSearchService>(),
                     sp.GetRequiredService<CompositeNutritionService>(),
                     sp.GetRequiredService<FodmapService>(),
                     sp.GetRequiredService<GutRiskService>(),
                     sp.GetRequiredService<PersonalizedScoringService>(),
-                    sp.GetRequiredService<IMemoryCache>(),
                     sp.GetRequiredService<ILogger<AzureOpenAIChatService>>()
                 );
             });

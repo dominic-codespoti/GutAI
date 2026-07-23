@@ -146,6 +146,12 @@ This list focuses on **additional** free/open sources.
 3. **Conflict handling:** prefer latest dataset version in same source; otherwise use source-priority matrix by locale.
 4. **Transparency:** return `source`, `sourceVersion`, and `retrievedAt` with nutrient payloads.
 
+### Current implementation note
+
+Food products now persist `SourceVersion`, `LicenseType`, `Attribution`, and `RetrievedAt` through the API and Azure Table Storage roundtrip. Search merging uses barcode or source/external ID identity before falling back to brand/name. Additives expose `EvidenceSources`; seeded references are category-level background sources and must not be treated as claim-specific citations.
+The canonical sodium field is `SodiumMg100g` / `sodiumMg100g`: sodium is stored and exposed as milligrams per 100 g, matching meal-item `SodiumMg`. The Table Storage mapper reads legacy `Sodium100g` values as grams and converts them during read compatibility handling.
+Provider mappings now carry source version, license, attribution, and retrieval timestamps instead of replacing them with generic API labels. Food search accepts an optional `region=AU|US` hint; Australian whole-food searches prefer AUSNUT, US/default whole-food searches prefer USDA, and branded searches prefer Open Food Facts. The region is part of the cache key.
+
 ## Operational guardrails
 
 - Add per-source freshness SLAs (e.g., monthly check for new releases).

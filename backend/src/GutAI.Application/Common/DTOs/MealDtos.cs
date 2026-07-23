@@ -12,6 +12,8 @@ public record MealLogDto
     public decimal TotalCarbsG { get; init; }
     public decimal TotalFatG { get; init; }
     public string? OriginalText { get; init; }
+    public int CorrectionCount { get; init; }
+    public DateTime? LastCorrectedAt { get; init; }
     public List<MealItemDto> Items { get; init; } = [];
 }
 
@@ -35,6 +37,10 @@ public record MealItemDto
     public decimal SaturatedFatG { get; init; }
     public decimal PotassiumMg { get; init; }
     public string? SafetyRating { get; init; }
+    /// <summary>Identity confidence from the resolver at parse time, echoed back so a
+    /// previously-logged item's uncertainty can still be shown on review.</summary>
+    public decimal? MatchConfidence { get; init; }
+    public string? NutritionProvenance { get; init; }
 }
 
 public record CreateMealRequest
@@ -64,6 +70,11 @@ public record CreateMealItemRequest
     public decimal CholesterolMg { get; init; }
     public decimal SaturatedFatG { get; init; }
     public decimal PotassiumMg { get; init; }
+    /// <summary>Identity confidence carried over from the parsed-item preview when the
+    /// user commits a natural-language-parsed meal. Null for manual entry, search/scan
+    /// selection, or barcode scan — those already have a deterministic identity.</summary>
+    public decimal? MatchConfidence { get; init; }
+    public string? NutritionProvenance { get; init; }
 }
 
 public record NaturalLanguageMealRequest

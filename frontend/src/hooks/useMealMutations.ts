@@ -74,6 +74,7 @@ export function useMealMutations() {
       mealApi.create({
         mealType: meal.mealType,
         loggedAt: buildLoggedAt(targetDate),
+        notes: meal.notes ?? undefined,
         items: meal.items.map(mapItemToRequest),
       }),
     onSuccess: (_, { targetDate }) => {

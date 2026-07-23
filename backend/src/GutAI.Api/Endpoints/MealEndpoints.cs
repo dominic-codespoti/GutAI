@@ -83,7 +83,9 @@ public static class MealEndpoints
             SodiumMg = i.SodiumMg,
             CholesterolMg = i.CholesterolMg,
             SaturatedFatG = i.SaturatedFatG,
-            PotassiumMg = i.PotassiumMg
+            PotassiumMg = i.PotassiumMg,
+            MatchConfidence = i.MatchConfidence,
+            NutritionProvenance = i.NutritionProvenance
         }).ToList();
 
         meal.TotalCalories = items.Sum(i => i.Calories);
@@ -190,6 +192,9 @@ public static class MealEndpoints
 
         meal.MealType = Enum.TryParse<MealType>(request.MealType, true, out var mt) ? mt : meal.MealType;
         meal.Notes = request.Notes;
+        meal.OriginalText ??= request.OriginalText;
+        meal.CorrectionCount++;
+        meal.LastCorrectedAt = DateTime.UtcNow;
         if (request.LoggedAt.HasValue)
             meal.LoggedAt = request.LoggedAt.Value;
 
@@ -214,7 +219,9 @@ public static class MealEndpoints
             SodiumMg = i.SodiumMg,
             CholesterolMg = i.CholesterolMg,
             SaturatedFatG = i.SaturatedFatG,
-            PotassiumMg = i.PotassiumMg
+            PotassiumMg = i.PotassiumMg,
+            MatchConfidence = i.MatchConfidence,
+            NutritionProvenance = i.NutritionProvenance
         }).ToList();
 
         meal.TotalCalories = newItems.Sum(i => i.Calories);
@@ -333,6 +340,8 @@ public static class MealEndpoints
         TotalCarbsG = m.TotalCarbsG,
         TotalFatG = m.TotalFatG,
         OriginalText = m.OriginalText,
+        CorrectionCount = m.CorrectionCount,
+        LastCorrectedAt = m.LastCorrectedAt,
         Items = (m.Items ?? []).Select(i => new MealItemDto
         {
             Id = i.Id,
@@ -352,6 +361,8 @@ public static class MealEndpoints
             CholesterolMg = i.CholesterolMg,
             SaturatedFatG = i.SaturatedFatG,
             PotassiumMg = i.PotassiumMg,
+            MatchConfidence = i.MatchConfidence,
+            NutritionProvenance = i.NutritionProvenance,
             SafetyRating = i.FoodProductId.HasValue && safetyRatings?.TryGetValue(i.FoodProductId.Value, out var sr) == true ? sr : null
         }).ToList()
     };

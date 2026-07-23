@@ -22,42 +22,54 @@ public class PersonalizedScoringService
         var explanations = new List<ScoreExplanationDto>();
         var warnings = new List<string>();
 
-        // 1. FODMAP component (30%)
+        // FODMAP screening component (35%)
         var fodmapAssessment = _fodmap.Assess(product);
-        // 2. Additive Risk component (15%)
+        // Additive-only component (20%). GutRisk also contains FODMAP, nutrient, and NOVA
+        // signals; using its composite score here would count those dimensions twice.
         var gutRiskAssessment = _gutRisk.Assess(product);
 
-        // Reconcile FODMAP and GutRisk before compositing to prevent contradictory scores
-        (fodmapAssessment, gutRiskAssessment) = ScoreReconciler.Reconcile(fodmapAssessment, gutRiskAssessment);
 
-        var fodmapScore = fodmapAssessment.FodmapScore;
+        // Insufficient evidence must not score like a confirmed-clean result — treat it as
+        // neutral rather than letting "we don't know" masquerade as "screened, nothing found".
+        var fodmapScore = fodmapAssessment.Status == nameof(FodmapAssessmentStatus.InsufficientInformation)
+            ? 50
+            : fodmapAssessment.IngredientScreeningScore;
         explanations.Add(new ScoreExplanationDto
         {
             Component = "FODMAP Risk",
-            Weight = 30,
+            Weight = 35,
             RawScore = fodmapScore,
-            WeightedContribution = (int)(fodmapScore * 0.30),
-            Explanation = fodmapScore >= 80
-                ? "Low FODMAP content — unlikely to trigger digestive symptoms."
-                : fodmapScore >= 60
-                    ? "Moderate FODMAP content — may cause issues for sensitive individuals."
-                    : fodmapScore >= 40
-                        ? "High FODMAP content — may contribute to bloating, gas, or discomfort in sensitive individuals."
-                        : "Very high FODMAP content — may be particularly challenging for individuals sensitive to FODMAPs.",
+            WeightedContribution = (int)(fodmapScore * 0.35),
+            Explanation = fodmapAssessment.Status == nameof(FodmapAssessmentStatus.InsufficientInformation)
+                ? "Not enough ingredient or product data to screen for FODMAP sources — this component is neutral, not a confirmed low-FODMAP result."
+                : fodmapScore >= 80
+                    ? "No or few configured FODMAP source names detected; actual load depends on portion."
+                    : fodmapScore >= 60
+                        ? "Some potential FODMAP sources detected; portion and individual tolerance matter."
+                        : fodmapScore >= 40
+                            ? "Several potential FODMAP sources detected."
+                            : "Multiple higher-concern FODMAP sources detected; this remains an ingredient screen, not a measured serving classification.",
         });
 
-        var additiveScore = gutRiskAssessment.GutScore;
+        var additiveFlags = gutRiskAssessment.Flags
+            .Where(flag => flag.TriggerType == "Additive")
+            .ToList();
+        var additiveScore = Math.Clamp(100 - additiveFlags.Sum(flag => flag.RiskLevel switch
+        {
+            "High" => 20,
+            "Medium" => 10,
+            "Low" => 5,
+            _ => 0,
+        }), 0, 100);
         explanations.Add(new ScoreExplanationDto
         {
             Component = "Additive Risk",
-            Weight = 15,
+            Weight = 20,
             RawScore = additiveScore,
-            WeightedContribution = (int)(additiveScore * 0.15),
-            Explanation = additiveScore >= 80
-                ? "Few or no concerning additives detected."
-                : additiveScore >= 50
-                    ? "Some gut-irritating additives present (emulsifiers, artificial sweeteners, etc.)."
-                    : "Multiple additives of potential concern detected — some research has explored their effects on gut comfort.",
+            WeightedContribution = (int)(additiveScore * 0.20),
+            Explanation = additiveFlags.Count == 0
+                ? "No configured additive concern signals detected in the available data."
+                : $"Detected {additiveFlags.Count} configured additive concern signal(s); effects depend on dose and individual response.",
         });
 
         // 3. NOVA Processing component (15%)
@@ -114,8 +126,10 @@ public class PersonalizedScoringService
         var user = await store.GetUserAsync(userId);
         var userAllergies = user?.Allergies ?? [];
         var allergenScore = 100;
+        var allergenDataAvailable = product.AllergensTags.Length > 0;
+        var hasAllergenMatch = false;
 
-        if (userAllergies.Length > 0 && product.AllergensTags.Length > 0)
+        if (userAllergies.Length > 0 && allergenDataAvailable)
         {
             var matchedAllergens = new List<string>();
             foreach (var allergen in product.AllergensTags)
@@ -135,9 +149,14 @@ public class PersonalizedScoringService
             if (matchedAllergens.Count > 0)
             {
                 allergenScore = 0;
+                hasAllergenMatch = true;
                 foreach (var match in matchedAllergens)
-                    warnings.Add($"⚠️ Contains {match} — listed in your allergen profile.");
+                    warnings.Add($"Contains {match}, which is listed in your allergen profile.");
             }
+        }
+        else if (userAllergies.Length > 0)
+        {
+            warnings.Add("Allergen data is unavailable for this product; absence of a warning does not establish safety.");
         }
 
         explanations.Add(new ScoreExplanationDto
@@ -146,9 +165,11 @@ public class PersonalizedScoringService
             Weight = 15,
             RawScore = allergenScore,
             WeightedContribution = (int)(allergenScore * 0.15),
-            Explanation = allergenScore == 100
-                ? "No allergens matching your profile detected."
-                : "This product contains allergens from your profile — please be mindful and consult your healthcare provider if needed.",
+            Explanation = userAllergies.Length > 0 && !allergenDataAvailable
+                ? "Allergen data unavailable — this component is neutral and cannot establish safety."
+                : hasAllergenMatch
+                    ? "This product matches an allergen in your profile."
+                    : "No profile allergen match was detected in the available allergen data.",
         });
 
         // 6. Sugar Alcohols component (10%)
@@ -164,9 +185,9 @@ public class PersonalizedScoringService
         explanations.Add(new ScoreExplanationDto
         {
             Component = "Sugar Alcohols",
-            Weight = 10,
+            Weight = 0,
             RawScore = sugarAlcoholScore,
-            WeightedContribution = (int)(sugarAlcoholScore * 0.10),
+            WeightedContribution = 0,
             Explanation = polyolCount switch
             {
                 0 => "No sugar alcohols detected in ingredients.",
@@ -192,8 +213,8 @@ public class PersonalizedScoringService
         // normalized product-NAME containment (not ingredients — matching raw ingredient text
         // against a single common trigger word like "milk" or "egg" used to flag nearly every
         // packaged product that mentions it as an ingredient).
-        var triggerFoods = new List<(Guid? FoodProductId, string FoodName)>();
-        var seenTriggerKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var triggerFoods = new Dictionary<string, (Guid? FoodProductId, string FoodName, int SymptomAssociations)>(
+            StringComparer.OrdinalIgnoreCase);
 
         if (symptomLogs.Count > 0)
         {
@@ -211,6 +232,7 @@ public class PersonalizedScoringService
 
             foreach (var symptom in symptomLogs)
             {
+                var seenForSymptom = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var meal in candidateMeals)
                 {
                     if (!FoodSymptomMatching.IsWithinOnsetWindow(meal.LoggedAt, symptom.OccurredAt))
@@ -221,8 +243,13 @@ public class PersonalizedScoringService
                         var key = foodProductId.HasValue
                             ? $"id:{foodProductId.Value}"
                             : $"name:{FoodSymptomMatching.NormalizeForGrouping(foodName)}";
-                        if (seenTriggerKeys.Add(key))
-                            triggerFoods.Add((foodProductId, foodName));
+                        if (!seenForSymptom.Add(key))
+                            continue;
+
+                        if (triggerFoods.TryGetValue(key, out var existing))
+                            triggerFoods[key] = (existing.FoodProductId, existing.FoodName, existing.SymptomAssociations + 1);
+                        else
+                            triggerFoods[key] = (foodProductId, foodName, 1);
                     }
                 }
             }
@@ -232,16 +259,15 @@ public class PersonalizedScoringService
                 var normalizedProductName = FoodSymptomMatching.NormalizeForGrouping(product.Name);
                 var matchCount = 0;
 
-                foreach (var (triggerProductId, triggerName) in triggerFoods)
+                foreach (var (_, (triggerProductId, triggerName, symptomAssociations)) in triggerFoods)
                 {
                     var isMatch = (triggerProductId.HasValue && triggerProductId.Value == product.Id)
                         || IsNormalizedNameMatch(triggerName, normalizedProductName);
 
                     if (isMatch)
                     {
-                        matchCount++;
-                        warnings.Add($"🔁 \"{triggerName}\" appeared in meals before your recent symptoms.");
-                        if (matchCount >= 5) break;
+                        matchCount += symptomAssociations;
+                        warnings.Add($"\"{triggerName}\" appeared before {symptomAssociations} recent symptom event(s). This is an association, not proof of causation.");
                     }
                 }
 
@@ -251,14 +277,15 @@ public class PersonalizedScoringService
 
         // 8. Composite Score
         var rawComposite =
-            (int)(fodmapScore * 0.30
-                  + additiveScore * 0.15
+            (int)(fodmapScore * 0.35
+                  + additiveScore * 0.20
                   + novaScore * 0.15
                   + fiberScore * 0.15
-                  + allergenScore * 0.15
-                  + sugarAlcoholScore * 0.10);
+                  + allergenScore * 0.15);
 
         var composite = Math.Clamp(rawComposite - personalPenalty, 0, 100);
+        if (hasAllergenMatch)
+            composite = Math.Min(composite, 19);
 
         // 9. Rating
         var rating = composite switch
@@ -273,15 +300,16 @@ public class PersonalizedScoringService
         // 10. Summary
         var summary = rating switch
         {
-            "Excellent" => $"{product.Name} scores {composite}/100 — an excellent choice with minimal concerns across all categories.",
-            "Good" => $"{product.Name} scores {composite}/100 — a generally good option, though some components could be better.",
-            "Fair" => $"{product.Name} scores {composite}/100 — there are some areas of potential concern worth considering.",
-            "Poor" => $"{product.Name} scores {composite}/100 — several factors scored lower. Exploring alternatives may be worthwhile if you're sensitive.",
-            _ => $"{product.Name} scores {composite}/100 — multiple factors scored low. You may want to explore other options.",
+            "Excellent" => $"{product.Name} scores {composite}/100 with few concerns detected in the available data.",
+            "Good" => $"{product.Name} scores {composite}/100; some screened components could be better.",
+            "Fair" => $"{product.Name} scores {composite}/100; several screened factors may be relevant.",
+            "Poor" => $"{product.Name} scores {composite}/100; consider the component details and your own tolerance.",
+            _ when hasAllergenMatch => $"{product.Name} matches an allergen in your profile. Do not rely on this score as medical clearance.",
+            _ => $"{product.Name} scores {composite}/100; multiple screened factors scored low.",
         };
 
         if (personalPenalty > 0)
-            summary += $" Your personal history contributed a -{personalPenalty} point adjustment based on past symptom correlations.";
+            summary += $" Personal history contributed a -{personalPenalty} point adjustment from repeated temporal associations; this does not establish causation.";
 
         return new PersonalizedScoreDto
         {

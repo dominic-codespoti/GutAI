@@ -40,6 +40,7 @@ export function EditMealSheet() {
   const [editHour, setEditHour] = useState("12");
   const [editMinute, setEditMinute] = useState("00");
   const [editItems, setEditItems] = useState<MealItem[]>([]);
+  const [editNotes, setEditNotes] = useState("");
   const [editConfigs, setEditConfigs] = useState<
     Record<number, { servingG: number; multiplier: number; customText: string }>
   >({});
@@ -54,6 +55,7 @@ export function EditMealSheet() {
       const t = new Date(editingMeal.loggedAt);
       setEditHour(String(t.getHours()).padStart(2, "0"));
       setEditMinute(String(t.getMinutes()).padStart(2, "0"));
+      setEditNotes(editingMeal.notes ?? "");
       setEditItems(editingMeal.items.map((it) => ({ ...it })));
       const configs: typeof editConfigs = {};
       editingMeal.items.forEach((it, idx) => {
@@ -94,7 +96,7 @@ export function EditMealSheet() {
               fatG: food.fat100g ?? 0,
               fiberG: food.fiber100g ?? 0,
               sugarG: food.sugar100g ?? 0,
-              sodiumMg: food.sodium100g ?? 0,
+              sodiumMg: food.sodiumMg100g ?? 0,
               servingWeightG: 100,
             }
           : it,
@@ -117,13 +119,14 @@ export function EditMealSheet() {
     }
     updateMeal.mutate({
       id: editingMeal.id,
-      data: {
-        mealType: editMealType,
-        loggedAt: buildLoggedAt(editMealDate, Number(editHour), Number(editMinute)),
-        items: editItems.map((it, idx) =>
-          mapEditItemToRequest(it, editConfigs[idx]),
-        ),
-      },
+        data: {
+          mealType: editMealType,
+          loggedAt: buildLoggedAt(editMealDate, Number(editHour), Number(editMinute)),
+          notes: editNotes.trim() || undefined,
+          items: editItems.map((it, idx) =>
+            mapEditItemToRequest(it, editConfigs[idx]),
+          ),
+        },
     });
   };
 
@@ -301,6 +304,45 @@ export function EditMealSheet() {
               />
             </View>
           </View>
+          <TextInput
+            placeholder="Add a note (optional)"
+            placeholderTextColor={colors.textLight}
+            value={editNotes}
+            onChangeText={setEditNotes}
+            maxLength={1000}
+            multiline
+            accessibilityLabel="Meal notes"
+            style={{
+              minHeight: 42,
+              maxHeight: 80,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.sm,
+              padding: spacing.sm,
+              marginBottom: spacing.md,
+              color: colors.text,
+              backgroundColor: colors.bg,
+              fontSize: 13,
+            }}
+          />
+          {editingMeal && (editingMeal.correctionCount > 0 || editingMeal.originalText) && (
+            <View style={{ marginBottom: spacing.md, padding: spacing.sm, backgroundColor: colors.bg, borderRadius: radius.sm }}>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary }}>
+                Correction history
+              </Text>
+              {editingMeal.correctionCount > 0 && (
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 3 }}>
+                  Corrected {editingMeal.correctionCount} time{editingMeal.correctionCount === 1 ? "" : "s"}
+                  {editingMeal.lastCorrectedAt ? ` · ${new Date(editingMeal.lastCorrectedAt).toLocaleString()}` : ""}
+                </Text>
+              )}
+              {editingMeal.originalText && (
+                <Text numberOfLines={3} style={{ fontSize: 12, color: colors.textMuted, marginTop: 3 }}>
+                  Original description: {editingMeal.originalText}
+                </Text>
+              )}
+            </View>
+          )}
 
           {/* Item list */}
           <ScrollView

@@ -21,13 +21,18 @@ public class FoodProduct
     public decimal? Fat100g { get; set; }
     public decimal? Fiber100g { get; set; }
     public decimal? Sugar100g { get; set; }
-    public decimal? Sodium100g { get; set; }
+    public decimal? SodiumMg100g { get; set; }
     public string? ServingSize { get; set; }
     public decimal? ServingQuantity { get; set; }
     public FoodKind FoodKind { get; set; } = FoodKind.Unknown;
     public string DataSource { get; set; } = "Manual";
     public string? SourceUrl { get; set; }
     public string? ExternalId { get; set; }
+    // Provenance for reproducible nutrition and safety decisions.
+    public string? SourceVersion { get; set; }
+    public string? LicenseType { get; set; }
+    public string? Attribution { get; set; }
+    public DateTime? RetrievedAt { get; set; }
     public DateTime CachedAt { get; set; } = DateTime.UtcNow;
     public int CacheTtlHours { get; set; } = 24;
     public int? SafetyScore { get; set; }

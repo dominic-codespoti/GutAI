@@ -51,6 +51,7 @@ public static class SymptomEndpoints
         };
 
         await store.UpsertSymptomLogAsync(symptom);
+        symptom.SymptomType = await store.GetSymptomTypeAsync(symptom.SymptomTypeId);
         return Results.Created($"/api/symptoms/{symptom.Id}", MapToDto(symptom));
     }
 

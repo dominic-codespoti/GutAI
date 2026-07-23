@@ -182,7 +182,7 @@ public class FoodDiaryAnalysisE2ETests(AzuriteFixture fx)
 
         await fx.Store.UpsertSymptomTypeAsync(new SymptomType { Id = 7001, Name = "Bloating", Category = "GI" });
 
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 5; i++)
         {
             var mealTime = now.AddDays(-(i * 3));
             var mealId = Guid.NewGuid();
@@ -202,14 +202,17 @@ public class FoodDiaryAnalysisE2ETests(AzuriteFixture fx)
         var to = DateOnly.FromDateTime(now.AddDays(1));
         var analysis = await _sut.AnalyzeAsync(userId, from, to, fx.Store);
 
-        analysis.TotalMealsAnalyzed.Should().Be(4);
-        analysis.TotalSymptomsAnalyzed.Should().Be(4);
+        analysis.TotalMealsAnalyzed.Should().Be(5);
+        analysis.TotalSymptomsAnalyzed.Should().Be(5);
         analysis.PatternsFound.Should().BeGreaterThan(0);
         analysis.Patterns.Should().Contain(p => p.FoodName == "Garlic Bread" && p.SymptomName == "Bloating");
 
         var pattern = analysis.Patterns.First(p => p.FoodName == "Garlic Bread");
-        pattern.Occurrences.Should().Be(4);
+        pattern.Occurrences.Should().Be(5);
         pattern.AverageOnsetHours.Should().Be(3.0m);
+        // 5 exposure meals / 5 associated weight clears the >=5 support bar for "Medium"
+        // even with zero baseline meals (nothing here to compare against, so "High" stays
+        // out of reach) — this is the exact current threshold, not the older lower bar.
         pattern.Confidence.Should().Be("Medium");
     }
 

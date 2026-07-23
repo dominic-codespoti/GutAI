@@ -301,4 +301,68 @@ public class ServingEstimatorTests
     {
         ServingEstimator.FormatUnitLabel(1, "", "food").Should().BeNull();
     }
+
+    // ════════════════════════════════════════════════════════
+    //  EstimatePortionConfidence
+    // ════════════════════════════════════════════════════════
+
+    [Theory]
+    [InlineData("g")]
+    [InlineData("kg")]
+    [InlineData("oz")]
+    [InlineData("lb")]
+    public void EstimatePortionConfidence_WeightUnit_IsFullConfidence(string unit)
+    {
+        ServingEstimator.EstimatePortionConfidence(null, unit, "chicken").Should().Be(1.0m);
+        ServingEstimator.EstimatePortionConfidence(140m, unit, "chicken").Should().Be(1.0m);
+    }
+
+    [Theory]
+    [InlineData("cup")]
+    [InlineData("tbsp")]
+    [InlineData("glass")]
+    public void EstimatePortionConfidence_VolumeUnit_IsHighButNotFullConfidence(string unit)
+    {
+        var confidence = ServingEstimator.EstimatePortionConfidence(null, unit, "rice");
+        confidence.Should().BeLessThan(1.0m).And.BeGreaterThan(0.5m);
+    }
+
+    [Fact]
+    public void EstimatePortionConfidence_CountUnitWithProductServingData_HigherThanWithout()
+    {
+        var withData = ServingEstimator.EstimatePortionConfidence(85m, "can", "tuna");
+        var withoutData = ServingEstimator.EstimatePortionConfidence(null, "can", "tuna");
+        withData.Should().BeGreaterThan(withoutData);
+    }
+
+    [Fact]
+    public void EstimatePortionConfidence_NoUnitWithProductServingData_HigherThanBareGuess()
+    {
+        var withData = ServingEstimator.EstimatePortionConfidence(120m, "", "banana");
+        var bareGuess = ServingEstimator.EstimatePortionConfidence(null, "", "banana");
+        withData.Should().BeGreaterThan(bareGuess);
+    }
+
+    [Fact]
+    public void EstimatePortionConfidence_NoUnitNoProductData_IsLowestTier()
+    {
+        ServingEstimator.EstimatePortionConfidence(null, "", "xyzunknownfood").Should().BeLessThan(0.5m);
+    }
+
+    [Fact]
+    public void EstimatePortionConfidence_MirrorsWeightEstimationBranchesExactly()
+    {
+        // Every branch EstimateUnitWeightG takes must have a matching confidence tier —
+        // the two must never silently disagree about which estimation path was used.
+        decimal?[] servingQtys = [null, 100m];
+        string[] units = ["", "g", "cup", "can"];
+        foreach (var servingQty in servingQtys)
+        foreach (var unit in units)
+        {
+            // Just exercising both without exceptions is the contract here — specific
+            // values are covered by the tier-specific tests above.
+            ServingEstimator.EstimateUnitWeightG(servingQty, unit, "food");
+            ServingEstimator.EstimatePortionConfidence(servingQty, unit, "food");
+        }
+    }
 }

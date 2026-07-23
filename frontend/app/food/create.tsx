@@ -15,10 +15,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeScreen } from "../../components/SafeScreen";
 import { useThemeColors } from "../../src/stores/theme";
 import { foodApi, mealApi } from "../../src/api";
+import { MealTypePicker } from "../../components/MealTypePicker";
+import { today, buildLoggedAt } from "../../src/utils/date";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "../../src/stores/toast";
 import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
-import { scaleNutrition } from "../../src/utils/nutrition";
 import { maybeRequestReview } from "../../src/utils/review";
 import {
   normalizeCustomFood,
@@ -83,6 +84,8 @@ export default function CreateCustomFoodScreen() {
 
   // ── Description state ──
   const [descText, setDescText] = useState("");
+  const [logMealType, setLogMealType] = useState("Snack");
+  const [logDate, setLogDate] = useState(today());
 
   // ── Label state ──
   const [labelImageUri, setLabelImageUri] = useState<string | null>(null);
@@ -131,22 +134,11 @@ export default function CreateCustomFoodScreen() {
   const saveAndLogFood = useMutation({
     mutationFn: async () => {
       const saved = await foodApi.createCustomFood(form);
-      const customFood = saved.data as any;
-      const scaled = scaleNutrition(
-        { calories100g: form.calories, protein100g: form.proteinG, carbs100g: form.carbG, fat100g: form.fatG } as any,
-        form.servingSize,
-      );
+      const customFood = saved.data;
       await mealApi.create({
-        mealType: "Snack",
-        loggedAt: new Date().toISOString(),
-        items: [{
-          foodName: form.name,
-          foodProductId: customFood.id,
-          servings: 1,
-          servingUnit: `${form.servingSize}${form.servingSizeUnit}`,
-          servingWeightG: form.servingSize,
-          ...scaled,
-        }],
+        mealType: logMealType,
+        loggedAt: buildLoggedAt(logDate),
+        items: [customFoodToMealItem({ ...form, id: customFood.id }, generatedBy ? confidenceScore : null)],
       });
     },
     onSuccess: () => {
@@ -171,6 +163,7 @@ export default function CreateCustomFoodScreen() {
   };
 
   const isFormValid = form.name.trim().length > 0;
+  const isLogDateValid = /^\d{4}-\d{2}-\d{2}$/.test(logDate) && !Number.isNaN(new Date(`${logDate}T12:00:00`).getTime());
 
   // ── Description handlers ──
   const handleGenerateDescription = async () => {
@@ -666,6 +659,23 @@ export default function CreateCustomFoodScreen() {
             multiline
           />
         </View>
+        <View style={{ borderTopWidth: 1, borderTopColor: c.borderLight, paddingTop: 16, marginTop: 4 }}>
+          <Text style={{ color: c.textSecondary, fontWeight: "700", fontSize: 14, marginBottom: 8 }}>
+            Log destination
+          </Text>
+          <MealTypePicker selected={logMealType} onSelect={setLogMealType} />
+          <Text style={{ color: c.textMuted, fontSize: 12, marginBottom: 4 }}>
+            Date (YYYY-MM-DD)
+          </Text>
+          <TextInput
+            style={inputStyle(c)}
+            value={logDate}
+            onChangeText={setLogDate}
+            placeholder={today()}
+            placeholderTextColor={c.textMuted}
+            accessibilityLabel="Meal log date"
+          />
+        </View>
 
         {/* ════════════════════════
             SAVE ACTIONS
@@ -686,7 +696,7 @@ export default function CreateCustomFoodScreen() {
 
         <TouchableOpacity
           onPress={handleSaveAndLog}
-          disabled={!isFormValid || anySaving}
+          disabled={!isFormValid || !isLogDateValid || anySaving}
           style={{
             paddingVertical: 14,
             borderRadius: 12,
@@ -695,7 +705,7 @@ export default function CreateCustomFoodScreen() {
             marginTop: 8,
             borderWidth: 1,
             borderColor: c.primary,
-            opacity: isFormValid && !anySaving ? 1 : 0.5,
+            opacity: isFormValid && isLogDateValid && !anySaving ? 1 : 0.5,
           }}
         >
           {anySaving ? (

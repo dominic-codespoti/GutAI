@@ -32,7 +32,7 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
   const colors = useThemeColors();
   const fonts = useThemeFonts();
   const { shadow } = useThemeShadow();
-  const calories = product.calories100g ?? 0;
+  const calories = product.calories100g;
   const rating = product.safetyRating;
   const { isFavorite, toggleFavorite } = useFavorites();
   const favorited = isFavorite(product.id);
@@ -214,11 +214,9 @@ export const FoodSearchResult: React.FC<FoodSearchResultProps> = ({
 
         <View style={styles.footer}>
           <View style={styles.stats}>
-            {calories != null && (
-              <Text style={styles.statText}>
-                {Math.round(calories)} kcal/100g
-              </Text>
-            )}
+            <Text style={styles.statText}>
+              {calories == null ? "Calories unavailable" : `${Math.round(calories)} kcal/100g`}
+            </Text>
             {rating != null && (
               <View style={styles.ratingContainer}>
                 <View

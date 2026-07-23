@@ -49,11 +49,16 @@ const gutScoreColor = (score: number, c: ThemeColors) => {
   return c.danger;
 };
 
-const fodmapScoreColor = (score: number, c: ThemeColors) => {
-  if (score >= 80) return c.primaryLight;
-  if (score >= 60) return c.warning;
-  if (score >= 40) return c.sugar;
-  return c.danger;
+const fodmapStatusColor = (status: string, c: ThemeColors) => {
+  if (status === "PotentialTriggersDetected") return c.warning;
+  if (status === "NoKnownTriggersDetected") return c.primaryLight;
+  return c.textMuted; // InsufficientInformation — never render this as a "safe" green result
+};
+
+const fodmapStatusLabel = (status: string) => {
+  if (status === "PotentialTriggersDetected") return "Triggers Found";
+  if (status === "NoKnownTriggersDetected") return "None Known";
+  return "Not Enough Info";
 };
 
 const giColor = (category: string, c: ThemeColors) => {
@@ -222,8 +227,7 @@ export default function FoodDetailScreen() {
       );
     if (
       dietPrefs.includes("Low-FODMAP") &&
-      report?.fodmap &&
-      report.fodmap.fodmapScore < 60
+      report?.fodmap?.status === "PotentialTriggersDetected"
     )
       dietWarnings.push("Not Low-FODMAP friendly");
   }
@@ -414,6 +418,14 @@ export default function FoodDetailScreen() {
                 url={product.sourceUrl}
                 style={{ marginTop: 6 }}
               />
+              {(product.sourceVersion || product.retrievedAt) && (
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                  {product.sourceVersion ? `Version: ${product.sourceVersion}` : ""}
+                  {product.retrievedAt
+                    ? ` · Retrieved ${new Date(product.retrievedAt).toLocaleDateString()}`
+                    : ""}
+                </Text>
+              )}
               {product.barcode && (
                 <Text
                   style={{
@@ -518,8 +530,7 @@ export default function FoodDetailScreen() {
                 <View
                   style={{
                     backgroundColor:
-                      fodmapScoreColor(report.fodmap.fodmapScore, colors) +
-                      "18",
+                      fodmapStatusColor(report.fodmap.status, colors) + "18",
                     borderRadius: 10,
                     paddingHorizontal: 14,
                     paddingVertical: 10,
@@ -529,15 +540,12 @@ export default function FoodDetailScreen() {
                 >
                   <Text
                     style={{
-                      fontSize: 18,
+                      fontSize: 14,
                       fontWeight: "700",
-                      color: fodmapScoreColor(
-                        report.fodmap.fodmapScore,
-                        colors,
-                      ),
+                      color: fodmapStatusColor(report.fodmap.status, colors),
                     }}
                   >
-                    {report.fodmap.fodmapScore}
+                    {fodmapStatusLabel(report.fodmap.status)}
                   </Text>
                   <Text
                     style={{
@@ -975,12 +983,14 @@ export default function FoodDetailScreen() {
             )}
 
             {/* FODMAP Assessment — collapsible */}
-            {report?.fodmap && report.fodmap.triggerCount > 0 && (
+            {report?.fodmap &&
+              (report.fodmap.triggerCount > 0 ||
+                report.fodmap.status === "InsufficientInformation") && (
               <CollapsibleCard
                 title="FODMAP Assessment"
                 emoji="🧪"
-                badge={report.fodmap.fodmapRating}
-                badgeColor={fodmapScoreColor(report.fodmap.fodmapScore, colors)}
+                badge={fodmapStatusLabel(report.fodmap.status)}
+                badgeColor={fodmapStatusColor(report.fodmap.status, colors)}
                 defaultOpen={fodmapRelevant}
               >
                 <Text
@@ -993,6 +1003,20 @@ export default function FoodDetailScreen() {
                 >
                   {report.fodmap.summary}
                 </Text>
+
+                {report.fodmap.status === "InsufficientInformation" &&
+                  report.fodmap.missingEvidence.length > 0 && (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: colors.textMuted,
+                        marginBottom: 12,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Missing: {report.fodmap.missingEvidence.join(", ")}
+                    </Text>
+                  )}
 
                 {(report.fodmap.highCount > 0 ||
                   report.fodmap.moderateCount > 0) && (
@@ -1073,6 +1097,7 @@ export default function FoodDetailScreen() {
                   >
                     {report.fodmap.categories.map((cat) => (
                       <View
+                        key={cat}
                         style={{
                           backgroundColor: colors.secondaryBg,
                           borderRadius: 6,
@@ -1726,13 +1751,13 @@ export default function FoodDetailScreen() {
               <NutrientRow
                 label="Sodium"
                 value={
-                  product.sodium100g != null
+                  product.sodiumMg100g != null
                     ? Math.round(
-                        ((product.sodium100g * servingSize) / 100) * 10,
+                        ((product.sodiumMg100g * servingSize) / 100) * 10,
                       ) / 10
                     : null
                 }
-                unit="g"
+                unit="mg"
                 colors={colors}
               />
             </View>
@@ -1907,6 +1932,39 @@ export default function FoodDetailScreen() {
                 ) : null;
               })()}
 
+            {/* Diet Warnings — surfaces the preference-mismatch checks computed above,
+                including the FODMAP-status-based check, which previously had no render call. */}
+            {dietWarnings.length > 0 && (
+              <View
+                style={{
+                  backgroundColor: colors.warningBg,
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: "600",
+                    color: colors.warning,
+                    marginBottom: 8,
+                  }}
+                  accessibilityRole="header"
+                >
+                  ⚠️ Diet Preference Warnings
+                </Text>
+                {dietWarnings.map((w) => (
+                  <Text
+                    key={w}
+                    style={{ fontSize: 14, color: colors.warning, marginTop: 4 }}
+                  >
+                    • {w}
+                  </Text>
+                ))}
+              </View>
+            )}
+
             {/* Additives from safety report */}
             {report && report.additives.length > 0 && (
               <View
@@ -1984,6 +2042,25 @@ export default function FoodDetailScreen() {
                       >
                         🚫 Banned in: {add.bannedInCountries.join(", ")}
                       </Text>
+                    )}
+                    {add.evidenceSources && add.evidenceSources.length > 0 && (
+                      <View style={{ marginTop: 5 }}>
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                          Background sources:
+                        </Text>
+                        {add.evidenceSources.map((url) => (
+                          <TouchableOpacity
+                            key={url}
+                            onPress={() => Linking.openURL(url)}
+                            accessibilityRole="link"
+                            accessibilityLabel={`Open evidence source ${url}`}
+                          >
+                            <Text style={{ fontSize: 11, color: colors.primary }} numberOfLines={1}>
+                              {url}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     )}
                     {!add.healthConcerns && add.description && (
                       <Text

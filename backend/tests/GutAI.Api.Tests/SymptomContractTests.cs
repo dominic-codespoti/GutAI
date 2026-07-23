@@ -25,8 +25,8 @@ public class SymptomContractTests(GutAiWebFactory factory)
 
         json.AssertHasStringProperty("id");
         json.AssertHasNumberProperty("symptomTypeId");
-        json.AssertHasStringProperty("symptomName");
-        json.AssertHasStringProperty("category");
+        json.GetProperty("symptomName").GetString().Should().Be("Bloating");
+        json.GetProperty("category").GetString().Should().Be("Digestive");
         json.AssertHasStringProperty("icon");
         json.AssertHasNumberProperty("severity");
         json.AssertHasStringProperty("occurredAt");

@@ -22,6 +22,7 @@ public class FoodAdditive
     public int FdaRecallCount { get; set; }
     public string[] BannedInCountries { get; set; } = [];
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+    public string[] EvidenceSources { get; set; } = [];
 
     public ICollection<FoodProductAdditive> FoodProductAdditives { get; set; } = [];
     public ICollection<UserFoodAlert> UserAlerts { get; set; } = [];

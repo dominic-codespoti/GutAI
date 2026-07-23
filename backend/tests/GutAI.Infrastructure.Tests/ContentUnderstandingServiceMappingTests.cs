@@ -5,6 +5,7 @@ using Azure.AI.ContentUnderstanding;
 using GutAI.Infrastructure.Services;
 using GutAI.Application.Common.DTOs;
 using System.ClientModel.Primitives;
+using Microsoft.Extensions.Configuration;
 
 namespace GutAI.Infrastructure.Tests
 {
@@ -297,6 +298,48 @@ namespace GutAI.Infrastructure.Tests
             var dto = new CustomFoodDto();
 
             Assert.False(ContentUnderstandingService.HasMeaningfulExtraction(dto));
+        }
+
+        [Fact]
+        public void ResolveVisionDeploymentName_NoDedicatedVisionKeyConfigured_FallsBackToTextDeployment()
+        {
+            // Regression: this used to fall back to a hardcoded "gpt-4o" default unrelated to
+            // whatever text deployment was actually configured/working, so environments with
+            // only AzureOpenAI:DeploymentName set (the common single-deployment setup) had a
+            // 100%-failure-rate image-analysis fallback pointed at a deployment that doesn't
+            // exist on their Azure OpenAI resource.
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["AzureOpenAI:DeploymentName"] = "gpt-4o-mini",
+                })
+                .Build();
+
+            Assert.Equal("gpt-4o-mini", ContentUnderstandingService.ResolveVisionDeploymentName(config));
+        }
+
+        [Fact]
+        public void ResolveVisionDeploymentName_DedicatedVisionKeyConfigured_TakesPrecedenceOverTextDeployment()
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["AzureOpenAI:DeploymentName"] = "gpt-4o-mini",
+                    ["AzureOpenAI:VisionDeploymentName"] = "gpt-4-vision-preview",
+                })
+                .Build();
+
+            Assert.Equal("gpt-4-vision-preview", ContentUnderstandingService.ResolveVisionDeploymentName(config));
+        }
+
+        [Fact]
+        public void ResolveVisionDeploymentName_NothingConfigured_FallsBackToSameHardcodedDefaultAsText()
+        {
+            var config = new ConfigurationBuilder().Build();
+
+            Assert.Equal(
+                ContentUnderstandingService.ResolveTextDeploymentName(config),
+                ContentUnderstandingService.ResolveVisionDeploymentName(config));
         }
     }
 }

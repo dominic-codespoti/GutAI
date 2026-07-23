@@ -11,7 +11,7 @@ public class GlycemicIndexServiceTests
 
     static FoodProductDto MakeProduct(string name = "Test", string? ingredients = null,
         decimal? carbs = null, decimal? sugar = null, decimal? fiber = null,
-        decimal? protein = null, decimal? fat = null)
+        decimal? protein = null, decimal? fat = null, string? servingSize = null)
         => new()
         {
             Name = name,
@@ -21,6 +21,7 @@ public class GlycemicIndexServiceTests
             Fiber100g = fiber,
             Protein100g = protein,
             Fat100g = fat,
+            ServingSize = servingSize,
         };
 
     // ─── Known Foods — High GI ──────────────────────────────────────────
@@ -154,16 +155,15 @@ public class GlycemicIndexServiceTests
     [Fact]
     public void GL_CalculatedFromCarbsAndGI()
     {
-        var result = _sut.Assess(MakeProduct("White Bread", "white bread", carbs: 50));
-        result.EstimatedGL.Should().Be(37.5m); // 75 * 50 / 100
+        var result = _sut.Assess(MakeProduct("White Bread", "white bread", carbs: 50, servingSize: "100 g"));
+        result.EstimatedGL.Should().Be(37.5m);
         result.GlCategory.Should().Be("High");
     }
 
     [Fact]
     public void GL_LowWhenLowCarbs()
     {
-        var result = _sut.Assess(MakeProduct("Watermelon", "watermelon", carbs: 8));
-        // Watermelon GI=76, GL = 76*8/100 = 6.1
+        var result = _sut.Assess(MakeProduct("Watermelon", "watermelon", carbs: 8, servingSize: "100 g"));
         result.EstimatedGL.Should().BeLessThan(10);
         result.GlCategory.Should().Be("Low");
     }
@@ -218,7 +218,7 @@ public class GlycemicIndexServiceTests
     [Fact]
     public void HighGL_GivesPortionRecommendation()
     {
-        var result = _sut.Assess(MakeProduct("White Bread", "white bread", carbs: 50));
+        var result = _sut.Assess(MakeProduct("White Bread", "white bread", carbs: 50, servingSize: "100 g"));
         result.Recommendations.Should().Contain(r => r.Contains("portion size"));
     }
 
@@ -242,14 +242,14 @@ public class GlycemicIndexServiceTests
     public void HighGI_SummaryMentionsInflammation()
     {
         var result = _sut.Assess(MakeProduct("White Bread", "white bread", carbs: 49));
-        result.GutImpactSummary.Should().Contain("reactive hypoglycemia");
+        result.GutImpactSummary.Should().Contain("Exact response varies");
     }
 
     [Fact]
     public void LowGI_SummaryMentionsMicrobiome()
     {
         var result = _sut.Assess(MakeProduct("Lentils", "lentils", carbs: 20));
-        result.GutImpactSummary.Should().Contain("gentler on the digestive system");
+        result.GutImpactSummary.Should().Contain("Closest reference-food estimate");
     }
 
     // ─── Multiple Ingredient Matching ───────────────────────────────────
@@ -275,35 +275,24 @@ public class GlycemicIndexServiceTests
     // ─── Estimation from Nutrition ──────────────────────────────────────
 
     [Fact]
-    public void UnknownFood_EstimatesFromNutrition()
+    public void UnknownFood_DoesNotFabricateGiFromNutrition()
     {
         var result = _sut.Assess(MakeProduct("Mystery Bar", carbs: 40, sugar: 30, fiber: 1, protein: 3, fat: 5));
+
+        result.EstimatedGI.Should().BeNull();
+        result.GiCategory.Should().Be("Unknown");
+        result.Confidence.Should().Be("Low");
+        result.GutImpactSummary.Should().Contain("cannot be derived reliably");
+    }
+
+    [Fact]
+    public void EstimatedReferenceEntry_IsExplicitlyLowConfidence()
+    {
+        var result = _sut.Assess(MakeProduct("Protein Bar", carbs: 30, sugar: 5, protein: 25));
+
         result.EstimatedGI.Should().NotBeNull();
-        result.Matches.Should().Contain(m => m.Source == "Estimated");
-    }
-
-    [Fact]
-    public void HighSugarRatio_HigherEstimate()
-    {
-        var highSugar = _sut.Assess(MakeProduct("Candy", carbs: 80, sugar: 70));
-        var lowSugar = _sut.Assess(MakeProduct("Plain Item", carbs: 80, sugar: 5));
-        highSugar.EstimatedGI.Should().BeGreaterThan(lowSugar.EstimatedGI!.Value);
-    }
-
-    [Fact]
-    public void HighFiber_LowerEstimate()
-    {
-        var highFiber = _sut.Assess(MakeProduct("Bran", carbs: 60, sugar: 10, fiber: 15));
-        var lowFiber = _sut.Assess(MakeProduct("White", carbs: 60, sugar: 10, fiber: 0));
-        highFiber.EstimatedGI.Should().BeLessThan(lowFiber.EstimatedGI!.Value);
-    }
-
-    [Fact]
-    public void HighProtein_LowerEstimate()
-    {
-        var highProt = _sut.Assess(MakeProduct("Protein Bar", carbs: 30, sugar: 5, protein: 25));
-        var lowProt = _sut.Assess(MakeProduct("Sugar Bar", carbs: 30, sugar: 5, protein: 1));
-        highProt.EstimatedGI.Should().BeLessThan(lowProt.EstimatedGI!.Value);
+        result.Confidence.Should().Be("Low");
+        result.Matches.Should().ContainSingle(match => match.Source == "Estimated");
     }
 
     [Fact]

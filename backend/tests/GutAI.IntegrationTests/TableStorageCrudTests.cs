@@ -330,7 +330,9 @@ public class MealItemStoreTests(AzuriteFixture fx)
                 SodiumMg = 50,
                 CholesterolMg = 85,
                 SaturatedFatG = 4,
-                PotassiumMg = 500
+                PotassiumMg = 500,
+                MatchConfidence = 0.85m,
+                NutritionProvenance = "Sourced"
             }
         };
 
@@ -351,6 +353,24 @@ public class MealItemStoreTests(AzuriteFixture fx)
         item.CholesterolMg.Should().Be(85);
         item.SaturatedFatG.Should().Be(4);
         item.PotassiumMg.Should().Be(500);
+        item.MatchConfidence.Should().Be(0.85m);
+        item.NutritionProvenance.Should().Be("Sourced");
+    }
+
+    [Fact]
+    public async Task UpsertAndGet_ProvenanceFieldsRoundTripAsNull_WhenNotSet()
+    {
+        var userId = Guid.NewGuid();
+        var mealId = Guid.NewGuid();
+
+        await fx.Store.UpsertMealItemsAsync(userId, mealId, [
+            new() { Id = Guid.NewGuid(), FoodName = "Manually Entered Item" }
+        ]);
+
+        var loaded = await fx.Store.GetMealItemsAsync(userId, mealId);
+        loaded.Should().HaveCount(1);
+        loaded[0].MatchConfidence.Should().BeNull();
+        loaded[0].NutritionProvenance.Should().BeNull();
     }
 
     [Fact]
@@ -571,7 +591,7 @@ public class FoodProductStoreTests(AzuriteFixture fx)
             Fat100g = 1.5m,
             Fiber100g = 0.8m,
             Sugar100g = 4.0m,
-            Sodium100g = 0.04m,
+            SodiumMg100g = 40m,
             ServingSize = "250ml",
             ServingQuantity = 250m,
             DataSource = "OpenFoodFacts",
@@ -619,6 +639,49 @@ public class FoodProductStoreTests(AzuriteFixture fx)
     public async Task GetByBarcode_NonExistent_ReturnsNull()
     {
         var result = await fx.Store.GetFoodProductByBarcodeAsync("0000000000000");
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetBySource_FindsViaLookup()
+    {
+        var id = Guid.NewGuid();
+        var externalId = $"off-{id.ToString()[..8]}";
+        await fx.Store.UpsertFoodProductAsync(new FoodProduct
+        {
+            Id = id,
+            Name = "Grilled chicken breast",
+            DataSource = "OpenFoodFacts",
+            ExternalId = externalId
+        });
+
+        var loaded = await fx.Store.GetFoodProductBySourceAsync("OpenFoodFacts", externalId);
+        loaded.Should().NotBeNull();
+        loaded!.Id.Should().Be(id);
+        loaded.Name.Should().Be("Grilled chicken breast");
+    }
+
+    [Fact]
+    public async Task GetBySource_NonExistent_ReturnsNull()
+    {
+        var result = await fx.Store.GetFoodProductBySourceAsync("OpenFoodFacts", "nonexistent-external-id");
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetBySource_DoesNotMatchDifferentDataSource_WithSameExternalId()
+    {
+        var id = Guid.NewGuid();
+        var externalId = $"shared-{id.ToString()[..8]}";
+        await fx.Store.UpsertFoodProductAsync(new FoodProduct
+        {
+            Id = id,
+            Name = "USDA Entry",
+            DataSource = "USDA",
+            ExternalId = externalId
+        });
+
+        var result = await fx.Store.GetFoodProductBySourceAsync("OpenFoodFacts", externalId);
         result.Should().BeNull();
     }
 

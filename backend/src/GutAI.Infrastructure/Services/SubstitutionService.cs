@@ -64,13 +64,13 @@ public class SubstitutionService
         }
 
         // High sodium suggestion
-        if (product.Sodium100g > 1.0m)
+        if (product.SodiumMg100g > 1000m)
         {
             var sodiumSub = new SubstitutionDto
             {
                 Original = "High sodium content",
                 Substitute = "Low-sodium version or season with herbs/spices instead",
-                Reason = $"This product has {product.Sodium100g:F1}g sodium per 100g. High sodium intake has been associated with bloating and water retention in some individuals.",
+                Reason = $"This product has {product.SodiumMg100g:F0}mg sodium per 100g. High sodium intake has been associated with bloating and water retention in some individuals.",
                 Category = "Sodium",
                 GutBenefit = "Reduced bloating and water retention",
                 Confidence = "High",

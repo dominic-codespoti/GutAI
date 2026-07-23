@@ -3,7 +3,7 @@
 // Sources: Foundation Foods (2025-12-18), SR Legacy (2018-04)
 // Total foods: 7261
 //
-// Nutrient values are per 100g. Sodium is in GRAMS (not mg) to match OpenFoodFacts convention.
+// Nutrient values are per 100g. Sodium is in MILLIGRAMS to match meal item conventions.
 // Do not edit manually — re-run tools/UsdaFoodGenerator/generate.py to regenerate.
 // </auto-generated>
 
@@ -7331,8 +7331,8 @@ public static class WholeFoodsDatabase
 
     ];
 
-    private static readonly Lazy<FoodSearchIndex> _index = new(
-        () => new FoodSearchIndex(Foods), isThreadSafe: true);
+    private static readonly Lazy<FoodMatchIndex> _index = new(
+        () => new FoodMatchIndex(Foods), isThreadSafe: true);
 
     public static List<FoodProductDto> Search(string query, int maxResults = 10)
     {
@@ -7353,8 +7353,11 @@ public static class WholeFoodsDatabase
             Fat100g = fat,
             Fiber100g = fiber,
             Sugar100g = sugar,
-            Sodium100g = sodium,
+            SodiumMg100g = sodium * 1000m,
             DataSource = "USDA",
+            SourceVersion = "USDA embedded FoodData Central snapshot",
+            LicenseType = "USDA FoodData Central terms",
+            Attribution = "USDA FoodData Central",
             FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
         };
     }

@@ -1,10 +1,14 @@
-using System.Text.RegularExpressions;
+using System.Security.Claims;
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
-using GutAI.Domain.Entities;
+using GutAI.Infrastructure.Caching;
 using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.ExternalApis;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -14,141 +18,43 @@ namespace GutAI.IntegrationTests;
 public class SearchQualityTests(AzuriteFixture fx, ITestOutputHelper output)
 {
     // ───────────────────────────────────────────────────────────────
-    //  Helpers – replicate the search pipeline from FoodEndpoints
+    //  Drives the REAL production orchestrator (FoodEndpoints.SearchFoodProducts):
+    //  local store search -> external fan-out -> FoodCandidateCanonicalizer ->
+    //  IFoodRanker -> FoodProductPersistence.ResolveOrPersistAsync. This test suite
+    //  must never hand-reimplement that pipeline — a duplicate can drift from
+    //  production and give false confidence. The only test-local choice is which
+    //  IExternalFoodAggregator to inject: the three embedded/offline providers
+    //  (Whole/Branded/Australian) give deterministic, network-free candidates
+    //  instead of live OFF/USDA HTTP calls.
     // ───────────────────────────────────────────────────────────────
 
     private async Task<List<FoodProductDto>> RunSearchPipeline(string query)
     {
-        if (query.Length < 2)
-            return new List<FoodProductDto>();
-
         // Ensure the Azurite table exists by upserting a throwaway entity once
         var initId = Guid.Parse("00000000-0000-0000-0000-000000000001");
-        await fx.Store.UpsertFoodProductAsync(new FoodProduct
+        await fx.Store.UpsertFoodProductAsync(new GutAI.Domain.Entities.FoodProduct
         {
             Id = initId,
             Name = "__init__"
         });
 
-        // 1. Local store search (Azurite)
-        var localProducts = await fx.Store.SearchFoodProductsAsync(query, 20);
-        var additives = await fx.Store.GetAllFoodAdditivesAsync();
-
-        // 2. Embedded-database API services (no network required)
-        var compositeApi = new CompositeFoodApiService(
+        var aggregator = new ExternalFoodProviderAggregator(
             [new WholeFoodApiService(), new BrandedFoodApiService(), new AustralianFoodApiService()],
-            NullLogger<CompositeFoodApiService>.Instance);
+            NullLogger<ExternalFoodProviderAggregator>.Instance);
+        var ranker = new FoodRanker();
+        var cache = new InMemoryCacheService(
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())),
+            NullLogger<InMemoryCacheService>.Instance);
+        var anonymousUser = new ClaimsPrincipal(new ClaimsIdentity());
 
-        var externalResults = await compositeApi.SearchAsync(query);
+        var result = await FoodEndpoints.SearchFoodProducts(
+            query, region: null, anonymousUser, fx.Store, aggregator, ranker, cache, NullLogger<Program>.Instance);
 
-        // 3. Persist new external products (replicate FoodEndpoints logic)
-        var existingNames = localProducts.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var newProducts = new List<FoodProduct>();
-
-        foreach (var dto in externalResults)
-        {
-            if (existingNames.Contains(dto.Name)) continue;
-            newProducts.Add(new FoodProduct
-            {
-                Id = Guid.NewGuid(),
-                Name = dto.Name,
-                Barcode = dto.Barcode,
-                Brand = dto.Brand,
-                Ingredients = dto.Ingredients,
-                NovaGroup = dto.NovaGroup,
-                ServingSize = dto.ServingSize,
-                NutritionInfo = dto.NutritionInfo,
-                Calories100g = dto.Calories100g,
-                Protein100g = dto.Protein100g,
-                Carbs100g = dto.Carbs100g,
-                Fat100g = dto.Fat100g,
-                Fiber100g = dto.Fiber100g,
-                Sugar100g = dto.Sugar100g,
-                Sodium100g = dto.Sodium100g,
-                DataSource = dto.DataSource,
-                SourceUrl = dto.SourceUrl,
-                ExternalId = dto.ExternalId,
-                ImageUrl = dto.ImageUrl,
-                NutriScore = dto.NutriScore,
-                ServingQuantity = dto.ServingQuantity,
-                AllergensTags = dto.AllergensTags,
-                FoodKind = dto.FoodKind // Correctly copy FoodKind to store
-            });
-            existingNames.Add(dto.Name);
-        }
-
-        if (newProducts.Count > 0)
-            await Task.WhenAll(newProducts.Select(p => fx.Store.UpsertFoodProductAsync(p)));
-
-        // 4. Build combined candidate list - Use full mapping to match real endpoint
-        var localDtos = localProducts.Concat(newProducts)
-            .Select(f => MapToDto(f, additives))
-            .ToList();
-
-        var allCandidates = new List<FoodProductDto>(localDtos.Count + externalResults.Count);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var dto in localDtos)
-            if (seen.Add(dto.Name)) allCandidates.Add(dto);
-        foreach (var dto in externalResults)
-            if (seen.Add(dto.Name)) allCandidates.Add(dto);
-
-        // 5. Re-rank with Lucene FoodSearchIndex
-        if (allCandidates.Count > 1)
-        {
-            using var rankIndex = new FoodSearchIndex(allCandidates);
-            return rankIndex.Search(query, 20);
-        }
-
-        return allCandidates.Take(20).ToList();
+        return result is IValueHttpResult { Value: IEnumerable<FoodProductDto> products }
+            ? products.ToList()
+            : [];
     }
 
-    private static FoodProductDto MapToDto(FoodProduct f, List<FoodAdditive> additives)
-    {
-        // Minimal logic to link additives for full DTO consistency
-        var productAdditives = f.FoodProductAdditiveIds
-            .Select(id => additives.FirstOrDefault(a => a.Id == id))
-            .Where(a => a != null)
-            .Select(a => new FoodAdditiveDto
-            {
-                Id = a!.Id,
-                ENumber = a.ENumber,
-                Name = a.Name,
-                Category = a.Category,
-                SafetyRating = a.SafetyRating.ToString(),
-            }).ToList();
-
-        return new FoodProductDto
-        {
-            Id = f.Id,
-            Name = f.Name,
-            Barcode = f.Barcode,
-            Brand = f.Brand,
-            Ingredients = f.Ingredients,
-            ImageUrl = f.ImageUrl,
-            NovaGroup = f.NovaGroup,
-            NutriScore = f.NutriScore,
-            AllergensTags = f.AllergensTags,
-            Calories100g = f.Calories100g,
-            Protein100g = f.Protein100g,
-            Carbs100g = f.Carbs100g,
-            Fat100g = f.Fat100g,
-            Fiber100g = f.Fiber100g,
-            Sugar100g = f.Sugar100g,
-            Sodium100g = f.Sodium100g,
-            FoodKind = f.FoodKind,
-            DataSource = f.DataSource,
-            SourceUrl = f.SourceUrl,
-            ExternalId = f.ExternalId,
-            ServingSize = f.ServingSize,
-            ServingQuantity = f.ServingQuantity,
-            NutritionInfo = f.NutritionInfo,
-            IsDeleted = f.IsDeleted,
-            SafetyScore = f.SafetyScore,
-            SafetyRating = f.SafetyRating?.ToString(),
-            Additives = productAdditives,
-            AdditivesTags = productAdditives.Where(a => a.ENumber != null).Select(a => $"en:{a.ENumber!.ToLowerInvariant()}").ToList()
-        };
-    }
 
     private void PrintResults(string query, List<FoodProductDto> results)
     {

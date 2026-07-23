@@ -15,7 +15,7 @@ public static class ChatEndpoints
 
     static Guid GetUserId(ClaimsPrincipal p) => Guid.Parse(p.FindFirstValue("sub")!);
 
-    static async Task StreamChat(HttpContext httpContext, ClaimsPrincipal principal, [FromServices] IChatService chatService)
+    static async Task StreamChat(HttpContext httpContext, ClaimsPrincipal principal, [FromServices] IChatService chatService, [FromServices] ILogger<Program> logger)
     {
         var ct = httpContext.RequestAborted;
         using var reader = new StreamReader(httpContext.Request.Body);
@@ -56,10 +56,22 @@ public static class ChatEndpoints
                     var payload = JsonSerializer.Serialize(new { tool_call = evt.ToolCall, status = evt.Status });
                     await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
                 }
+                else if (evt.Error is not null)
+                {
+                    var payload = JsonSerializer.Serialize(new { error = evt.Error });
+                    await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
+                }
                 await httpContext.Response.Body.FlushAsync(ct);
             }
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Chat stream failed for user {UserId}", userId);
+            var payload = JsonSerializer.Serialize(new { error = "Something went wrong. Please try again." });
+            await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
+            await httpContext.Response.Body.FlushAsync(ct);
+        }
 
         await httpContext.Response.WriteAsync("data: [DONE]\n\n", ct);
         await httpContext.Response.Body.FlushAsync(ct);

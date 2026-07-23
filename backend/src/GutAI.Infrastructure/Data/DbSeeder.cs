@@ -2653,10 +2653,44 @@ public static class DbSeeder
                 BannedInCountries = []
             },        };
 
+        foreach (var additive in additives)
+        {
+            // These are category-level authoritative references; individual claims
+            // should not be presented as regulator conclusions without a claim-specific citation.
+            additive.EvidenceSources = additive.Category switch
+            {
+                "Color" =>
+                [
+                    "https://www.fda.gov/food/color-additives-specific-purpose",
+                    "https://www.efsa.europa.eu/en/topics/topic/food-additives"
+                ],
+                "Preservative" =>
+                [
+                    "https://www.fda.gov/food/food-ingredients-packaging/food-additives-petitions",
+                    "https://www.efsa.europa.eu/en/topics/topic/food-additives"
+                ],
+                _ =>
+                [
+                    "https://www.fda.gov/food/food-ingredients-packaging/food-additives-petitions",
+                    "https://www.efsa.europa.eu/en/topics/topic/food-additives"
+                ]
+            };
+        }
+
         foreach (var a in additives)
         {
             if (existingEnumbers.Contains(a.ENumber))
+            {
+                var stored = existing.FirstOrDefault(x =>
+                    string.Equals(x.ENumber, a.ENumber, StringComparison.OrdinalIgnoreCase));
+                if (stored is not null)
+                {
+                    stored.EvidenceSources = a.EvidenceSources;
+                    await store.UpsertFoodAdditiveAsync(stored);
+                }
                 continue;
+            }
+
             await store.UpsertFoodAdditiveAsync(a);
         }
     }

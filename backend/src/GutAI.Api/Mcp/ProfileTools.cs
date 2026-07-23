@@ -59,7 +59,7 @@ public class ProfileTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetUserProfile failed");
-            throw new McpException($"Error getting user profile: {ex.Message}");
+            throw new McpException("Could not get the user profile. Please try again.");
         }
     }
 

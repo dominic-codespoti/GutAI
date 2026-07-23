@@ -14,8 +14,9 @@ interface Props {
   totalCalories: number;
   onEdit: (meal: MealLog) => void;
   onCopy: (meal: MealLog) => void;
-  onDelete: (mealId: string) => void;
+  onSaveTemplate: (meal: MealLog) => void;
   onSwapItem: (meal: MealLog, itemIndex: number) => void;
+  onDelete: (mealId: string) => void;
   onDeleteItem: (meal: MealLog, itemIndex: number) => void;
 }
 
@@ -25,6 +26,7 @@ export function MealGroup({
   totalCalories,
   onEdit,
   onCopy,
+  onSaveTemplate,
   onDelete,
   onSwapItem,
   onDeleteItem,
@@ -43,6 +45,7 @@ export function MealGroup({
       [
         { text: "Edit Meal", onPress: () => onEdit(meal) },
         { text: "Copy Meal", onPress: () => onCopy(meal) },
+        { text: "Save as Template", onPress: () => onSaveTemplate(meal) },
         {
           text: "Delete Meal",
           style: "destructive",
@@ -150,6 +153,14 @@ export function MealGroup({
               />
             </View>
           </TouchableOpacity>
+          {meal.notes ? (
+            <Text
+              numberOfLines={2}
+              style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4, marginHorizontal: 8 }}
+            >
+              {meal.notes}
+            </Text>
+          ) : null}
 
           {meal.items.map((item, idx) => (
             <MealItemRow

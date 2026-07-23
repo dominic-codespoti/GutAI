@@ -18,7 +18,7 @@ public class FoodTools
         WriteIndented = false
     };
 
-    private readonly IFoodApiService _foodApi;
+    private readonly IFoodSearchService _foodApi;
     private readonly ITableStore _store;
     private readonly FodmapService _fodmapService;
     private readonly GutRiskService _gutRiskService;
@@ -26,7 +26,7 @@ public class FoodTools
     private readonly ILogger<FoodTools> _logger;
 
     public FoodTools(
-        IFoodApiService foodApi,
+        IFoodSearchService foodApi,
         ITableStore store,
         FodmapService fodmapService,
         GutRiskService gutRiskService,
@@ -73,7 +73,7 @@ public class FoodTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "SearchFoods failed");
-            throw new McpException($"Error searching foods: {ex.Message}");
+            throw new McpException("Search failed. Please try again.");
         }
     }
 
@@ -97,8 +97,9 @@ public class FoodTools
             var fodmap = _fodmapService.Assess(dto);
             return JsonSerializer.Serialize(new
             {
-                fodmap.FodmapScore,
-                fodmap.FodmapRating,
+                fodmap.Status,
+                fodmap.Confidence,
+                fodmap.MissingEvidence,
                 fodmap.TriggerCount,
                 triggers = fodmap.Triggers.Select(t => new { t.Name, t.Category, t.Severity, t.Explanation }),
                 fodmap.Summary
@@ -108,7 +109,7 @@ public class FoodTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetFodmapAssessment failed");
-            throw new McpException($"Error assessing FODMAP: {ex.Message}");
+            throw new McpException("Could not assess FODMAP for that product. Please try again.");
         }
     }
 
@@ -138,8 +139,7 @@ public class FoodTools
 
             return JsonSerializer.Serialize(new
             {
-                product = new { product.Name, product.Brand, product.Ingredients },
-                fodmap = new { fodmap.FodmapScore, fodmap.FodmapRating, fodmap.Summary },
+                fodmap = new { fodmap.Status, fodmap.Confidence, fodmap.MissingEvidence, fodmap.Summary },
                 gutRisk = new { gutRisk.GutScore, gutRisk.GutRating, gutRisk.Summary },
                 personalizedScore = new { score.CompositeScore, score.Rating, score.Summary }
             }, JsonOpts);
@@ -148,7 +148,7 @@ public class FoodTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetFoodSafety failed");
-            throw new McpException($"Error getting food safety: {ex.Message}");
+            throw new McpException("Could not get the food safety report for that product. Please try again.");
         }
     }
 

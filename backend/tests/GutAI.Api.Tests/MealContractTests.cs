@@ -41,6 +41,8 @@ public class MealContractTests(GutAiWebFactory factory)
         json.AssertHasNumberProperty("totalProteinG");
         json.AssertHasNumberProperty("totalCarbsG");
         json.AssertHasNumberProperty("totalFatG");
+        json.AssertHasNumberProperty("correctionCount");
+        json.AssertHasProperty("lastCorrectedAt", JsonValueKind.Null);
         json.AssertHasProperty("items", JsonValueKind.Array);
 
         var items = json.GetProperty("items");
@@ -141,6 +143,32 @@ public class MealContractTests(GutAiWebFactory factory)
         fetched.GetProperty("items")[0].GetProperty("foodName").GetString().Should().Be("Banana");
         fetched.GetProperty("items")[0].GetProperty("fiberG").GetDecimal().Should().Be(3.1m);
     }
+    [Fact]
+    public async Task UpdateMeal_RecordsCorrectionMetadata()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var createResp = await client.PostAsJsonAsync("/api/meals", new
+        {
+            mealType = "Breakfast",
+            originalText = "two eggs",
+            items = new[] { new { foodName = "Eggs", servings = 2.0, servingUnit = "piece", calories = 140.0 } }
+        });
+        var created = await createResp.Content.ReadFromJsonAsync<JsonElement>();
+        var mealId = created.GetProperty("id").GetString();
+
+        var updateResp = await client.PutAsJsonAsync($"/api/meals/{mealId}", new
+        {
+            mealType = "Breakfast",
+            items = new[] { new { foodName = "Eggs", servings = 1.0, servingUnit = "piece", calories = 70.0 } }
+        });
+
+        updateResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await updateResp.Content.ReadFromJsonAsync<JsonElement>();
+        updated.GetProperty("correctionCount").GetInt32().Should().Be(1);
+        updated.GetProperty("lastCorrectedAt").ValueKind.Should().Be(JsonValueKind.String);
+        updated.GetProperty("originalText").GetString().Should().Be("two eggs");
+    }
+
 
     [Fact]
     public async Task DailySummary_ReturnsCorrectShape()

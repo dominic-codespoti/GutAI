@@ -16,7 +16,55 @@
 > external API fan-out, frontend structure) matches the shipped implementation reasonably
 > closely as of this note.
 
-## Current Implementation Status (Session 12)
+## Current Implementation Status (2026-07)
+Current meal logging supports natural-language parsing, search/scan selection, manual entry, meal notes, local draft recovery, reusable templates, correction tracking, and end-to-end uncertainty disclosure.
+
+### Current evidence architecture
+
+The shipped system now draws a hard line between four different evidence types and surfaces them separately instead of conflating them:
+
+- **Food resolution:** every search/parse path resolves to `Exact` / `Probable` / `Ambiguous` / `Unresolved` with `MatchConfidence`. Zero-overlap queries abstain instead of returning a confident wrong guess.
+- **Selection-only persistence:** external candidates are not authoritative products until selected or committed. Repeated selections converge through canonical identity (`barcode → source+externalId → name+brand`) so one real product does not grow duplicate rows.
+- **Parsed meal provenance:** parsed items carry independent identity confidence, portion confidence, and nutrition provenance (`Sourced` / `Estimated` / `Unknown`). The frontend review step exposes those signals separately.
+- **FODMAP:** rule-based ingredient/name screening with three statuses — `PotentialTriggersDetected`, `NoKnownTriggersDetected`, `InsufficientInformation`. It is intentionally an **ingredient screen**, not a serving-level laboratory classification; unsupported cases remain unknown instead of showing a misleading green “Low FODMAP”.
+- **Gut risk / glycemic / personalized score:** additive screening, glycemic reference matching, and the personalized composite score intentionally remain separate systems. They are allowed to disagree because they represent different evidence.
+- **Food-symptom analysis:** one shared `FoodSymptomAssociationService` now powers Correlations, Food Diary, Elimination Diet, MCP, and chat. It uses a 1–6 hour onset window, respects explicit `RelatedMealLogId` links first, splits inferred evidence across competing candidate meals instead of double-counting it, compares exposed-vs-baseline symptom rates, and flags co-consumption limitations.
+- **Frontend uncertainty propagation:** the UI exposes uncertainty as text, not color alone — e.g. “Multiple possible matches”, “Nutrition estimated”, “Portion assumed”, muted “Not Enough Info” FODMAP badges, baseline percentages on correlation cards, and missing-evidence disclosures.
+
+Known evidence limits remain explicit: ingredient order is not dose, proprietary FODMAP concentration thresholds are not embedded, GI reference matches do not establish an exact branded product’s measured GI, and observational food-symptom patterns still do not prove causation.
+
+### Verification hardening (Phase 7 closeout)
+
+A gap audit of the behavioral test suite found the tests themselves were the weak point in
+several places — not the runtime behavior. Each was closed with a real fix, not a relaxed
+assertion:
+
+- **Search regression suite tested a fake pipeline.** The integration search-quality suite
+  used to hand-reimplement canonicalization/ranking/persistence instead of calling
+  `FoodEndpoints.SearchFoodProducts`, so it could pass while the real endpoint was broken. It
+  now calls the real handler directly (embedded/offline providers only, for determinism — no
+  live OFF/USDA network calls in tests) and exercises the actual
+  `FoodCandidateCanonicalizer` → `IFoodRanker` → `FoodProductPersistence.ResolveOrPersistAsync`
+  chain.
+- **Match-confidence was computed but discarded before it reached association evidence.**
+  `ParsedFoodItemDto.MatchConfidence` was shown in the meal-review UI, then silently dropped
+  when the request was built for `POST /api/meals` — `CreateMealItemRequest` had nowhere to
+  carry it. It is now threaded end to end (`CreateMealItemRequest` → `MealItem` →
+  `FoodSymptomAssociationService`), and a food/symptom association whose contributing meals
+  have low average identity confidence (`< 0.6`, the same threshold the frontend uses for its
+  "Estimated match" warning) is capped at "Low" confidence regardless of how strong the raw
+  occurrence/rate statistics look.
+- **Parser corpus gaps.** Added coverage for ambiguous top-two-candidate resolution
+  (`FoodResolutionStatus.Ambiguous` still returns usable sourced nutrition, not a withheld
+  result), multi-word regional dish names, and preparation-modifier prefixes ("grilled",
+  "steamed", "roasted").
+- **MCP/chat projection parity was architecturally true but unverified.** `GetTriggerFoods`
+  and `GetEliminationDietStatus` already called the same `ICorrelationEngine`/
+  `IFoodDiaryAnalysisService` instances Insights/Food Diary use; this is now locked in with a
+  same-seeded-data behavioral comparison instead of relying on code inspection.
+- **Niche unresolved foods** (no catalog match, no `FoodProductId`) are proven to still group
+  correctly across meals by normalized name, so a resolution failure never fragments or
+  excludes a food from trigger tracking.
 
 ### Backend — Fully Implemented ✅
 
@@ -24,16 +72,14 @@
 | ---------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
 | **Auth**               | ✅     | Register (with transaction safety), Login, Refresh token rotation, Logout, **Change Password**                 |
 | **Meal Endpoints**     | ✅     | CRUD, natural language parsing, daily summary, **data export**, negative value validation                      |
-| **Food Endpoints**     | ✅     | Search (local + composite API fan-out), barcode lookup, safety report, additives catalog, AI custom-food describe |
-| **Symptom Endpoints**  | ✅     | CRUD with severity/type validation, **RelatedMealLogId ownership validation**, history filtering               |
-| **Insight Endpoints**  | ✅     | Correlations (food + additive), nutrition trends, additive exposure — all in-memory cached                     |
-| **User Endpoints**     | ✅     | Profile CRUD, goals, alerts watchlist, **account deletion**                                                    |
-| **Middleware**         | ✅     | ExceptionMiddleware (ProblemDetails), RateLimiting (3 policies), Serilog request logging                       |
-| **External APIs**      | ✅     | CompositeFoodApiService (OFF + USDA fan-out), CalorieNinjas — all with Polly resilience                        |
-| **Caching**            | ✅     | In-memory (IDistributedCache)                                                                                  |
-| **Security**           | ✅     | JWT (no hardcoded fallback — throws on missing secret), Identity, rate limiting, input validation              |
-| **Database**           | ✅     | EF Core with indexes on Email, Barcode, Name, ENumber (unique), UserId, composite indexes, soft-delete filters |
-| **Correlation Engine** | ✅     | 24h lookback correlating food items AND additives against symptoms                                             |
+| **Insight Endpoints**    | ✅     | Correlations, nutrition trends, additive exposure, food diary analysis, elimination-diet status — cached projections over the shared evidence engine |
+| **User Endpoints**       | ✅     | Profile CRUD, goals, alerts watchlist, **account deletion**                                                    |
+| **Middleware**           | ✅     | ExceptionMiddleware (ProblemDetails), RateLimiting (3 policies), Serilog request logging                       |
+| **External APIs**        | ✅     | Composite food fan-out (OFF + USDA + embedded providers), CalorieNinjas — all with Polly resilience            |
+| **Caching**              | ✅     | In-memory cache for projections/history lookups                                                                 |
+| **Security**             | ✅     | JWT (no hardcoded fallback — throws on missing secret), Identity, rate limiting, input validation              |
+| **Database**             | ✅     | Azure Table Storage via `TableStorageStore` — single-table entity persistence with explicit `Upsert`/`MapTo` roundtrip rules |
+| **Symptom Association**  | ✅     | Shared `FoodSymptomAssociationService` (1-6h onset window, exposed-vs-baseline rate contrast, `RelatedMealLogId` precedence, co-consumption caveats) — powers Correlations, Food Diary, and Elimination Diet identically |
 | **Health Checks**      | ✅     | Health endpoints                                                                                               |
 
 ### Frontend — Fully Implemented ✅

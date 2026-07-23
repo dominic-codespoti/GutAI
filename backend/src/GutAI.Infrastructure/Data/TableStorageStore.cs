@@ -281,6 +281,8 @@ public class TableStorageStore : ITableStore
             { "TotalCarbsG", Str(meal.TotalCarbsG) },
             { "TotalFatG", Str(meal.TotalFatG) },
             { "OriginalText", meal.OriginalText },
+            { "CorrectionCount", meal.CorrectionCount },
+            { "LastCorrectedAt", meal.LastCorrectedAt },
             { "CreatedAt", meal.CreatedAt },
             { "UpdatedAt", meal.UpdatedAt },
             { "IsDeleted", meal.IsDeleted }
@@ -304,6 +306,8 @@ public class TableStorageStore : ITableStore
             TotalCarbsG = Dec(e, "TotalCarbsG"),
             TotalFatG = Dec(e, "TotalFatG"),
             OriginalText = e.GetString("OriginalText"),
+            CorrectionCount = e.GetInt32("CorrectionCount") ?? 0,
+            LastCorrectedAt = e.GetDateTimeOffset("LastCorrectedAt")?.UtcDateTime,
             CreatedAt = e.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow,
             UpdatedAt = e.GetDateTimeOffset("UpdatedAt")?.UtcDateTime ?? DateTime.UtcNow,
             IsDeleted = e.GetBoolean("IsDeleted") ?? false
@@ -365,7 +369,9 @@ public class TableStorageStore : ITableStore
                 { "SodiumMg", Str(item.SodiumMg) },
                 { "CholesterolMg", Str(item.CholesterolMg) },
                 { "SaturatedFatG", Str(item.SaturatedFatG) },
-                { "PotassiumMg", Str(item.PotassiumMg) }
+                { "PotassiumMg", Str(item.PotassiumMg) },
+                { "MatchConfidence", Str(item.MatchConfidence) },
+                { "NutritionProvenance", item.NutritionProvenance }
             };
             await UpsertAsync(e, ct);
         }
@@ -404,7 +410,9 @@ public class TableStorageStore : ITableStore
             SodiumMg = Dec(e, "SodiumMg"),
             CholesterolMg = Dec(e, "CholesterolMg"),
             SaturatedFatG = Dec(e, "SaturatedFatG"),
-            PotassiumMg = Dec(e, "PotassiumMg")
+            PotassiumMg = Dec(e, "PotassiumMg"),
+            MatchConfidence = DecN(e, "MatchConfidence"),
+            NutritionProvenance = e.GetString("NutritionProvenance")
         };
     }
 
@@ -545,6 +553,17 @@ public class TableStorageStore : ITableStore
         return await GetFoodProductAsync(Guid.Parse(foodProductId), ct);
     }
 
+    public async Task<FoodProduct?> GetFoodProductBySourceAsync(string dataSource, string externalId, CancellationToken ct)
+    {
+        var lookup = await GetEntityOrNullAsync("SOURCEID", $"{dataSource}:{externalId}", ct);
+        if (lookup == null) return null;
+
+        var foodProductId = lookup.GetString("FoodProductId");
+        if (string.IsNullOrEmpty(foodProductId)) return null;
+
+        return await GetFoodProductAsync(Guid.Parse(foodProductId), ct);
+    }
+
     public async Task<Dictionary<Guid, string?>> GetFoodProductSafetyRatingsAsync(IEnumerable<Guid> ids, CancellationToken ct)
     {
         var idList = ids.Distinct().ToList();
@@ -602,13 +621,17 @@ public class TableStorageStore : ITableStore
             { "Fat100g", Str(product.Fat100g) },
             { "Fiber100g", Str(product.Fiber100g) },
             { "Sugar100g", Str(product.Sugar100g) },
-            { "Sodium100g", Str(product.Sodium100g) },
+            { "SodiumMg100g", Str(product.SodiumMg100g) },
             { "ServingSize", product.ServingSize },
             { "ServingQuantity", Str(product.ServingQuantity) },
             { "DataSource", product.DataSource },
             { "FoodKind", (int)product.FoodKind },
             { "SourceUrl", product.SourceUrl },
             { "ExternalId", product.ExternalId },
+            { "SourceVersion", product.SourceVersion },
+            { "LicenseType", product.LicenseType },
+            { "Attribution", product.Attribution },
+            { "RetrievedAt", product.RetrievedAt },
             { "CachedAt", product.CachedAt },
             { "CacheTtlHours", product.CacheTtlHours },
             { "SafetyScore", product.SafetyScore },
@@ -627,6 +650,15 @@ public class TableStorageStore : ITableStore
             };
             await UpsertAsync(barcodeLookup, ct);
         }
+
+        if (!string.IsNullOrEmpty(product.DataSource) && !string.IsNullOrEmpty(product.ExternalId))
+        {
+            var sourceLookup = new TableEntity("SOURCEID", $"{product.DataSource}:{product.ExternalId}")
+            {
+                { "FoodProductId", product.Id.ToString() }
+            };
+            await UpsertAsync(sourceLookup, ct);
+        }
     }
 
     private static FoodProduct MapToFoodProduct(TableEntity e)
@@ -634,6 +666,8 @@ public class TableStorageStore : ITableStore
         var safetyRating = e.GetInt32("SafetyRating");
         var additiveIdsJson = e.GetString("AdditiveIds");
         var nutritionInfoJson = e.GetString("NutritionInfo");
+        var canonicalSodium = DecN(e, "SodiumMg100g");
+        var legacySodium = DecN(e, "Sodium100g");
         return new FoodProduct
         {
             Id = Guid.Parse(e.RowKey),
@@ -650,14 +684,18 @@ public class TableStorageStore : ITableStore
             Carbs100g = DecN(e, "Carbs100g"),
             Fat100g = DecN(e, "Fat100g"),
             Fiber100g = DecN(e, "Fiber100g"),
+            SodiumMg100g = canonicalSodium ?? (legacySodium.HasValue ? legacySodium.Value * 1000m : null),
             Sugar100g = DecN(e, "Sugar100g"),
-            Sodium100g = DecN(e, "Sodium100g"),
             ServingSize = e.GetString("ServingSize"),
             ServingQuantity = DecN(e, "ServingQuantity"),
             DataSource = e.GetString("DataSource") ?? "Manual",
             FoodKind = e.GetInt32("FoodKind") is int fk ? (GutAI.Domain.Enums.FoodKind)fk : GutAI.Domain.Enums.FoodKind.Unknown,
             SourceUrl = e.GetString("SourceUrl"),
             ExternalId = e.GetString("ExternalId"),
+            SourceVersion = e.GetString("SourceVersion"),
+            LicenseType = e.GetString("LicenseType"),
+            Attribution = e.GetString("Attribution"),
+            RetrievedAt = e.GetDateTimeOffset("RetrievedAt")?.UtcDateTime,
             CachedAt = e.GetDateTimeOffset("CachedAt")?.UtcDateTime ?? DateTime.UtcNow,
             CacheTtlHours = e.GetInt32("CacheTtlHours") ?? 24,
             SafetyScore = e.GetInt32("SafetyScore"),
@@ -705,6 +743,7 @@ public class TableStorageStore : ITableStore
             { "FdaAdverseEventCount", additive.FdaAdverseEventCount },
             { "FdaRecallCount", additive.FdaRecallCount },
             { "BannedInCountries", StringArrayToJson(additive.BannedInCountries) },
+            { "EvidenceSources", StringArrayToJson(additive.EvidenceSources) },
             { "LastUpdated", additive.LastUpdated }
         };
         await UpsertAsync(e, ct);
@@ -729,6 +768,7 @@ public class TableStorageStore : ITableStore
         FdaAdverseEventCount = e.GetInt32("FdaAdverseEventCount") ?? 0,
         FdaRecallCount = e.GetInt32("FdaRecallCount") ?? 0,
         BannedInCountries = JsonToStringArray(e.GetString("BannedInCountries")),
+        EvidenceSources = JsonToStringArray(e.GetString("EvidenceSources")),
         LastUpdated = e.GetDateTimeOffset("LastUpdated")?.UtcDateTime ?? DateTime.UtcNow
     };
 

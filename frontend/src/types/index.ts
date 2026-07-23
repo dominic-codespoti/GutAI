@@ -30,11 +30,20 @@ export interface MealLog {
   loggedAt: string;
   notes: string | null;
   originalText: string | null;
+  correctionCount: number;
+  lastCorrectedAt: string | null;
   items: MealItem[];
   totalCalories: number;
   totalProteinG: number;
   totalCarbsG: number;
   totalFatG: number;
+}
+export interface MealTemplate {
+  id: string;
+  name: string;
+  mealType: string;
+  notes?: string;
+  items: CreateMealItemRequest[];
 }
 
 export interface MealItem {
@@ -56,6 +65,8 @@ export interface MealItem {
   cholesterolMg?: number;
   saturatedFatG?: number;
   potassiumMg?: number;
+  matchConfidence?: number;
+  nutritionProvenance?: string;
 }
 
 export interface CreateMealRequest {
@@ -83,6 +94,8 @@ export interface CreateMealItemRequest {
   cholesterolMg?: number;
   saturatedFatG?: number;
   potassiumMg?: number;
+  matchConfidence?: number;
+  nutritionProvenance?: string;
 }
 
 export interface NaturalLanguageMealRequest {
@@ -107,6 +120,9 @@ export interface ParsedFoodItem {
   saturatedFatG: number;
   potassiumMg: number;
   matchConfidence: number;
+  portionConfidence: number;
+  nutritionProvenance: string;
+  resolutionStatus: string;
 }
 
 export interface NaturalLanguageResponse {
@@ -136,7 +152,7 @@ export interface FoodProduct {
   fat100g: number | null;
   fiber100g: number | null;
   sugar100g: number | null;
-  sodium100g: number | null;
+  sodiumMg100g: number | null;
   servingSize: string | null;
   servingQuantity: number | null;
   safetyScore: number | null;
@@ -144,6 +160,10 @@ export interface FoodProduct {
   foodKind: FoodKind;
   dataSource: string | null;
   sourceUrl: string | null;
+  sourceVersion?: string | null;
+  licenseType?: string | null;
+  attribution?: string | null;
+  retrievedAt?: string | null;
   externalId: string | null;
   additives: FoodAdditive[];
   matchConfidence: number;
@@ -163,6 +183,7 @@ export interface FoodAdditive {
   description?: string;
   alternateNames?: string[];
   efsaAdiMgPerKgBw?: number;
+  evidenceSources?: string[];
 }
 
 export interface SymptomLog {
@@ -213,8 +234,11 @@ export interface Correlation {
   occurrences: number;
   totalMeals: number;
   frequencyPercent: number;
+  baselineFrequencyPercent: number;
   averageSeverity: number;
   confidence: string;
+  attributionMethod: string;
+  limitations: string[];
 }
 
 export interface ChatMessage {
@@ -228,6 +252,7 @@ export interface ChatStreamEvent {
   content?: string;
   tool_call?: string;
   status?: string;
+  error?: string;
 }
 
 export interface NutritionTrend {
@@ -294,8 +319,8 @@ export interface GutRiskFlag {
 }
 
 export interface FodmapAssessment {
-  fodmapScore: number;
-  fodmapRating: string;
+  status: string;
+  ingredientScreeningScore: number;
   confidence: string;
   triggerCount: number;
   highCount: number;
@@ -303,6 +328,7 @@ export interface FodmapAssessment {
   lowCount: number;
   categories: string[];
   triggers: FodmapTrigger[];
+  missingEvidence: string[];
   summary: string;
 }
 
@@ -417,6 +443,8 @@ export interface FoodSymptomPattern {
   foodName: string;
   symptomName: string;
   occurrences: number;
+  exposureMeals: number;
+  associationRatePercent: number;
   averageSeverity: number;
   averageOnsetHours: number;
   confidence: string;
@@ -503,7 +531,7 @@ export interface MealFood {
   fat100g: number | null;
   fiber100g: number | null;
   sugar100g: number | null;
-  sodium100g: number | null;
+  sodiumMg100g: number | null;
   servingSize: string | null;
   servingQuantity: number | null;
   dataSource: string | null;

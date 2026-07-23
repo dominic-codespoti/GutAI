@@ -26,14 +26,160 @@ public class FodmapServiceTests
         };
     }
 
-    // ─── Score & Rating ─────────────────────────────────────────────────
+    // ─── Confidence ceiling ──────────────────────────────────────────────
+    // FODMAP status is portion-dependent and cannot be measured from ingredient text alone,
+    // so this rule-based screen never returns "High" confidence regardless of trigger count.
 
     [Fact]
-    public void NoTriggers_Returns100_LowFodmap()
+    public void Confidence_DetailedIngredientList_ReturnsMedium()
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: "water, onion, garlic, chicken stock, salt, pepper, olive oil"));
+
+        result.Confidence.Should().Be("Medium");
+    }
+
+    [Fact]
+    public void Confidence_ShortIngredientString_ReturnsLow()
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: "onion"));
+
+        result.Confidence.Should().Be("Low");
+    }
+
+    [Fact]
+    public void Confidence_NoIngredients_UntrustedBrandedSource_ReturnsLow()
+    {
+        var product = MakeProduct() with
+        {
+            DataSource = "OpenFoodFacts",
+            FoodKind = GutAI.Domain.Enums.FoodKind.Branded,
+        };
+
+        var result = _sut.Assess(product);
+
+        result.Confidence.Should().Be("Low");
+    }
+
+    [Fact]
+    public void Confidence_NoIngredients_TrustedWholeFoodSource_ReturnsMedium()
+    {
+        var product = MakeProduct() with
+        {
+            DataSource = "USDA",
+            FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
+        };
+
+        var result = _sut.Assess(product);
+
+        result.Confidence.Should().Be("Medium");
+    }
+
+    [Fact]
+    public void Confidence_NeverReturnsHigh()
+    {
+        var result = _sut.Assess(MakeProduct(
+            ingredients: "water, wheat flour, sugar, onion, garlic, palm oil, salt, natural flavouring, inulin"));
+
+        result.Confidence.Should().NotBe("High");
+    }
+
+    // ─── Status semantics — the core of this redesign ───────────────────
+    // "No trigger detected" and "nothing to screen at all" must never collapse into the same
+    // result. The old design's "no triggers -> score 100 -> Low FODMAP" conflated both.
+
+    [Fact]
+    public void NoIngredients_UntrustedSource_ReturnsInsufficientInformation_NotNoTriggers()
+    {
+        var product = MakeProduct() with
+        {
+            DataSource = "OpenFoodFacts",
+            FoodKind = GutAI.Domain.Enums.FoodKind.Branded,
+        };
+
+        var result = _sut.Assess(product);
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.InsufficientInformation));
+        result.MissingEvidence.Should().NotBeEmpty();
+        result.Summary.Should().Contain("does not mean it is Low FODMAP");
+    }
+
+    [Fact]
+    public void EmptyProduct_ReturnsInsufficientInformation()
+    {
+        var result = _sut.Assess(new FoodProductDto { Name = "" });
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.InsufficientInformation));
+        result.MissingEvidence.Should().Contain("an ingredient list");
+        result.MissingEvidence.Should().Contain("a verified catalog identity");
+    }
+
+    [Fact]
+    public void NoIngredients_TrustedWholeFoodSource_ReturnsNoKnownTriggersDetected_NotInsufficient()
+    {
+        // A trusted catalog identity (USDA/AUSNUT/WholeFood) is itself evidence that this is a
+        // real, recognized food — the screen ran, even without an ingredient list.
+        var product = MakeProduct() with
+        {
+            DataSource = "USDA",
+            FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
+        };
+
+        var result = _sut.Assess(product);
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.NoKnownTriggersDetected));
+    }
+
+    [Fact]
+    public void HasIngredients_NoTriggers_ReturnsNoKnownTriggersDetected()
     {
         var result = _sut.Assess(MakeProduct("Rice", "white rice, water, salt"));
-        result.FodmapScore.Should().Be(100);
-        result.FodmapRating.Should().Be("Low FODMAP");
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.NoKnownTriggersDetected));
+        result.TriggerCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void HasTriggers_ReturnsPotentialTriggersDetected()
+    {
+        var result = _sut.Assess(MakeProduct("Garlic Sauce", "garlic, oil, salt"));
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.PotentialTriggersDetected));
+    }
+
+    [Fact]
+    public void AssessText_EmptyDescription_ReturnsInsufficientInformation()
+    {
+        var result = _sut.AssessText("");
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.InsufficientInformation));
+        result.MissingEvidence.Should().Contain("a non-empty food description");
+    }
+
+    [Fact]
+    public void AssessText_WhitespaceOnlyDescription_ReturnsInsufficientInformation()
+    {
+        var result = _sut.AssessText("   ");
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.InsufficientInformation));
+    }
+
+    [Fact]
+    public void AssessText_NonTrivialDescription_ReturnsNoKnownTriggersDetected_NotInsufficient()
+    {
+        var result = _sut.AssessText("grilled chicken with rice");
+
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.NoKnownTriggersDetected));
+    }
+
+    // ─── Ingredient screening score (renamed from FodmapScore) ───────────
+    // Same computation as before — a numeric signal for PersonalizedScoreDto's composite, not
+    // a standalone serving classification.
+
+    [Fact]
+    public void NoTriggers_ScreeningScoreIs100()
+    {
+        var result = _sut.Assess(MakeProduct("Rice", "white rice, water, salt"));
+        result.IngredientScreeningScore.Should().Be(100);
         result.TriggerCount.Should().Be(0);
     }
 
@@ -41,8 +187,7 @@ public class FodmapServiceTests
     public void SingleHighTrigger_Drops25Points()
     {
         var result = _sut.Assess(MakeProduct("Garlic Sauce", "garlic, oil, salt"));
-        result.FodmapScore.Should().Be(40);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.IngredientScreeningScore.Should().Be(40);
     }
 
     [Fact]
@@ -52,8 +197,7 @@ public class FodmapServiceTests
         // onion+garlic → same Fructan subcategory, deduped to 1 High trigger (×0.40)
         // cream → Lactose Moderate trigger (×0.85)
         // Total: 100 × 0.40 × 0.85 = 34
-        result.FodmapScore.Should().Be(34);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.IngredientScreeningScore.Should().Be(34);
     }
 
     [Fact]
@@ -64,24 +208,21 @@ public class FodmapServiceTests
         // honey → 1 Excess Fructose trigger (High ×0.40)
         // apple → 1 "Excess Fructose + Sorbitol" trigger (High ×0.40)
         // Total: 100 × 0.40 × 0.40 × 0.40 = 6.4 → 6
-        result.FodmapScore.Should().Be(6);
-        result.FodmapRating.Should().Be("Very High FODMAP");
+        result.IngredientScreeningScore.Should().Be(6);
     }
 
     [Fact]
     public void ModerateTrigger_Drops12Points()
     {
         var result = _sut.Assess(MakeProduct("Asparagus Soup", "asparagus, water, salt"));
-        result.FodmapScore.Should().Be(85);
-        result.FodmapRating.Should().Be("Low FODMAP");
+        result.IngredientScreeningScore.Should().Be(85);
     }
 
     [Fact]
     public void LowTrigger_Drops5Points()
     {
         var result = _sut.Assess(MakeProduct("Diet Gum", "erythritol, gum base"));
-        result.FodmapScore.Should().Be(95);
-        result.FodmapRating.Should().Be("Low FODMAP");
+        result.IngredientScreeningScore.Should().Be(95);
     }
 
     // ─── Oligosaccharides — Fructan ─────────────────────────────────────
@@ -334,8 +475,7 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct("Sugar Free Gum",
             "sorbitol, maltitol, xylitol, gum base, mannitol, aspartame"));
-        result.FodmapScore.Should().BeLessThanOrEqualTo(25);
-        result.FodmapRating.Should().Be("Very High FODMAP");
+        result.IngredientScreeningScore.Should().BeLessThanOrEqualTo(25);
         result.Triggers.Count(t => t.Category == "Polyol").Should().BeGreaterThanOrEqualTo(3);
     }
 
@@ -356,14 +496,14 @@ public class FodmapServiceTests
         // onion, garlic, wheat flour all share Fructan/Oligosaccharide — deduped to 1 trigger
         result.Triggers.Should().Contain(t => t.SubCategory == "Fructan");
         result.TriggerCount.Should().Be(1);
-        result.FodmapScore.Should().Be(40);
+        result.IngredientScreeningScore.Should().Be(40);
     }
 
     [Fact]
     public void PureRice_NoTriggers()
     {
         var result = _sut.Assess(MakeProduct("White Rice", "rice"));
-        result.FodmapScore.Should().Be(100);
+        result.IngredientScreeningScore.Should().Be(100);
         result.TriggerCount.Should().Be(0);
     }
 
@@ -371,7 +511,7 @@ public class FodmapServiceTests
     public void PlainChicken_NoTriggers()
     {
         var result = _sut.Assess(MakeProduct("Grilled Chicken", "chicken breast, salt, pepper"));
-        result.FodmapScore.Should().Be(100);
+        result.IngredientScreeningScore.Should().Be(100);
         result.TriggerCount.Should().Be(0);
     }
 
@@ -398,21 +538,21 @@ public class FodmapServiceTests
     public void NoTriggers_SummaryMentionsLowFodmap()
     {
         var result = _sut.Assess(MakeProduct("Eggs", "eggs"));
-        result.Summary.Should().Contain("low-FODMAP diet");
+        result.Summary.Should().Contain("not a serving-size FODMAP classification");
     }
 
     [Fact]
     public void HighTriggers_SummaryMentionsAvoid()
     {
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, onion"));
-        result.Summary.Should().Contain("elimination phase");
+        result.Summary.Should().Contain("portion-dependent");
     }
 
     [Fact]
     public void ModerateOnly_SummaryMentionsMonitor()
     {
         var result = _sut.Assess(MakeProduct(ingredients: "asparagus, oil"));
-        result.Summary.Should().Contain("personal experience can vary");
+        result.Summary.Should().Contain("cannot classify a serving");
     }
 
     // ─── Deduplication ──────────────────────────────────────────────────
@@ -492,10 +632,10 @@ public class FodmapServiceTests
     }
 
     [Fact]
-    public void AssessText_NoTriggers_ReturnsLowFodmap()
+    public void AssessText_NoTriggers_ScreeningScoreIs100()
     {
         var result = _sut.AssessText("grilled chicken with rice");
-        result.FodmapScore.Should().Be(100);
+        result.IngredientScreeningScore.Should().Be(100);
     }
 
     [Fact]
@@ -506,13 +646,31 @@ public class FodmapServiceTests
         result.TriggerCount.Should().BeGreaterThan(0);
     }
 
+    [Fact]
+    public void AssessText_WholeFoodMatching_UsesWordBoundaries_NotSubstring()
+    {
+        // Previously AssessText used naive .Contains for whole-food name matching (unlike Assess,
+        // which already used word-boundary regex) — "pita" inside "pepitas" must not false-positive.
+        var result = _sut.AssessText("a snack with pepitas and sunflower seeds");
+        result.Triggers.Should().NotContain(t => t.Name.Contains("Pita"));
+    }
+
+    [Fact]
+    public void AssessText_AppliesSameMitigationsAsAssess()
+    {
+        // Product and text assessment must share mitigation coverage — lactose-free suppression
+        // previously only applied to Assess(product), never AssessText.
+        var result = _sut.AssessText("lactose-free milk with cereal");
+        result.Triggers.Should().NotContain(t => t.SubCategory == "Lactose");
+    }
+
     // ─── Edge Cases ─────────────────────────────────────────────────────
 
     [Fact]
     public void NullIngredients_NoError()
     {
         var result = _sut.Assess(MakeProduct("Test Product", null));
-        result.FodmapScore.Should().BeGreaterThanOrEqualTo(0);
+        result.IngredientScreeningScore.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
@@ -520,14 +678,6 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct(ingredients: ""));
         result.TriggerCount.Should().Be(0);
-    }
-
-    [Fact]
-    public void EmptyProduct_ReturnsValidResult()
-    {
-        var result = _sut.Assess(new FoodProductDto { Name = "" });
-        result.FodmapScore.Should().Be(100);
-        result.FodmapRating.Should().Be("Low FODMAP");
     }
 
     // ─── Stone Fruits ───────────────────────────────────────────────────
@@ -567,43 +717,40 @@ public class FodmapServiceTests
         result.Triggers.Should().Contain(t => t.Name.Contains("Celery"));
     }
 
-    // ─── Rating Boundaries ──────────────────────────────────────────────
+    // ─── Score Magnitude Checks (rating boundaries no longer exist — the underlying score
+    //     math is unchanged, verified directly instead of via the removed rating labels) ────
 
     [Fact]
-    public void Score80_IsLowFodmap()
+    public void TwoModerateTriggers_Score80()
     {
         // asparagus=Moderate(×0.85) + erythritol=Low(×0.95) → 100 × 0.85 × 0.95 = 80.75 → 81
         var result = _sut.Assess(MakeProduct(ingredients: "asparagus, erythritol"));
-        result.FodmapScore.Should().Be(81);
-        result.FodmapRating.Should().Be("Low FODMAP");
+        result.IngredientScreeningScore.Should().Be(81);
     }
 
     [Fact]
-    public void Score65To79_IsModerateFodmap()
+    public void TwoModerateTriggers_DifferentCategories_Score72()
     {
         // asparagus=Moderate(×0.85) + cream=Moderate(×0.85) → 100 × 0.85 × 0.85 = 72.25 → 72
         var result = _sut.Assess(MakeProduct(ingredients: "asparagus, cream"));
-        result.FodmapScore.Should().Be(72);
-        result.FodmapRating.Should().Be("Moderate FODMAP");
+        result.IngredientScreeningScore.Should().Be(72);
     }
 
     [Fact]
-    public void Score40To64_IsHighFodmap()
+    public void SingleHighTrigger_Score40()
     {
-        // garlic → 1 High trigger (×0.40), score = 40 ≥30 → "High FODMAP"
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, salt"));
-        result.FodmapScore.Should().Be(40);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.IngredientScreeningScore.Should().Be(40);
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.PotentialTriggersDetected));
     }
 
     [Fact]
-    public void ScoreBelow40_IsVeryHighFodmap()
+    public void ThreeCategoryStacking_Score27()
     {
         // garlic=High(×0.40) + cream=Moderate(×0.85) + avocado=Moderate(×0.85) → 3 distinct categories
         // 100 × 0.40 × 0.85 × 0.85 × 0.92^(3-2) = 26.6 → 27
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, cream, avocado"));
-        result.FodmapScore.Should().Be(27);
-        result.FodmapRating.Should().Be("Very High FODMAP");
+        result.IngredientScreeningScore.Should().Be(27);
     }
 
     // ─── Rye Detection ──────────────────────────────────────────────────
@@ -643,6 +790,96 @@ public class FodmapServiceTests
         var fructanTrigger = result.Triggers.FirstOrDefault(t => t.SubCategory.Contains("Fructan"));
         fructanTrigger.Should().NotBeNull();
         fructanTrigger!.Severity.Should().Be("High");
+    }
+
+    [Fact]
+    public void LeekGreenTops_SuppressesLeekFructanTrigger()
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: "green tops of leek, olive oil, salt"));
+        result.Triggers.Should().NotContain(t => t.Name == "Leek (Fructan)");
+    }
+
+    [Fact]
+    public void PlainLeek_StillTriggersLeekFructan()
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: "leek, olive oil, salt"));
+        result.Triggers.Should().Contain(t => t.Name == "Leek (Fructan)");
+    }
+
+    // ─── Processing mitigations — garlic oil, firm tofu, canned legumes ─
+    // Named, tested exceptions where raw pattern-matching would otherwise misclassify a
+    // specific, well-documented preparation (see FodmapService.ApplyProcessingMitigations).
+
+    [Fact]
+    public void GarlicInfusedOil_SuppressesGarlicTrigger_WhenNoOtherGarlicPresent()
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: "garlic-infused olive oil, salt, pepper"));
+        result.Triggers.Should().NotContain(t => t.Name == "Garlic (Fructan)");
+    }
+
+    [Fact]
+    public void GarlicOil_SuppressesGarlicTrigger()
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: "garlic oil, salt"));
+        result.Triggers.Should().NotContain(t => t.Name == "Garlic (Fructan)");
+    }
+
+    [Fact]
+    public void GarlicOilPlusSolidGarlic_StillFlagsGarlic()
+    {
+        // Fructans aren't oil-soluble, but real garlic solids alongside the oil still carry them.
+        var result = _sut.Assess(MakeProduct(ingredients: "garlic oil, garlic, salt"));
+        result.Triggers.Should().Contain(t => t.Name == "Garlic (Fructan)");
+    }
+
+    [Fact]
+    public void FirmTofu_SuppressesSoybeanTrigger()
+    {
+        var result = _sut.Assess(MakeProduct("Firm Tofu", "soybeans, water, calcium sulfate"));
+        result.Triggers.Should().NotContain(t => t.Name == "Soybean (GOS)");
+    }
+
+    [Fact]
+    public void ExtraFirmTofu_SuppressesSoybeanTrigger()
+    {
+        var result = _sut.Assess(MakeProduct("Extra Firm Tofu", "soybeans, water, magnesium chloride"));
+        result.Triggers.Should().NotContain(t => t.Name == "Soybean (GOS)");
+    }
+
+    [Fact]
+    public void SilkenTofu_DoesNotSuppressSoybeanTrigger()
+    {
+        // Soft/silken tofu retains more GOS than firm/extra-firm — not covered by the exception.
+        var result = _sut.Assess(MakeProduct("Silken Tofu", "soybeans, water, calcium sulfate"));
+        result.Triggers.Should().Contain(t => t.Name == "Soybean (GOS)");
+    }
+
+    [Fact]
+    public void CannedChickpeas_DowngradesFromHighToModerate()
+    {
+        var result = _sut.Assess(MakeProduct("Canned Chickpeas", "chickpeas, water, salt (canned)"));
+        var trigger = result.Triggers.FirstOrDefault(t => t.Name.Contains("Chickpea"));
+        trigger.Should().NotBeNull();
+        trigger!.Severity.Should().Be("Moderate");
+        trigger.Explanation.Should().Contain("Canned");
+    }
+
+    [Fact]
+    public void DriedChickpeas_StaysHigh()
+    {
+        var result = _sut.Assess(MakeProduct("Dried Chickpeas", "chickpeas"));
+        var trigger = result.Triggers.FirstOrDefault(t => t.Name.Contains("Chickpea"));
+        trigger.Should().NotBeNull();
+        trigger!.Severity.Should().Be("High");
+    }
+
+    [Fact]
+    public void CannedLentils_DowngradesFromHighToModerate()
+    {
+        var result = _sut.Assess(MakeProduct("Canned Lentils", "canned lentils, water"));
+        var trigger = result.Triggers.FirstOrDefault(t => t.Name.Contains("Lentil"));
+        trigger.Should().NotBeNull();
+        trigger!.Severity.Should().Be("Moderate");
     }
 
     // ─── Generic Whole-Food Skipping ────────────────────────────────────
@@ -785,14 +1022,13 @@ public class FodmapServiceTests
     // ─── Clinical Classification Verification ──────────────────────────
 
     [Fact]
-    public void SingleHighTrigger_ProducesHighFodmapRating()
+    public void SingleHighTrigger_ProducesPotentialTriggersDetected()
     {
-        // A single High FODMAP trigger (e.g. garlic → fructan) should produce "High FODMAP"
-        // not "Moderate FODMAP", aligning with Monash clinical classification.
-        // Score: 100 × 0.40 = 40, rating threshold: >= 30 → "High FODMAP"
+        // A single High FODMAP trigger (e.g. garlic → fructan) must never be classified as
+        // "no known triggers" — score magnitude doesn't change the status.
         var result = _sut.Assess(MakeProduct("Onion Rings", "onion, flour, oil"));
-        result.FodmapScore.Should().BeLessThan(60);
-        result.FodmapRating.Should().Be("High FODMAP");
+        result.IngredientScreeningScore.Should().BeLessThan(60);
+        result.Status.Should().Be(nameof(FodmapAssessmentStatus.PotentialTriggersDetected));
         result.Triggers.Should().Contain(t => t.Severity == "High");
     }
 }

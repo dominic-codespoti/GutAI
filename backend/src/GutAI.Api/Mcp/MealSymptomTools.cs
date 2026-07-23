@@ -52,7 +52,8 @@ public class MealSymptomTools
         try
         {
             var userId = GetUserId(httpContext);
-            var mt = Enum.TryParse<MealType>(mealType, true, out var parsed) ? parsed : MealType.Snack;
+            if (!Enum.TryParse<MealType>(mealType, true, out var mt))
+                throw new McpException($"Invalid meal type '{mealType}'. Must be one of: Breakfast, Lunch, Dinner, Snack.");
             var mealId = Guid.NewGuid();
             var mealItems = new List<MealItem>();
             var originalParts = new List<string>();
@@ -62,8 +63,8 @@ public class MealSymptomTools
                 using var doc = JsonDocument.Parse(items);
                 foreach (var item in doc.RootElement.EnumerateArray())
                 {
-                    var servings = item.TryGetProperty("servings", out var sv) && sv.ValueKind == JsonValueKind.Number
-                        ? sv.GetDecimal() : 1m;
+                    var servings = MealValidation.ClampServings(item.TryGetProperty("servings", out var sv) && sv.ValueKind == JsonValueKind.Number
+                        ? sv.GetDecimal() : 1m);
                     var itemName = item.TryGetProperty("name", out var nm) ? nm.GetString() : null;
 
                     if (item.TryGetProperty("food_product_id", out var fpId) && fpId.GetString() is { } fpIdStr
@@ -83,13 +84,13 @@ public class MealSymptomTools
                                 Servings = servings,
                                 ServingUnit = product.ServingSize ?? "serving",
                                 ServingWeightG = servingG * servings,
-                                Calories = (product.Calories100g ?? 0) * factor,
-                                ProteinG = (product.Protein100g ?? 0) * factor,
-                                CarbsG = (product.Carbs100g ?? 0) * factor,
-                                FatG = (product.Fat100g ?? 0) * factor,
+                                Calories = MealValidation.ClampNutrient((product.Calories100g ?? 0) * factor, MealValidation.MaxCalories),
+                                ProteinG = MealValidation.ClampNutrient((product.Protein100g ?? 0) * factor, MealValidation.MaxMacroG),
+                                CarbsG = MealValidation.ClampNutrient((product.Carbs100g ?? 0) * factor, MealValidation.MaxMacroG),
+                                FatG = MealValidation.ClampNutrient((product.Fat100g ?? 0) * factor, MealValidation.MaxMacroG),
                                 FiberG = (product.Fiber100g ?? 0) * factor,
                                 SugarG = (product.Sugar100g ?? 0) * factor,
-                                SodiumMg = (product.Sodium100g ?? 0) * factor,
+                                SodiumMg = (product.SodiumMg100g ?? 0) * factor,
                             });
                             originalParts.Add(itemName ?? product.Name);
                             continue;
@@ -109,16 +110,18 @@ public class MealSymptomTools
                                 Servings = servings * (p.ServingQuantity ?? 1m),
                                 ServingUnit = "serving",
                                 ServingWeightG = p.ServingWeightG * servings,
-                                Calories = p.Calories * servings,
-                                ProteinG = p.ProteinG * servings,
-                                CarbsG = p.CarbsG * servings,
-                                FatG = p.FatG * servings,
+                                Calories = MealValidation.ClampNutrient(p.Calories * servings, MealValidation.MaxCalories),
+                                ProteinG = MealValidation.ClampNutrient(p.ProteinG * servings, MealValidation.MaxMacroG),
+                                CarbsG = MealValidation.ClampNutrient(p.CarbsG * servings, MealValidation.MaxMacroG),
+                                FatG = MealValidation.ClampNutrient(p.FatG * servings, MealValidation.MaxMacroG),
                                 FiberG = p.FiberG * servings,
                                 SugarG = p.SugarG * servings,
                                 SodiumMg = p.SodiumMg * servings,
                                 CholesterolMg = p.CholesterolMg * servings,
                                 SaturatedFatG = p.SaturatedFatG * servings,
                                 PotassiumMg = p.PotassiumMg * servings,
+                                MatchConfidence = p.MatchConfidence,
+                                NutritionProvenance = p.NutritionProvenance.ToString(),
                             });
                             originalParts.Add(p.Name);
                         }
@@ -139,16 +142,18 @@ public class MealSymptomTools
                         Servings = p.ServingQuantity ?? 1m,
                         ServingUnit = "serving",
                         ServingWeightG = p.ServingWeightG,
-                        Calories = p.Calories,
-                        ProteinG = p.ProteinG,
-                        CarbsG = p.CarbsG,
-                        FatG = p.FatG,
+                        Calories = MealValidation.ClampNutrient(p.Calories, MealValidation.MaxCalories),
+                        ProteinG = MealValidation.ClampNutrient(p.ProteinG, MealValidation.MaxMacroG),
+                        CarbsG = MealValidation.ClampNutrient(p.CarbsG, MealValidation.MaxMacroG),
+                        FatG = MealValidation.ClampNutrient(p.FatG, MealValidation.MaxMacroG),
                         FiberG = p.FiberG,
                         SugarG = p.SugarG,
                         SodiumMg = p.SodiumMg,
                         CholesterolMg = p.CholesterolMg,
                         SaturatedFatG = p.SaturatedFatG,
-                        PotassiumMg = p.PotassiumMg
+                        PotassiumMg = p.PotassiumMg,
+                        MatchConfidence = p.MatchConfidence,
+                        NutritionProvenance = p.NutritionProvenance.ToString(),
                     });
                     originalParts.Add(p.Name);
                 }
@@ -173,6 +178,15 @@ public class MealSymptomTools
             await _store.UpsertMealLogAsync(meal, ct);
             await _store.UpsertMealItemsAsync(userId, meal.Id, mealItems, ct);
 
+            // Surface identity/nutrition uncertainty per item so the calling model can flag
+            // low-confidence or estimated entries to the user instead of presenting every
+            // item as equally trustworthy — auto-logging still happens (no confirmation gate
+            // exists in this tool-call flow), but the caller now has the evidence to act on.
+            var lowConfidenceItems = mealItems
+                .Where(i => i.NutritionProvenance == "Estimated" || i.MatchConfidence is < 0.6m)
+                .Select(i => i.FoodName)
+                .ToList();
+
             return JsonSerializer.Serialize(new
             {
                 id = meal.Id,
@@ -182,14 +196,28 @@ public class MealSymptomTools
                 totalCarbsG = meal.TotalCarbsG,
                 totalFatG = meal.TotalFatG,
                 totalFiberG = mealItems.Sum(i => i.FiberG),
-                items = mealItems.Select(i => new { i.FoodName, i.Calories, i.ProteinG, i.CarbsG, i.FatG, i.FiberG })
+                items = mealItems.Select(i => new
+                {
+                    i.FoodName,
+                    i.Calories,
+                    i.ProteinG,
+                    i.CarbsG,
+                    i.FatG,
+                    i.FiberG,
+                    matchConfidence = i.MatchConfidence,
+                    nutritionProvenance = i.NutritionProvenance
+                }),
+                lowConfidenceItems,
+                lowConfidenceNote = lowConfidenceItems.Count > 0
+                    ? "Some items used an estimated or low-confidence nutrition match — consider mentioning this to the user and offering to correct them."
+                    : null
             }, JsonOpts);
         }
         catch (McpException) { throw; }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "LogMeal failed");
-            throw new McpException($"Error logging meal: {ex.Message}");
+            throw new McpException("Could not log that meal. Please try again.");
         }
     }
 
@@ -217,7 +245,7 @@ public class MealSymptomTools
                 SymptomTypeId = type.Id,
                 Severity = Math.Clamp(severity, 1, 10),
                 OccurredAt = DateTime.UtcNow,
-                Notes = notes
+                Notes = notes is { Length: > MealValidation.MaxNotesLength } ? notes[..MealValidation.MaxNotesLength] : notes
             };
             await _store.UpsertSymptomLogAsync(symptom, ct);
             return JsonSerializer.Serialize(new { id = symptom.Id, symptom = type.Name, severity = symptom.Severity }, JsonOpts);
@@ -226,7 +254,7 @@ public class MealSymptomTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "LogSymptom failed");
-            throw new McpException($"Error logging symptom: {ex.Message}");
+            throw new McpException("Could not log that symptom. Please try again.");
         }
     }
 
@@ -262,7 +290,7 @@ public class MealSymptomTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetTodaysMeals failed");
-            throw new McpException($"Error getting today's meals: {ex.Message}");
+            throw new McpException("Could not get today's meals. Please try again.");
         }
     }
 
@@ -304,7 +332,7 @@ public class MealSymptomTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetNutritionSummary failed");
-            throw new McpException($"Error getting nutrition summary: {ex.Message}");
+            throw new McpException("Could not get the nutrition summary. Please try again.");
         }
     }
 
@@ -340,7 +368,7 @@ public class MealSymptomTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetTriggerFoods failed");
-            throw new McpException($"Error getting trigger foods: {ex.Message}");
+            throw new McpException("Could not get trigger foods. Please try again.");
         }
     }
 
@@ -373,7 +401,7 @@ public class MealSymptomTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetSymptomHistory failed");
-            throw new McpException($"Error getting symptom history: {ex.Message}");
+            throw new McpException("Could not get symptom history. Please try again.");
         }
     }
 
@@ -399,7 +427,7 @@ public class MealSymptomTools
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GetEliminationDietStatus failed");
-            throw new McpException($"Error getting elimination diet status: {ex.Message}");
+            throw new McpException("Could not get elimination diet status. Please try again.");
         }
     }
 

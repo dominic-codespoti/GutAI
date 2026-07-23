@@ -3,7 +3,7 @@
 // Source: Branded Foods (2025-12-18)
 // Total foods: 5000
 //
-// Nutrient values are per 100g. Sodium is in GRAMS (not mg) to match OpenFoodFacts convention.
+// Nutrient values are per 100g. Sodium is in MILLIGRAMS to match meal item conventions.
 // Do not edit manually — re-run tools/UsdaBrandedFoodGenerator/generate.py to regenerate.
 // </auto-generated>
 
@@ -14,9 +14,9 @@ namespace GutAI.Infrastructure.Data;
 
 public static class BrandedFoodsDatabase
 {
-    private static readonly Lazy<FoodSearchIndex> _index = new(() =>
+    private static readonly Lazy<FoodMatchIndex> _index = new(() =>
     {
-        var index = new FoodSearchIndex();
+        var index = new FoodMatchIndex();
         index.AddRange(Foods);
         return index;
     });
@@ -5401,8 +5401,11 @@ public static class BrandedFoodsDatabase
             Fat100g = fat,
             Fiber100g = fiber,
             Sugar100g = sugar,
-            Sodium100g = sodium,
+            SodiumMg100g = sodium * 1000m,
             DataSource = "USDA",
+            SourceVersion = "USDA embedded FoodData Central snapshot",
+            LicenseType = "USDA FoodData Central terms",
+            Attribution = "USDA FoodData Central",
             FoodKind = FoodKind.Branded,
         };
 }

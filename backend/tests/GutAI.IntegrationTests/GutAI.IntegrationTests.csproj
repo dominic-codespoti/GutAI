@@ -17,6 +17,7 @@
     <PackageReference Include="Azure.Data.Tables" Version="12.9.1" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/GutAI.Api/GutAI.Api.csproj" />
     <ProjectReference Include="../../src/GutAI.Infrastructure/GutAI.Infrastructure.csproj" />
     <ProjectReference Include="../../src/GutAI.Application/GutAI.Application.csproj" />
     <ProjectReference Include="../../src/GutAI.Domain/GutAI.Domain.csproj" />

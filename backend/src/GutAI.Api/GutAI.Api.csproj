@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\GutAI.Application\GutAI.Application.csproj" />
     <ProjectReference Include="..\GutAI.Infrastructure\GutAI.Infrastructure.csproj" />
+    <InternalsVisibleTo Include="GutAI.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -35,13 +35,6 @@ public class GlycemicIndexService : IGlycemicIndexService
 
         MatchPatterns(hasIngredients ? lower : name, name, hasIngredients, matches, matchedPatterns);
 
-        // Fallback to nutrition-based estimation
-        if (matches.Count == 0)
-        {
-            var estimated = EstimateFromNutrition(product);
-            if (estimated != null)
-                matches.Add(estimated);
-        }
 
         if (matches.Count == 0)
         {
@@ -49,7 +42,7 @@ public class GlycemicIndexService : IGlycemicIndexService
             {
                 GiCategory = "Unknown",
                 GlCategory = "Unknown",
-                GutImpactSummary = "Unable to estimate glycemic index for this product.",
+                GutImpactSummary = "No tested-food name match was found. Glycemic index cannot be derived reliably from a nutrition label alone.",
                 Confidence = "Low",
             };
         }
@@ -58,21 +51,22 @@ public class GlycemicIndexService : IGlycemicIndexService
         var avgGI = ComputeWeightedGI(matches, hasIngredients);
         var carbs = product.Carbs100g ?? 0m;
 
-        // Serving-size-aware GL calculation
+        // GL requires an actual serving quantity. Never present a per-100g fallback as
+        // though it represented the user's serving.
         var servingGrams = ParseServingGrams(product.ServingSize);
-        decimal carbsForGL;
-        if (servingGrams > 0)
-            carbsForGL = carbs * servingGrams / 100m;
-        else
-            carbsForGL = carbs; // fallback to per-100g
-
-        var gl = Math.Round(avgGI * carbsForGL / 100m, 1);
+        decimal? gl = servingGrams > 0
+            ? Math.Round(avgGI * (carbs * servingGrams / 100m) / 100m, 1)
+            : null;
 
         var giCategory = ClassifyGI(avgGI);
-        var glCategory = ClassifyGL(gl);
-        var confidence = matches.Any(m => m.Source == "Estimated") ? "Medium" : "High";
+        var glCategory = gl.HasValue ? ClassifyGL(gl.Value) : "Unknown";
+        // Database entries describe tested reference foods, not necessarily this exact
+        // branded formulation. Ingredient-list composition is a weaker match than a name.
+        var confidence = matches.Any(m => m.Source == "Estimated")
+            ? "Low"
+            : hasIngredients ? "Low" : "Medium";
 
-        var recommendations = GenerateRecommendations(avgGI, gl, product, giCategory);
+        var recommendations = GenerateRecommendations(avgGI, gl ?? 0m, product, giCategory);
 
         return new GlycemicAssessmentDto
         {
@@ -102,7 +96,7 @@ public class GlycemicIndexService : IGlycemicIndexService
             {
                 GiCategory = "Unknown",
                 GlCategory = "Unknown",
-                GutImpactSummary = "Unable to estimate glycemic index from the provided text.",
+                GutImpactSummary = "No tested-food name match was found in the provided text.",
                 Confidence = "Low",
             };
         }
@@ -125,9 +119,9 @@ public class GlycemicIndexService : IGlycemicIndexService
             GlCategory = "Unknown",
             MatchCount = matches.Count,
             Matches = matches,
-            GutImpactSummary = BuildGutImpactSummary(avgGI, 0m, giCategory, "Unknown"),
+            GutImpactSummary = BuildGutImpactSummary(avgGI, null, giCategory, "Unknown"),
             Recommendations = recommendations,
-            Confidence = matches.Count > 0 ? "High" : "Low",
+            Confidence = "Medium",
         };
     }
 
@@ -279,84 +273,22 @@ public class GlycemicIndexService : IGlycemicIndexService
 
     // ─── Gut Impact Summary ─────────────────────────────────────────────
 
-    static string BuildGutImpactSummary(int gi, decimal gl, string giCategory, string glCategory)
+    static string BuildGutImpactSummary(int gi, decimal? gl, string giCategory, string glCategory)
     {
         if (giCategory == "Not Applicable")
             return "Very low carbohydrate content — minimal glycemic impact expected.";
 
-        var parts = new List<string>();
-
-        if (gi >= 70)
-            parts.Add($"This is a high-GI food (estimated GI: {gi}), which may cause rapid blood sugar spikes. In the gut, rapid glucose absorption can affect motility and may contribute to reactive hypoglycemia symptoms.");
-        else if (gi >= 56)
-            parts.Add($"This is a medium-GI food (estimated GI: {gi}), with moderate blood sugar impact. Generally well-tolerated from a gut perspective.");
-        else
-            parts.Add($"This is a low-GI food (estimated GI: {gi}), which promotes gradual glucose release. Low-GI foods tend to be gentler on the digestive system.");
+        var parts = new List<string>
+        {
+            $"Closest reference-food estimate: GI {gi} ({giCategory.ToLowerInvariant()}). Exact response varies with formulation, preparation, and the individual."
+        };
 
         if (gl >= 20)
-            parts.Add("The glycemic load is high, meaning a typical serving delivers a significant glucose dose.");
+            parts.Add("Estimated glycemic load is high for the stated serving.");
+        else if (!gl.HasValue)
+            parts.Add("Glycemic load is unavailable because no gram serving size was supplied.");
 
         return string.Join(" ", parts);
     }
 
-    // ─── Nutrition-Based Estimation ─────────────────────────────────────
-
-    static GlycemicMatchDto? EstimateFromNutrition(FoodProductDto product)
-    {
-        var carbs = product.Carbs100g;
-        if (carbs is null or 0 or < 5) return null;
-
-        // Whole foods with fiber tend to have much lower GI than processed foods.
-        // Use a lower base for trusted whole foods to avoid overestimating GI for vegetables.
-        bool isWholeFood = product.FoodKind == GutAI.Domain.Enums.FoodKind.WholeFood ||
-            (product.DataSource is "USDA" or "AUSNUT" && product.FoodKind != GutAI.Domain.Enums.FoodKind.Branded);
-        var hasFiber = (product.Fiber100g ?? 0) > 2;
-        var baseGI = carbs < 10 ? 35
-            : isWholeFood && hasFiber ? 40
-            : 55;
-        var sugar = product.Sugar100g ?? 0;
-        var fiber = product.Fiber100g ?? 0;
-        var protein = product.Protein100g ?? 0;
-        var fat = product.Fat100g ?? 0;
-        var name = (product.Name ?? "").ToLowerInvariant();
-
-        // Sugar ratio adjustment
-        var sugarRatio = carbs > 0 ? sugar / carbs.Value : 0;
-        if (sugarRatio > 0.6m) baseGI += 15;
-        else if (sugarRatio > 0.3m) baseGI += 8;
-
-        // Fiber adjustment
-        if (fiber > 5) baseGI -= 6;
-        else if (fiber > 2) baseGI -= 3;
-
-        // Protein adjustment
-        if (protein > 10) baseGI -= 4;
-        else if (protein > 5) baseGI -= 2;
-
-        // Fat adjustment
-        if (fat > 10) baseGI -= 6;
-        else if (fat > 5) baseGI -= 3;
-
-        // Processing level awareness
-        if ((product.NovaGroup ?? 0) >= 4) baseGI += 8;
-
-        // Name-based heuristics
-        if (name.Contains("whole grain") || name.Contains("whole wheat") || name.Contains("wholemeal"))
-            baseGI -= 8;
-        if (name.Contains("instant") || name.Contains("quick"))
-            baseGI += 10;
-        if (name.Contains("raw") || name.Contains("uncooked"))
-            baseGI -= 5;
-
-        baseGI = Math.Clamp(baseGI, 20, 95);
-
-        return new GlycemicMatchDto
-        {
-            Food = product.Name ?? "Unknown",
-            GI = baseGI,
-            GiCategory = ClassifyGI(baseGI),
-            Source = "Estimated",
-            Notes = "No direct database match found. GI estimated from macronutrient profile and product characteristics.",
-        };
-    }
 }

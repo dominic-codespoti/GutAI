@@ -21,11 +21,15 @@ public record FoodProductDto
     public decimal? Fat100g { get; init; }
     public decimal? Fiber100g { get; init; }
     public decimal? Sugar100g { get; init; }
-    public decimal? Sodium100g { get; init; }
+    public decimal? SodiumMg100g { get; init; }
     public FoodKind FoodKind { get; init; } = FoodKind.Unknown;
     public string DataSource { get; init; } = "Manual";
     public string? SourceUrl { get; init; }
     public string? ExternalId { get; init; }
+    public string? SourceVersion { get; init; }
+    public string? LicenseType { get; init; }
+    public string? Attribution { get; init; }
+    public DateTime? RetrievedAt { get; init; }
     public string? ServingSize { get; init; }
     public decimal? ServingQuantity { get; init; }
     public decimal MatchConfidence { get; init; }
@@ -53,10 +57,22 @@ public record FoodAdditiveDto
     public string[] AlternateNames { get; init; } = [];
     public decimal? EfsaAdiMgPerKgBw { get; init; }
     public DateTime? EfsaLastReviewDate { get; init; }
+    public string[] EvidenceSources { get; init; } = [];
     public string? EpaCancerClass { get; init; }
     public int? FdaAdverseEventCount { get; init; }
     public int? FdaRecallCount { get; init; }
     public DateTime? LastUpdated { get; init; }
+}
+
+/// <summary>Where a parsed item's nutrition numbers actually came from — distinct from
+/// <see cref="ParsedFoodItemDto.MatchConfidence"/> (identity confidence), so a low-confidence
+/// name match and a fabricated generic estimate are never conflated into one signal.</summary>
+public enum NutritionProvenance
+{
+    /// <summary>Nutrition came from a resolved catalog product (USDA/OpenFoodFacts/embedded DB).</summary>
+    Sourced,
+    /// <summary>No catalog match — nutrition is a keyword-based generic estimate, not measured.</summary>
+    Estimated,
 }
 
 public record ParsedFoodItemDto
@@ -76,7 +92,44 @@ public record ParsedFoodItemDto
     public decimal ServingWeightG { get; init; }
     public string? ServingSize { get; init; }
     public decimal? ServingQuantity { get; init; }
+    /// <summary>Identity confidence — how sure the resolver is that <see cref="Name"/> names the
+    /// right food. 0 when no catalog match exists (<see cref="NutritionProvenance.Estimated"/>).</summary>
     public decimal MatchConfidence { get; init; }
+    /// <summary>Portion confidence — how sure the estimated <see cref="ServingWeightG"/> is,
+    /// independent of whether the food's identity itself is confident. Tiers: explicit weight
+    /// unit (deterministic conversion) > explicit volume unit > count unit backed by real
+    /// product serving data > default-serving guess.</summary>
+    public decimal PortionConfidence { get; init; }
+    public string NutritionProvenance { get; init; } = "";
+    public string ResolutionStatus { get; init; } = "";
+}
+
+/// <summary>
+/// The single food-identity resolution decision. Every consumer that auto-selects a food
+/// (NLP meal parsing, barcode-driven flows) must use this instead of re-ranking or
+/// re-scoring an already-ranked candidate list. <c>Unresolved</c> means no candidate had
+/// any meaningful lexical/alias/brand overlap with the query — callers must not silently
+/// substitute an unrelated "best quality" candidate in that case.
+/// </summary>
+public enum FoodResolutionStatus
+{
+    /// <summary>Top candidate's name (or its depluralized stem) is a literal match for the query.</summary>
+    Exact,
+    /// <summary>Top candidate has a decisive lead over the runner-up — safe to auto-select.</summary>
+    Probable,
+    /// <summary>Multiple candidates are close enough that auto-selection risks picking the wrong one.</summary>
+    Ambiguous,
+    /// <summary>No candidate had meaningful overlap with the query.</summary>
+    Unresolved,
+}
+
+public record FoodResolutionDto
+{
+    public string OriginalQuery { get; init; } = "";
+    public FoodResolutionStatus Status { get; init; } = FoodResolutionStatus.Unresolved;
+    public FoodProductDto? Selected { get; init; }
+    public decimal MatchConfidence { get; init; }
+    public IReadOnlyList<FoodProductDto> Alternatives { get; init; } = [];
 }
 
 public record CorrelationDto
@@ -86,8 +139,16 @@ public record CorrelationDto
     public int Occurrences { get; init; }
     public int TotalMeals { get; init; }
     public decimal FrequencyPercent { get; init; }
+    /// <summary>Symptom rate on meals WITHOUT this food/additive, for comparison — the same
+    /// occurrence count means very different things depending on this baseline.</summary>
+    public decimal BaselineFrequencyPercent { get; init; }
     public decimal AverageSeverity { get; init; }
     public string Confidence { get; init; } = "Low";
+    /// <summary>"UserLinked" when the majority of evidence came from symptoms the user
+    /// explicitly tied to a specific meal; "InferredOnsetWindow" when it's derived from the
+    /// 1-6h onset window instead.</summary>
+    public string AttributionMethod { get; init; } = "InferredOnsetWindow";
+    public List<string> Limitations { get; init; } = [];
 }
 
 public record GutRiskAssessmentDto
@@ -117,18 +178,39 @@ public record GutRiskFlagDto
     public string DoseSensitivity { get; init; } = "";
 }
 
+/// <summary>
+/// The FODMAP screening decision. Ingredient/name-based string matching can never establish
+/// a measured serving-level FODMAP classification — this status distinguishes "we screened
+/// and found nothing" from "we don't have enough information to screen at all", which the
+/// previous design conflated into a single misleading "Low FODMAP" result for both cases.
+/// </summary>
+public enum FodmapAssessmentStatus
+{
+    /// <summary>At least one recognized FODMAP trigger name was detected.</summary>
+    PotentialTriggersDetected,
+    /// <summary>Screened against the trigger database with adequate evidence; nothing matched.</summary>
+    NoKnownTriggersDetected,
+    /// <summary>No ingredient list and no verified product identity — the screen could not run.</summary>
+    InsufficientInformation,
+}
+
 public record FodmapAssessmentDto
 {
-    public int FodmapScore { get; init; }
-    public string FodmapRating { get; init; } = "Low FODMAP";
+    public string Status { get; init; } = nameof(FodmapAssessmentStatus.InsufficientInformation);
+    /// <summary>Internal 0-100 ingredient-screening signal (same computation as before, renamed
+    /// from the misleading "FodmapScore"). Not a serving-level FODMAP measurement — used as one
+    /// input to <see cref="PersonalizedScoreDto"/>'s composite, not shown as a standalone rating.</summary>
+    public int IngredientScreeningScore { get; init; }
+    public string Confidence { get; init; } = "Low";
     public int TriggerCount { get; init; }
     public int HighCount { get; init; }
     public int ModerateCount { get; init; }
     public int LowCount { get; init; }
     public List<string> Categories { get; init; } = [];
     public List<FodmapTriggerDto> Triggers { get; init; } = [];
+    /// <summary>What evidence was missing when <see cref="Status"/> is <c>InsufficientInformation</c>.</summary>
+    public List<string> MissingEvidence { get; init; } = [];
     public string Summary { get; init; } = "";
-    public string? Confidence { get; init; }
 }
 
 public record FodmapTriggerDto
@@ -223,6 +305,8 @@ public record FoodSymptomPatternDto
     public string FoodName { get; init; } = "";
     public string SymptomName { get; init; } = "";
     public int Occurrences { get; init; }
+    public int ExposureMeals { get; init; }
+    public decimal AssociationRatePercent { get; init; }
     public decimal AverageSeverity { get; init; }
     public decimal AverageOnsetHours { get; init; }
     public string Confidence { get; init; } = "Low";

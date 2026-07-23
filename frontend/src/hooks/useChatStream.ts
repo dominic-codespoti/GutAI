@@ -43,6 +43,8 @@ export function useChatStream() {
           handlers.onContent(parsed.content);
         } else if (parsed.tool_call) {
           handlers.onToolStatus(parsed.tool_call, parsed.status ?? "executing");
+        } else if (parsed.error) {
+          handlers.onError(parsed.error);
         }
       } catch {
         // Ignore malformed JSON events

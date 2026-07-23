@@ -18,7 +18,7 @@ public class SubstitutionServiceTests
             Ingredients = ingredients,
             AllergensTags = allergens ?? [],
             NovaGroup = nova,
-            Sodium100g = sodium,
+            SodiumMg100g = sodium,
             Sugar100g = sugar,
             FoodKind = FoodKind.WholeFood,
         };
@@ -238,14 +238,14 @@ public class SubstitutionServiceTests
     [Fact]
     public void HighSodium_SuggestsLowSodium()
     {
-        var result = _sut.GetSubstitutions(MakeProduct("Salty Chips", sodium: 1.5m));
+        var result = _sut.GetSubstitutions(MakeProduct("Salty Chips", sodium: 1500m));
         result.Suggestions.Should().Contain(s => s.Category == "Sodium");
     }
 
     [Fact]
     public void NormalSodium_NoSodiumSuggestion()
     {
-        var result = _sut.GetSubstitutions(MakeProduct("Rice", sodium: 0.1m));
+        var result = _sut.GetSubstitutions(MakeProduct("Rice", sodium: 100m));
         result.Suggestions.Should().NotContain(s => s.Category == "Sodium");
     }
 
@@ -380,7 +380,7 @@ public class SubstitutionServiceTests
         var result = _sut.GetSubstitutions(MakeProduct(
             "Everything Product",
             "milk, wheat flour, garlic, sorbitol, sucralose, carrageenan, palm oil, caffeine",
-            nova: 4, sodium: 2m, sugar: 30m));
+            nova: 4, sodium: 2000m, sugar: 30m));
 
         var categories = result.Suggestions.Select(s => s.Category).Distinct().ToList();
         categories.Should().Contain("Dairy");

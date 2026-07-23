@@ -37,5 +37,5 @@ internal static class FoodSymptomMatching
     /// under-powered correlation buckets (each needing its own occurrence threshold
     /// to surface).
     /// </summary>
-    public static string NormalizeForGrouping(string foodName) => FoodScoring.NormalizeFoodName(foodName);
+    public static string NormalizeForGrouping(string foodName) => FoodTextNormalizer.NormalizeFoodName(foodName);
 }

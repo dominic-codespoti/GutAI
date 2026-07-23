@@ -69,6 +69,7 @@ internal static class GlycemicData
             Entry("quinoa", 53, "Low", "Sydney Uni GI DB", "Cooked quinoa"),
             Entry("bulgur", 48, "Low", "Sydney Uni GI DB", "Cracked wheat bulgur"),
             Entry("barley", 28, "Low", "Sydney Uni GI DB", "Pearl barley"),
+            Entry("oats", 55, "Medium", "Sydney Uni GI DB", "Rolled oats, cooked"),
             Entry("oat", 55, "Medium", "Sydney Uni GI DB", "Rolled oats, cooked"),
             Entry("millet", 71, "High", "Sydney Uni GI DB", "Cooked millet"),
             Entry("polenta", 68, "Medium", "Sydney Uni GI DB", "Cornmeal polenta"),
@@ -182,6 +183,7 @@ internal static class GlycemicData
             Entry("fruit punch", 67, "Medium", "Estimated", "Sugar-sweetened fruit punch"),
 
             // ── Legumes ─────────────────────────────────────────────────
+            Entry("lentils", 26, "Low", "Sydney Uni GI DB", "Red/green lentils, boiled"),
             Entry("lentil", 26, "Low", "Sydney Uni GI DB", "Red/green lentils, boiled"),
             Entry("chickpea", 28, "Low", "Sydney Uni GI DB", "Canned/boiled chickpeas"),
             Entry("kidney bean", 24, "Low", "Sydney Uni GI DB", "Canned kidney beans"),
