@@ -55,7 +55,12 @@ public sealed class ScannedComponent
 public sealed record MealScanItemDto
 {
     public required Guid ItemId { get; init; }
+
+    /// <summary>Original Stage-A component name — quantities attach HERE, never to the catalogue entry.</summary>
     public required string Name { get; init; }
+
+    /// <summary>Canonical catalogue name when grounded (may differ from Name).</summary>
+    public string? CanonicalName { get; init; }
 
     public Guid? FoodProductId { get; init; }
 
@@ -65,7 +70,7 @@ public sealed record MealScanItemDto
     /// <summary>Citation URL when Source == "web".</summary>
     public string? SourceUrl { get; init; }
 
-    /// <summary>Editable portion estimate (grams).</summary>
+    /// <summary>Editable portion estimate (grams) — always the STAGE-A estimate, never a catalogue serving size.</summary>
     public required decimal Grams { get; set; }
 
     // Computed deterministically from DB per-100g × grams (null while Source == "ai").
@@ -83,8 +88,58 @@ public sealed record MealScanItemDto
     /// <summary>Stage-A vision confidence carried through.</summary>
     public required decimal VisionConfidence { get; init; }
 
-    /// <summary>Alternate DB candidates for quick swap in the review UI.</summary>
+    /// <summary>Alternate DB candidates for quick swap in the review UI (top-3).</summary>
     public IReadOnlyList<string>? CandidateNames { get; init; }
+
+    /// <summary>Full provenance chain for this item's grounding (P3).</summary>
+    public GroundingAttemptDto? Grounding { get; init; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage B grounding provenance (P3)
+//
+// DetectedComponent -> GroundingAttempt -> GroundedComponent.
+// The attempt records the WHOLE chain: normalized query, top candidates,
+// selection decision and its method. "Unresolved" is a first-class outcome —
+// grounding never fabricates a match just to complete the meal.
+// ─────────────────────────────────────────────────────────────────────────────
+
+public sealed record GroundingCandidateDto(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("food_product_id")] Guid? FoodProductId,
+    [property: JsonPropertyName("source")] string Source,
+    [property: JsonPropertyName("match_confidence")] decimal MatchConfidence);
+
+public sealed record GroundingAttemptDto
+{
+    /// <summary>Query sent to the resolver (the Stage-A component name, sanitized).</summary>
+    [JsonPropertyName("query")]
+    public required string Query { get; init; }
+
+    /// <summary>"exact" | "probable" | "ambiguous" | "unresolved" — resolver's own decision.</summary>
+    [JsonPropertyName("resolution_status")]
+    public required string ResolutionStatus { get; init; }
+
+    /// <summary>True when the frozen auto-select criterion was met; false means human choice needed.</summary>
+    [JsonPropertyName("auto_selected")]
+    public required bool AutoSelected { get; init; }
+
+    [JsonPropertyName("selected_food_product_id")]
+    public Guid? SelectedFoodProductId { get; init; }
+
+    [JsonPropertyName("canonical_name")]
+    public string? CanonicalName { get; init; }
+
+    /// <summary>Top candidates at decision time (max 3), including the selected one.</summary>
+    [JsonPropertyName("candidates")]
+    public IReadOnlyList<GroundingCandidateDto> Candidates { get; init; } = [];
+
+    [JsonPropertyName("match_confidence")]
+    public required decimal MatchConfidence { get; init; }
+
+    /// <summary>Which mechanism produced the decision ("resolve_async" today; "web_cascade" in P4).</summary>
+    [JsonPropertyName("method")]
+    public required string Method { get; init; }
 }
 
 /// <summary>Persisted scan draft (PendingReview) returned by the scan endpoints.</summary>

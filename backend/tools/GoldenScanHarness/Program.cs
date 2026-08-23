@@ -97,7 +97,8 @@ public static class Program
             .Build();
 
         IMealVisionStage stage = new MealScanService(
-            chatClient, new NullTableStore(), configuration, loggerFactory.CreateLogger<MealScanService>());
+            chatClient, new NullTableStore(), configuration,
+            new NoopFoodSearch(), loggerFactory.CreateLogger<MealScanService>());
 
         // ── Cache ──
         var cacheDir = Path.Combine(imagesDir, ".cache");
@@ -232,6 +233,19 @@ public static class Program
             [.. d.DroppedNotes], d.RawJson, d.PromptVersion, null);
 
         public static CachedResult Failed(string reason) => new([], false, "", 0, [], "", "", reason);
+    }
+
+    /// <summary>Grounding is not exercised by the harness (Stage B is deterministic and unit-tested separately).</summary>
+    private sealed class NoopFoodSearch : IFoodSearchService
+    {
+        public Task<IReadOnlyList<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public Task<IReadOnlyList<FoodProductDto>> SearchPersonalizedAsync(string query, IReadOnlyCollection<Guid> boostIds, CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public Task<FoodResolutionDto> ResolveAsync(string query, IReadOnlyCollection<Guid> boostIds, CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public Task<FoodProductDto?> LookupBarcodeAsync(string barcode, CancellationToken ct = default)
+            => throw new NotSupportedException();
     }
 
     /// <summary>The harness never persists scan sessions — no-op store.</summary>

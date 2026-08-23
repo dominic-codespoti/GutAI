@@ -223,6 +223,7 @@ public static class DependencyInjection
                 sp.GetRequiredService<IChatClient>(),
                 sp.GetRequiredService<ITableStore>(),
                 sp.GetRequiredService<IConfiguration>(),
+                sp.GetRequiredService<IFoodSearchService>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
 
@@ -231,6 +232,7 @@ public static class DependencyInjection
                 sp.GetRequiredService<IChatClient>(),
                 sp.GetRequiredService<ITableStore>(),
                 sp.GetRequiredService<IConfiguration>(),
+                sp.GetRequiredService<IFoodSearchService>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
         }

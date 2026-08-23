@@ -51,17 +51,20 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
     private readonly IChatClient _chatClient;
     private readonly ITableStore _store;
     private readonly IConfiguration _config;
+    private readonly ComponentGroundingEngine _grounding;
     private readonly ILogger<MealScanService> _logger;
 
     public MealScanService(
         IChatClient chatClient,
         ITableStore store,
         IConfiguration config,
+        IFoodSearchService foodSearch,
         ILogger<MealScanService> logger)
     {
         _chatClient = chatClient;
         _store = store;
         _config = config;
+        _grounding = new ComponentGroundingEngine(foodSearch);
         _logger = logger;
     }
 
@@ -164,27 +167,26 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
         var decomposition = await DecomposeAsync(imageStream, contentType, ct);
         var maxComponents = _config.GetValue("MealScan:MaxComponentsPerPhoto", 12);
 
-        // ── Stage B/C (P3/P5): ai-source items from validated components ──
-        var items = decomposition.Components.Select(c => new MealScanItemDto
+        // ── Stage B: ground each component through the shared food resolver ──
+        var groundedItems = new List<MealScanItemDto>();
+        var needsDisambiguation = 0;
+        foreach (var component in decomposition.Components)
         {
-            ItemId = Guid.NewGuid(),
-            Name = c.Name,
-            Source = "ai",
-            Grams = c.EstimatedGramsMidpoint,
-            MatchConfidence = 1m,
-            VisionConfidence = c.Confidence,
-        }).ToList();
+            var grounded = await _grounding.GroundAsync(component, ct);
+            groundedItems.Add(grounded.ToItem());
+            if (!grounded.Attempt.AutoSelected) needsDisambiguation++;
+        }
 
         var warnings = new List<string>(decomposition.DroppedNotes);
         if (!decomposition.ReferenceObjectVisible)
             warnings.Add("No reference object visible — portions are rough estimates.");
-        if (!decomposition.ReferenceObjectVisible && decomposition.Components.Count > maxComponents)
-            warnings.Add($"Only the first {maxComponents} detected components were kept.");
+        if (needsDisambiguation > 0)
+            warnings.Add($"{needsDisambiguation} item(s) need a quick check — confirm the right match before saving.");
 
         var draft = new MealScanDraftDto
         {
             ScanSessionId = Guid.NewGuid(),
-            Items = items,
+            Items = groundedItems,
             Warnings = warnings,
             ReferenceObjectVisible = decomposition.ReferenceObjectVisible,
             OverallConfidence = decomposition.OverallConfidence,
@@ -196,7 +198,7 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
             UserId = userId,
             Status = "PendingReview",
             RawVisionJson = JsonSerializer.Serialize(decomposition, JsonOpts),
-            DraftItemsJson = JsonSerializer.Serialize(items, JsonOpts),
+            DraftItemsJson = JsonSerializer.Serialize(groundedItems, JsonOpts),
             Warnings = warnings,
             ReferenceObjectVisible = decomposition.ReferenceObjectVisible,
             OverallConfidence = decomposition.OverallConfidence,
@@ -204,8 +206,8 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
         }, ct);
 
         _logger.LogInformation(
-            "Meal scan {SessionId} for user {UserId}: {Components} components, overallConf={Conf:F2}, refVisible={Ref}, warnings={Warnings}",
-            draft.ScanSessionId, userId, items.Count, decomposition.OverallConfidence, decomposition.ReferenceObjectVisible, warnings.Count);
+            "Meal scan {SessionId} for user {UserId}: {Components} components, {AutoSelected} auto-grounded, {NeedsReview} need review, overallConf={Conf:F2}",
+            draft.ScanSessionId, userId, groundedItems.Count, groundedItems.Count - needsDisambiguation, needsDisambiguation, decomposition.OverallConfidence);
 
         return draft;
     }
