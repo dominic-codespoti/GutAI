@@ -80,4 +80,9 @@ public interface ITableStore
     Task<List<CoachChatMessage>> GetRecentCoachMessagesAsync(Guid userId, int limit, CancellationToken ct = default);
     Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct = default);
     Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default);
+
+    // Meal-scan sessions (drafts pending user review)
+    Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default);
+    Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
+    Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 }

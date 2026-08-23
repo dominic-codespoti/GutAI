@@ -200,9 +200,9 @@ public static class DependencyInjection
                     .Build();
             });
 
-            services.AddScoped<IChatService>(sp =>
-            {
-                return new CoachChatService(
+        services.AddScoped<IChatService>(sp =>
+        {
+            return new CoachChatService(
                     sp.GetRequiredService<IChatClient>(),
                     sp.GetRequiredService<ITableStore>(),
                     sp.GetRequiredService<ICorrelationEngine>(),
@@ -215,6 +215,16 @@ public static class DependencyInjection
                     sp.GetRequiredService<ILogger<CoachChatService>>()
                 );
             });
+
+            // AI meal photo scanning (P1 skeleton — see docs/meal-scan-detailed-design.md).
+            // Shares the coach's IChatClient pipeline (Responses transport + function middleware);
+            // the scan path itself is non-agentic structured-output inference.
+            services.AddScoped<IMealScanService>(sp => new MealScanService(
+                sp.GetRequiredService<IChatClient>(),
+                sp.GetRequiredService<ITableStore>(),
+                sp.GetRequiredService<IConfiguration>(),
+                sp.GetRequiredService<ILogger<MealScanService>>()
+            ));
         }
 
         return services;

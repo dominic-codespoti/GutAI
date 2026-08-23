@@ -149,6 +149,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 // API Endpoints
 app.MapGroup("/api/auth").MapAuthEndpoints().RequireRateLimiting("auth");
 app.MapGroup("/api/meals").MapMealEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
+app.MapGroup("/api/meals/scan").MapMealScanEndpoints().RequireAuthorization().RequireRateLimiting("mealScan");
 app.MapGroup("/api/food").MapFoodEndpoints().RequireAuthorization().RequireRateLimiting("search");
 app.MapGroup("/api/symptoms").MapSymptomEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 app.MapGroup("/api/insights").MapInsightEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");

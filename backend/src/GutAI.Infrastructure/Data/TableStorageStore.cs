@@ -1173,6 +1173,46 @@ public class TableStorageStore : ITableStore
             await DeleteAsync(entity.PartitionKey, entity.RowKey, ct);
     }
 
+    // ── Meal-scan sessions (drafts pending user review) ──
+
+    public async Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default)
+    {
+        var entity = new TableEntity(session.UserId.ToString(), $"SCAN|{session.Id}")
+        {
+            ["Status"] = session.Status,
+            ["RawVisionJson"] = session.RawVisionJson,
+            ["DraftItemsJson"] = session.DraftItemsJson,
+            ["WarningsJson"] = System.Text.Json.JsonSerializer.Serialize(session.Warnings),
+            ["ReferenceObjectVisible"] = session.ReferenceObjectVisible,
+            ["OverallConfidence"] = (double)session.OverallConfidence,
+            ["ModelDeployment"] = session.ModelDeployment,
+            ["CreatedAt"] = session.CreatedAt,
+        };
+        await UpsertAsync(entity, ct);
+    }
+
+    public async Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+    {
+        var e = await GetEntityOrNullAsync(userId.ToString(), $"SCAN|{sessionId}", ct);
+        if (e is null) return null;
+        return new ScanSessionRecord
+        {
+            Id = sessionId,
+            UserId = userId,
+            Status = e.GetString("Status") ?? "PendingReview",
+            RawVisionJson = e.GetString("RawVisionJson") ?? "",
+            DraftItemsJson = e.GetString("DraftItemsJson") ?? "[]",
+            Warnings = System.Text.Json.JsonSerializer.Deserialize<List<string>>(e.GetString("WarningsJson") ?? "[]") ?? [],
+            ReferenceObjectVisible = e.GetBoolean("ReferenceObjectVisible") ?? false,
+            OverallConfidence = (decimal)(e.GetDouble("OverallConfidence") ?? 0),
+            ModelDeployment = e.GetString("ModelDeployment") ?? "",
+            CreatedAt = e.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.UtcNow,
+        };
+    }
+
+    public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+        => DeleteAsync(userId.ToString(), $"SCAN|{sessionId}", ct);
+
     private static CustomFood MapToCustomFood(TableEntity e)
     {
         var foodId = Guid.Parse(e.RowKey.Substring("CUSTOMFOOD|".Length));

@@ -86,6 +86,20 @@ public static class RateLimitingExtensions
                 });
             });
 
+            // Meal photo scan — vision-model cost per request is higher than label parsing
+            // (multi-component analysis). 10/hour/user, reject fast past the limit.
+            options.AddPolicy("mealScan", httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
+                return RateLimitPartition.GetFixedWindowLimiter($"scan_{userId}", _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromHours(1),
+                    QueueLimit = 0,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                });
+            });
+
             options.OnRejected = async (context, ct) =>
             {
                 context.HttpContext.Response.ContentType = "application/problem+json";
