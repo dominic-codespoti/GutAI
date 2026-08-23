@@ -10,19 +10,27 @@ using Microsoft.Extensions.Logging;
 namespace GutAI.Infrastructure.Services;
 
 /// <summary>
-/// P1 vertical slice of the meal-scan pipeline: Stage A (vision decomposition via
-/// structured output + deterministic semantic validation) with Stage B/C stubbed to
-/// ai-source draft items. DB grounding arrives in P3, the free web cascade in P4.
+/// AI meal photo scan pipeline.
+/// Stage A (IMealVisionStage): vision decomposition via typed structured output +
+/// deterministic semantic validation, with a single corrective retry on unusable
+/// output. Stage B/C currently stubbed to ai-source items (P3/P5).
 /// Every scan persists a PendingReview session; nothing is logged without user
 /// confirmation through the confirm endpoint.
 /// </summary>
-public sealed class MealScanService : IMealScanService
+public sealed class MealScanService : IMealScanService, IMealVisionStage
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
+
+    /// <summary>
+    /// Version tag for the Stage-A prompt + schema contract. Bump whenever the prompt,
+    /// schema or model deployment changes — the golden-image gate keys its cache and
+    /// regression reports on this value. Do NOT edit an existing version in place.
+    /// </summary>
+    public const string VisionPromptVersion = "2026-08-23.v1";
 
     private const string VisionSystemPrompt = """
         You are a food identification assistant. Analyze the meal photo and list every
@@ -57,43 +65,107 @@ public sealed class MealScanService : IMealScanService
         _logger = logger;
     }
 
-    public async Task<MealScanDraftDto> ScanMealImageAsync(Guid userId, Stream imageStream, string contentType, CancellationToken ct = default)
+    // ──────────────────────────────────────────────────────────────
+    // Stage A — vision decomposition
+    // ──────────────────────────────────────────────────────────────
+
+    public async Task<VisionDecomposition> DecomposeAsync(Stream imageStream, string contentType, CancellationToken ct = default)
     {
-        var deployment = _config["AzureOpenAI:VisionDeployment"] ?? _config["AzureOpenAI:DeploymentName"] ?? "unknown";
         var maxComponents = _config.GetValue("MealScan:MaxComponentsPerPhoto", 12);
         using var memory = new MemoryStream();
         await imageStream.CopyToAsync(memory, ct);
+        var imageData = BinaryData.FromBytes(memory.ToArray(), contentType == "image/png" ? "image/png" : "image/jpeg");
 
-        // ── Stage A: vision decomposition (typed structured output) ──
-        var imageBytes = BinaryData.FromBytes(memory.ToArray(), contentType == "image/png" ? "image/png" : "image/jpeg");
         var requestMessages = new List<ChatMessage>
         {
             new(ChatRole.System, VisionSystemPrompt),
             new(ChatRole.User,
             [
                 new TextContent("Identify all distinct food components in this meal photo."),
-                new DataContent(imageBytes.ToArray(), imageBytes.MediaType),
+                new DataContent(imageData.ToArray(), imageData.MediaType),
             ]),
         };
 
-        MealVisionResult vision;
-        try
+        // One corrective retry: structured output can still fail (empty result,
+        // unparseable, all-invalid). Attempt 2 tells the model what went wrong.
+        string? lastError = null;
+        for (var attempt = 1; attempt <= 2; attempt++)
         {
-            var response = await _chatClient.GetResponseAsync<MealVisionResult>(requestMessages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
-            vision = response.Result ?? throw new MealScanValidationException("Vision stage returned an empty result.");
-        }
-        catch (MealScanValidationException) { throw; }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Stage A failed for user {UserId}: {Message}", userId, ex.Message);
-            throw new MealScanValidationException("Could not analyze that photo. Try a clearer shot of the meal.");
+            List<ChatMessage> messages = requestMessages;
+            if (attempt == 2 && lastError is not null)
+            {
+                messages = [.. requestMessages];
+                messages.Add(new ChatMessage(ChatRole.User,
+                    $"Your previous response could not be used: {lastError}. Respond again following the schema exactly."));
+            }
+
+            int? inputTokens = null, outputTokens = null;
+            MealVisionResult? vision;
+            try
+            {
+                var response = await _chatClient.GetResponseAsync<MealVisionResult>(
+                    messages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+                vision = response.Result;
+                inputTokens = (int?)response.Usage?.InputTokenCount;
+                outputTokens = (int?)response.Usage?.OutputTokenCount;
+            }
+            catch (Exception ex) when (ex is not MealScanValidationException)
+            {
+                lastError = "response was not parseable";
+                _logger.LogWarning(ex, "Stage A attempt {Attempt} failed to parse.", attempt);
+                continue;
+            }
+
+            if (vision is null)
+            {
+                lastError = "result was empty";
+                continue;
+            }
+
+            try
+            {
+                var validated = MealVisionValidator.Validate(vision, maxComponents);
+                LogUsage(inputTokens, outputTokens, validated.Components.Count, attempt);
+
+                return new VisionDecomposition(
+                    validated.Components,
+                    validated.ReferenceObjectVisible,
+                    validated.ScaleNotes,
+                    validated.OverallConfidence,
+                    validated.DroppedNotes,
+                    JsonSerializer.Serialize(vision, JsonOpts),
+                    VisionPromptVersion,
+                    inputTokens,
+                    outputTokens);
+            }
+            catch (MealScanValidationException ex)
+            {
+                lastError = ex.Message;
+                _logger.LogWarning("Stage A attempt {Attempt} failed validation: {Reason}", attempt, ex.Message);
+            }
         }
 
-        // Deterministic semantic validation (schema shape ≠ semantic validity).
-        var validated = MealVisionValidator.Validate(vision, maxComponents);
+        throw new MealScanValidationException("Could not analyze that photo. Try a clearer shot of the meal.");
+    }
 
-        // ── Stage B/C (P3/P5): for now, ai-source items from validated components ──
-        var items = validated.Components.Select(c => new MealScanItemDto
+    private void LogUsage(int? inTok, int? outTok, int components, int attempt)
+        => _logger.LogInformation(
+            "Stage A ok (attempt {Attempt}): {Components} components, tokens in={In}/out={Out}, prompt={PromptVersion}",
+            attempt, components, inTok, outTok, VisionPromptVersion);
+
+    // ──────────────────────────────────────────────────────────────
+    // Full pipeline (Stage B/C stubbed until P3/P5)
+    // ──────────────────────────────────────────────────────────────
+
+    public async Task<MealScanDraftDto> ScanMealImageAsync(Guid userId, Stream imageStream, string contentType, CancellationToken ct = default)
+    {
+        var deployment = _config["AzureOpenAI:VisionDeployment"] ?? _config["AzureOpenAI:DeploymentName"] ?? "unknown";
+
+        var decomposition = await DecomposeAsync(imageStream, contentType, ct);
+        var maxComponents = _config.GetValue("MealScan:MaxComponentsPerPhoto", 12);
+
+        // ── Stage B/C (P3/P5): ai-source items from validated components ──
+        var items = decomposition.Components.Select(c => new MealScanItemDto
         {
             ItemId = Guid.NewGuid(),
             Name = c.Name,
@@ -103,10 +175,10 @@ public sealed class MealScanService : IMealScanService
             VisionConfidence = c.Confidence,
         }).ToList();
 
-        var warnings = new List<string>(validated.DroppedNotes);
-        if (!validated.ReferenceObjectVisible)
+        var warnings = new List<string>(decomposition.DroppedNotes);
+        if (!decomposition.ReferenceObjectVisible)
             warnings.Add("No reference object visible — portions are rough estimates.");
-        if (vision.Components.Count > maxComponents)
+        if (!decomposition.ReferenceObjectVisible && decomposition.Components.Count > maxComponents)
             warnings.Add($"Only the first {maxComponents} detected components were kept.");
 
         var draft = new MealScanDraftDto
@@ -114,8 +186,8 @@ public sealed class MealScanService : IMealScanService
             ScanSessionId = Guid.NewGuid(),
             Items = items,
             Warnings = warnings,
-            ReferenceObjectVisible = validated.ReferenceObjectVisible,
-            OverallConfidence = validated.OverallConfidence,
+            ReferenceObjectVisible = decomposition.ReferenceObjectVisible,
+            OverallConfidence = decomposition.OverallConfidence,
         };
 
         await _store.UpsertScanSessionAsync(new ScanSessionRecord
@@ -123,17 +195,17 @@ public sealed class MealScanService : IMealScanService
             Id = draft.ScanSessionId,
             UserId = userId,
             Status = "PendingReview",
-            RawVisionJson = JsonSerializer.Serialize(vision, JsonOpts),
+            RawVisionJson = JsonSerializer.Serialize(decomposition, JsonOpts),
             DraftItemsJson = JsonSerializer.Serialize(items, JsonOpts),
             Warnings = warnings,
-            ReferenceObjectVisible = validated.ReferenceObjectVisible,
-            OverallConfidence = validated.OverallConfidence,
-            ModelDeployment = deployment,
+            ReferenceObjectVisible = decomposition.ReferenceObjectVisible,
+            OverallConfidence = decomposition.OverallConfidence,
+            ModelDeployment = $"{deployment}/{VisionPromptVersion}",
         }, ct);
 
         _logger.LogInformation(
             "Meal scan {SessionId} for user {UserId}: {Components} components, overallConf={Conf:F2}, refVisible={Ref}, warnings={Warnings}",
-            draft.ScanSessionId, userId, items.Count, validated.OverallConfidence, validated.ReferenceObjectVisible, warnings.Count);
+            draft.ScanSessionId, userId, items.Count, decomposition.OverallConfidence, decomposition.ReferenceObjectVisible, warnings.Count);
 
         return draft;
     }

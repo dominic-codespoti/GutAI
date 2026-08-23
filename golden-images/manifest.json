@@ -1,0 +1,17 @@
+{
+  "prompt_version": "informational-only-cache-uses-code-constant",
+  "gate": {
+    "min_recall": 0.80,
+    "max_median_gram_error_percent": 35
+  },
+  "cases": [
+    {
+      "image": "case01.jpg",
+      "expected": [
+        { "name": "rice", "grams": 180 },
+        { "name": "grilled chicken", "grams": 120 }
+      ],
+      "notes": "EXAMPLE ENTRY — replace with your real photos. See README.md for the capture protocol."
+    }
+  ]
+}

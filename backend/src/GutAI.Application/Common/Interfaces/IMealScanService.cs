@@ -20,6 +20,28 @@ public interface IMealScanService
     Task DiscardAsync(Guid userId, Guid scanSessionId, CancellationToken ct = default);
 }
 
+/// <summary>
+/// Stage A alone (vision decomposition). Exposed separately so the golden-image
+/// regression harness can exercise EXACTLY the production inference path without
+/// requiring storage or the rest of the pipeline.
+/// </summary>
+public interface IMealVisionStage
+{
+    Task<VisionDecomposition> DecomposeAsync(Stream imageStream, string contentType, CancellationToken ct = default);
+}
+
+/// <summary>Full Stage-A output incl. provenance needed by the regression harness.</summary>
+public sealed record VisionDecomposition(
+    IReadOnlyList<ScannedComponent> Components,
+    bool ReferenceObjectVisible,
+    string ScaleNotes,
+    decimal OverallConfidence,
+    IReadOnlyList<string> DroppedNotes,
+    string RawJson,
+    string PromptVersion,
+    int? InputTokens,
+    int? OutputTokens);
+
 /// <summary>Persisted session record surfaced through ITableStore.</summary>
 public sealed record ScanSessionRecord
 {

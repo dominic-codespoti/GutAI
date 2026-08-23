@@ -192,9 +192,9 @@ public static class DependencyInjection
             services.AddSingleton<IChatClient>(sp =>
             {
                 var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-#pragma warning disable EXTOSS001 // AsIChatClient experimental upstream
+#pragma warning disable OPENAI001 // experimental Responses surface
                 var inner = azureClient.GetResponsesClient().AsIChatClient(aiDeployment);
-#pragma warning restore EXTOSS001
+#pragma warning restore OPENAI001
                 return new ChatClientBuilder(inner)
                     .UseFunctionInvocation(loggerFactory)
                     .Build();
@@ -220,6 +220,14 @@ public static class DependencyInjection
             // Shares the coach's IChatClient pipeline (Responses transport + function middleware);
             // the scan path itself is non-agentic structured-output inference.
             services.AddScoped<IMealScanService>(sp => new MealScanService(
+                sp.GetRequiredService<IChatClient>(),
+                sp.GetRequiredService<ITableStore>(),
+                sp.GetRequiredService<IConfiguration>(),
+                sp.GetRequiredService<ILogger<MealScanService>>()
+            ));
+
+            // Stage A alone — used by the golden-image regression harness.
+            services.AddSingleton<IMealVisionStage>(sp => new MealScanService(
                 sp.GetRequiredService<IChatClient>(),
                 sp.GetRequiredService<ITableStore>(),
                 sp.GetRequiredService<IConfiguration>(),

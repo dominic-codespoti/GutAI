@@ -145,3 +145,12 @@ azure-setup:
 
 azure-deploy:
 	./scripts/azure-setup.sh --deploy
+
+# ── Golden-image regression harness (meal scan Stage A) ──
+.PHONY: golden-run golden-gate
+
+golden-run:
+	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images
+
+golden-gate:
+	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --gate

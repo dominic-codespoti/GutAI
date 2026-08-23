@@ -52,3 +52,5 @@ blob-report/
 docs/GITHUB_SETUP.md
 
 pc-api*
+.cache/
+golden-images/.cache/
