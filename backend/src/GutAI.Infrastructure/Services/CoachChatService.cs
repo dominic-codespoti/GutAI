@@ -9,15 +9,22 @@ using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using GutAI.Domain.Enums;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using OpenAI.Assistants;
 
 namespace GutAI.Infrastructure.Services;
 
-public class AzureOpenAIChatService : IChatService
+/// <summary>
+/// Conversational gut-health coach.
+/// P0b migration (2026-08): moved off the OpenAI Assistants API (sunset 2026-08-26)
+/// onto Microsoft.Extensions.AI `IChatClient` over Azure OpenAI Responses transport.
+/// Tool loop is handled by UseFunctionInvocation middleware; conversation history is
+/// app-owned in Azure Table Storage instead of server-side threads.
+/// The SSE event contract (thread_id / content / tool_call / error) is unchanged.
+/// </summary>
+public class CoachChatService : IChatService
 {
-    private readonly AssistantClient _client;
-    private readonly AssistantFactory _assistantFactory;
+    private readonly IChatClient _chatClient;
     private readonly ITableStore _store;
     private readonly ICorrelationEngine _correlationEngine;
     private readonly IFoodDiaryAnalysisService _diaryService;
@@ -26,7 +33,7 @@ public class AzureOpenAIChatService : IChatService
     private readonly FodmapService _fodmapService;
     private readonly GutRiskService _gutRiskService;
     private readonly PersonalizedScoringService _scoringService;
-    private readonly ILogger<AzureOpenAIChatService> _logger;
+    private readonly ILogger<CoachChatService> _logger;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -34,11 +41,11 @@ public class AzureOpenAIChatService : IChatService
         WriteIndented = false
     };
 
-    private const int MaxToolRounds = 8;
+    /// <summary>Messages of history fed to the model each turn.</summary>
+    private const int HistoryWindow = 40;
 
-    public AzureOpenAIChatService(
-        AssistantClient client,
-        AssistantFactory assistantFactory,
+    public CoachChatService(
+        IChatClient chatClient,
         ITableStore store,
         ICorrelationEngine correlationEngine,
         IFoodDiaryAnalysisService diaryService,
@@ -47,10 +54,9 @@ public class AzureOpenAIChatService : IChatService
         FodmapService fodmapService,
         GutRiskService gutRiskService,
         PersonalizedScoringService scoringService,
-        ILogger<AzureOpenAIChatService> logger)
+        ILogger<CoachChatService> logger)
     {
-        _client = client;
-        _assistantFactory = assistantFactory;
+        _chatClient = chatClient;
         _store = store;
         _correlationEngine = correlationEngine;
         _diaryService = diaryService;
@@ -65,7 +71,6 @@ public class AzureOpenAIChatService : IChatService
     public async IAsyncEnumerable<ChatStreamEvent> StreamResponseAsync(
         Guid userId, string message, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var assistantId = await _assistantFactory.GetAssistantIdAsync(ct);
         var user = await _store.GetUserAsync(userId, ct);
         if (user is null)
         {
@@ -73,106 +78,101 @@ public class AzureOpenAIChatService : IChatService
             yield return new ChatStreamEvent(Error: "Your session could not be found. Please sign in again.");
             yield break;
         }
-        var threadId = await GetOrCreateThreadAsync(user, ct);
-        _logger.LogDebug("Chat stream: user={UserId} thread={ThreadId} messageLen={Len}", userId, threadId, message.Length);
 
-        // Emit thread ID so frontend can verify same thread across requests
-        yield return new ChatStreamEvent(ThreadId: threadId);
+        // Stable app-owned session identifier (replaces Assistants thread id).
+        var sessionId = $"coach-{userId}";
+        _logger.LogDebug("Chat stream: user={UserId} historyWindow={Window} messageLen={Len}", userId, HistoryWindow, message.Length);
 
-        // Add user message to thread
-        await _client.CreateMessageAsync(threadId, MessageRole.User, [MessageContent.FromText(message)],
-            cancellationToken: ct);
+        // Emit session id so frontend can verify same conversation across requests (unchanged contract).
+        yield return new ChatStreamEvent(ThreadId: sessionId);
 
-        var additionalInstructions = BuildAdditionalInstructionsWithHistory(user);
+        // ── Assemble context: system instructions + user profile + rolling history + new message ──
+        var systemText = CoachPrompts.Instructions;
+        var profile = BuildAdditionalInstructionsWithHistory(user);
+        if (!string.IsNullOrEmpty(profile)) systemText += "\n\n" + profile;
 
-        var runOptions = new RunCreationOptions
+        var messages = new List<ChatMessage> { new(ChatRole.System, systemText) };
+        var history = await _store.GetRecentCoachMessagesAsync(userId, HistoryWindow, ct);
+        foreach (var m in history)
+            messages.Add(new ChatMessage(m.Role == "user" ? ChatRole.User : ChatRole.Assistant, m.Text));
+        messages.Add(new ChatMessage(ChatRole.User, message));
+
+        // Persist the user turn immediately (assistant turn is persisted on success).
+        await _store.UpsertCoachMessageAsync(userId, DateTimeOffset.UtcNow, "user", message, ct);
+
+        // ── Stream with automatic tool execution (UseFunctionInvocation middleware) ──
+        var options = new ChatOptions { Tools = BuildTools(userId) };
+        var assistantText = new StringBuilder();
+        string? errorMessage = null;
+
+        // C# iterators cannot yield inside try/catch — enumerate manually, buffer each
+        // update's payload in the try, yield outside it.
+        var enumerator = _chatClient.GetStreamingResponseAsync(messages, options, ct).GetAsyncEnumerator(ct);
+        try
         {
-            AdditionalInstructions = additionalInstructions
-        };
-
-        // Stream the run with tool call handling
-        var stream = _client.CreateRunStreamingAsync(
-            threadId, assistantId, runOptions, ct);
-
-        var toolOutputs = new List<ToolOutput>();
-        string? currentRunId = null;
-        var toolRound = 0;
-
-        while (true)
-        {
-            toolRound++;
-            if (toolRound > MaxToolRounds)
+            while (true)
             {
-                _logger.LogWarning("Chat stream for user {UserId} exceeded {MaxRounds} tool rounds; aborting", userId, MaxToolRounds);
-                yield return new ChatStreamEvent(Error: "I'm having trouble completing that — please try rephrasing your request.");
-                break;
-            }
-
-            toolOutputs.Clear();
-            currentRunId = null;
-
-            await foreach (var update in stream.WithCancellation(ct))
-            {
-                if (update is RequiredActionUpdate actionUpdate)
+                string? deltaText = null;
+                string? toolName = null;
+                bool hasUpdate;
+                try
                 {
-                    yield return new ChatStreamEvent(ToolCall: actionUpdate.FunctionName, Status: "executing");
-                    var result = await ExecuteToolAsync(userId, actionUpdate.FunctionName,
-                        actionUpdate.FunctionArguments, ct);
-                    toolOutputs.Add(new ToolOutput(actionUpdate.ToolCallId, result));
-                    currentRunId = actionUpdate.Value.Id;
-                }
-                else if (update is MessageContentUpdate contentUpdate)
-                {
-                    if (!string.IsNullOrEmpty(contentUpdate.Text))
+                    hasUpdate = await enumerator.MoveNextAsync();
+                    if (hasUpdate)
                     {
-                        yield return new ChatStreamEvent(Content: contentUpdate.Text);
+                        foreach (var content in enumerator.Current.Contents)
+                        {
+                            if (content is FunctionCallContent fc)
+                                toolName = fc.Name;
+                        }
+                        if (!string.IsNullOrEmpty(enumerator.Current.Text))
+                        {
+                            deltaText = enumerator.Current.Text;
+                            assistantText.Append(deltaText);
+                        }
                     }
                 }
-            }
-
-            if (toolOutputs.Count > 0 && currentRunId is not null)
-            {
-                _logger.LogDebug("Submitting {Count} tool outputs for run {RunId}", toolOutputs.Count, currentRunId);
-                foreach (var output in toolOutputs)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    _logger.LogTrace("Tool output: {Id} => {Len} chars", output.ToolCallId, output.Output.Length);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Chat stream failed mid-run for user {UserId}", userId);
+                    errorMessage = "Something went wrong while responding. Please try again.";
+                    hasUpdate = false;
                 }
 
-                stream = _client.SubmitToolOutputsToRunStreamingAsync(threadId, currentRunId,
-                    toolOutputs, ct);
+                if (!hasUpdate)
+                    break;
+
+                if (toolName is not null)
+                    yield return new ChatStreamEvent(ToolCall: toolName, Status: "executing");
+                if (deltaText is not null)
+                    yield return new ChatStreamEvent(Content: deltaText);
             }
-            else
-            {
-                break;
-            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+
+        if (errorMessage is not null)
+            yield return new ChatStreamEvent(Error: errorMessage);
+
+        if (errorMessage is null && assistantText.Length > 0)
+        {
+            await _store.UpsertCoachMessageAsync(userId, DateTimeOffset.UtcNow, "assistant", assistantText.ToString(), ct);
         }
     }
 
     public async Task<List<ChatHistoryMessage>> GetHistoryAsync(Guid userId, int limit = 50,
         CancellationToken ct = default)
     {
-        var user = await _store.GetUserAsync(userId, ct);
-        if (user?.AgentThreadId is null) return [];
-
-        var messages = new List<ChatHistoryMessage>();
-        try
-        {
-            var options = new MessageCollectionOptions { PageSizeLimit = limit, Order = MessageCollectionOrder.Descending };
-            await foreach (var m in _client.GetMessagesAsync(user.AgentThreadId, options, ct))
-            {
-                var role = m.Role == MessageRole.User ? "user" : "assistant";
-                var text = string.Concat(m.Content.Select(c => c.Text));
-                messages.Add(new ChatHistoryMessage(role, text, m.CreatedAt));
-            }
-        }
-        catch (ClientResultException ex) when (ex.Status == 404)
-        {
-            _logger.LogWarning("Thread {ThreadId} not found while fetching history for user {UserId}", user.AgentThreadId, userId);
-            return [];
-        }
-
-        messages.Reverse(); // API returns newest-first; UI expects chronological order
-        return messages;
+        var messages = await _store.GetRecentCoachMessagesAsync(userId, limit, ct);
+        return messages
+            .Select(m => new ChatHistoryMessage(m.Role, m.Text, m.CreatedAt))
+            .ToList();
     }
 
     public async Task ClearHistoryAsync(Guid userId, CancellationToken ct = default)
@@ -180,42 +180,8 @@ public class AzureOpenAIChatService : IChatService
         var user = await _store.GetUserAsync(userId, ct);
         if (user is null) return;
 
-        // Delete old thread if exists
-        if (user.AgentThreadId is not null)
-        {
-            try
-            {
-                await _client.DeleteThreadAsync(user.AgentThreadId, ct);
-                _logger.LogInformation("Deleted old thread {ThreadId} for user {UserId}", user.AgentThreadId, userId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to delete thread {ThreadId} on clear", user.AgentThreadId);
-            }
-        }
-
-        // Create fresh thread
-        var newThread = await _client.CreateThreadAsync(cancellationToken: ct);
-        user.AgentThreadId = newThread.Value.Id;
-        await _store.UpsertUserAsync(user, ct);
-        _logger.LogInformation("Created fresh thread {ThreadId} for user {UserId}", user.AgentThreadId, userId);
-    }
-
-    private async Task<string> GetOrCreateThreadAsync(User user, CancellationToken ct)
-    {
-        if (user.AgentThreadId is not null)
-        {
-            // Trust the saved thread ID — Azure OpenAI persists threads indefinitely.
-            // If the thread was somehow deleted, CreateRunStreamingAsync will 404 and
-            // the error will be handled by the exception middleware.
-            return user.AgentThreadId;
-        }
-
-        var thread = await _client.CreateThreadAsync(cancellationToken: ct);
-        user.AgentThreadId = thread.Value.Id;
-        await _store.UpsertUserAsync(user, ct);
-        _logger.LogInformation("Created new thread {ThreadId} for user {UserId}", user.AgentThreadId, user.Id);
-        return user.AgentThreadId;
+        await _store.DeleteCoachMessagesAsync(userId, ct);
+        _logger.LogInformation("Cleared coach history for user {UserId}", userId);
     }
 
     private static string? BuildAdditionalInstructionsWithHistory(User? user)
@@ -240,36 +206,92 @@ public class AzureOpenAIChatService : IChatService
         return sb.Length > 0 ? sb.ToString() : null;
     }
 
-    private async Task<string> ExecuteToolAsync(Guid userId, string functionName, string functionArguments,
-        CancellationToken ct)
+    /// <summary>
+    /// Tool set exposed to the model. Thin AIFunctionFactory adapters over the
+    /// unchanged Execute* methods — behavior-identical to the previous Assistants
+    /// tools (same names, descriptions and JSON result shapes). User identity is
+    /// captured server-side here; it is NEVER a model-supplied argument.
+    /// </summary>
+    private IList<AITool> BuildTools(Guid userId)
     {
-        try
-        {
-            var args = string.IsNullOrEmpty(functionArguments)
-                ? new JsonElement()
-                : JsonDocument.Parse(functionArguments).RootElement;
+        static JsonElement Args(object anon) => JsonSerializer.SerializeToElement(anon);
 
-            return functionName switch
-            {
-                "search_foods" => await ExecuteSearchFoods(args, ct),
-                "get_food_safety" => await ExecuteGetFoodSafety(userId, args, ct),
-                "get_fodmap_assessment" => await ExecuteGetFodmap(args, ct),
-                "log_meal" => await ExecuteLogMeal(userId, args, _logger.IsEnabled(LogLevel.Debug) ? functionArguments : null, ct),
-                "log_symptom" => await ExecuteLogSymptom(userId, args, ct),
-                "get_todays_meals" => await ExecuteGetTodaysMeals(userId, ct),
-                "get_trigger_foods" => await ExecuteGetTriggerFoods(userId, args, ct),
-                "get_symptom_history" => await ExecuteGetSymptomHistory(userId, args, ct),
-                "get_nutrition_summary" => await ExecuteGetNutritionSummary(userId, ct),
-                "get_elimination_diet_status" => await ExecuteGetEliminationDietStatus(userId, ct),
-                "get_user_profile" => await ExecuteGetUserProfile(userId, ct),
-                _ => $"Unknown tool: {functionName}"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Tool execution failed: {Tool}", functionName);
-            return $"The {functionName} lookup failed. Try again or rephrase the request.";
-        }
+        return
+        [
+            AIFunctionFactory.Create(
+                (string query, CancellationToken ct) => ExecuteSearchFoods(Args(new { query }), ct),
+                name: "search_foods",
+                description: "Search the food database by name for matching food products. Call this first before any food-related operation to find the right food product ID. Returns up to 10 results with nutrition per 100g, brand, data source, and match confidence."),
+
+            AIFunctionFactory.Create(
+                (string food_product_id, CancellationToken ct) =>
+                    ExecuteGetFoodSafety(Guid.TryParse(food_product_id, out var fsId) ? fsId : Guid.Empty, Args(new { food_product_id }), ct),
+                name: "get_food_safety",
+                description: "Get a comprehensive personalized safety report for a food product. Combines FODMAP assessment, gut risk analysis (additives, NOVA, sodium), and a personalized score factoring in the user's allergies, conditions, and meal history."),
+
+            AIFunctionFactory.Create(
+                (string food_product_id, CancellationToken ct) =>
+                    ExecuteGetFodmap(Args(new { food_product_id }), ct),
+                name: "get_fodmap_assessment",
+                description: "Get the FODMAP assessment for a food product (score, rating, triggers, summary). This is a subset of get_food_safety. Use when you only need FODMAP-specific info."),
+
+            AIFunctionFactory.Create(
+                (string meal_type,
+                 List<CoachMealItemArgs>? items = null,
+                 string? description = null,
+                 string? logged_at = null,
+                 CancellationToken ct = default) =>
+                    ExecuteLogMeal(userId, Args(new { meal_type, items, description, logged_at }), null, ct),
+                name: "log_meal",
+                description: CoachPrompts.LogMealDescription),
+
+            AIFunctionFactory.Create(
+                (string symptom_name, int severity, string? notes = null, CancellationToken ct = default) =>
+                    ExecuteLogSymptom(userId, Args(new { symptom_name, severity, notes }), ct),
+                name: "log_symptom",
+                description: "Record a symptom the user is experiencing. Severity must be 1 (mild) to 10 (severe). Common symptom names include: Bloating, Nausea, Gas, Headache, Fatigue, Stomach Pain, Diarrhea, Constipation, Heartburn, Cramps. If the user uses a different name, match it to the closest standard symptom."),
+
+            AIFunctionFactory.Create(
+                (CancellationToken ct) => ExecuteGetTodaysMeals(userId, ct),
+                name: "get_todays_meals",
+                description: "Get all meals the user logged today with per-item and per-meal nutrition info. 'Today' is determined by the user's timezone. Use this to answer questions about what the user has eaten today."),
+
+            AIFunctionFactory.Create(
+                (int days = 30, CancellationToken ct = default) =>
+                    ExecuteGetTriggerFoods(userId, Args(new { days }), ct),
+                name: "get_trigger_foods",
+                description: "Get the user's trigger foods — foods most associated with their symptoms based on statistical correlation analysis. Only returns correlations that occurred 2+ times with average severity of 4+. Uses the user's timezone for date range calculation."),
+
+            AIFunctionFactory.Create(
+                (int days = 7, CancellationToken ct = default) =>
+                    ExecuteGetSymptomHistory(userId, Args(new { days }), ct),
+                name: "get_symptom_history",
+                description: "Get the user's recent symptom logs. Returns up to 20 of the most recent entries with symptom name, severity, timestamp, and notes. Uses the user's timezone for date range."),
+
+            AIFunctionFactory.Create(
+                (CancellationToken ct) => ExecuteGetNutritionSummary(userId, ct),
+                name: "get_nutrition_summary",
+                description: "Get today's nutrition totals (calories, protein, carbs, fat, fiber) compared against the user's daily goals. 'Today' is determined by the user's timezone. Use this before making dietary recommendations to understand what the user has already consumed."),
+
+            AIFunctionFactory.Create(
+                (CancellationToken ct) => ExecuteGetEliminationDietStatus(userId, ct),
+                name: "get_elimination_diet_status",
+                description: "Get the user's current elimination diet phase, foods to eliminate, safe foods, reintroduction results, and recommendations. Use this when the user asks about their elimination diet progress or what foods are safe during their current phase."),
+
+            AIFunctionFactory.Create(
+                (CancellationToken ct) => ExecuteGetUserProfile(userId, ct),
+                name: "get_user_profile",
+                description: "Get the authenticated user's profile including allergies, gut conditions, dietary preferences, daily nutrition goals, and timezone. Use this to personalize advice before making recommendations."),
+        ];
+    }
+
+    /// <summary>Schema shape for one log_meal item — mirrors the previous FunctionToolDefinition item object.</summary>
+    public sealed class CoachMealItemArgs
+    {
+        public string? name { get; set; }
+        public string? food_product_id { get; set; }
+        public decimal servings { get; set; } = 1m;
+        public decimal? serving_weight_g { get; set; }
     }
 
     private async Task<string> ExecuteSearchFoods(JsonElement args, CancellationToken ct)

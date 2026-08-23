@@ -2,6 +2,8 @@ using GutAI.Domain.Entities;
 
 namespace GutAI.Application.Common.Interfaces;
 
+public record CoachChatMessage(string Role, string Text, DateTimeOffset CreatedAt);
+
 public interface ITableStore
 {
     Task<User?> GetUserAsync(Guid userId, CancellationToken ct = default);
@@ -73,4 +75,9 @@ public interface ITableStore
     Task<List<CustomFood>> GetCustomFoodsAsync(Guid userId, CancellationToken ct = default);
     Task UpsertCustomFoodAsync(CustomFood food, CancellationToken ct = default);
     Task DeleteCustomFoodAsync(Guid userId, Guid foodId, CancellationToken ct = default);
+
+    // Coach chat history — app-owned (replaces retired Assistants-API threads)
+    Task<List<CoachChatMessage>> GetRecentCoachMessagesAsync(Guid userId, int limit, CancellationToken ct = default);
+    Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct = default);
+    Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default);
 }

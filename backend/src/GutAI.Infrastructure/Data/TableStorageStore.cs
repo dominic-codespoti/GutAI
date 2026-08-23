@@ -1134,6 +1134,45 @@ public class TableStorageStore : ITableStore
         await DeleteAsync(userId.ToString(), $"CUSTOMFOOD|{foodId}", ct);
     }
 
+    // ── Coach chat history (app-owned; replaces Assistants threads) ──
+
+    public async Task<List<CoachChatMessage>> GetRecentCoachMessagesAsync(Guid userId, int limit, CancellationToken ct = default)
+    {
+        // RowKey = inverted ticks so lexicographic order == chronological order.
+        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'COACHMSG|'";
+        var all = await QueryAsync(filter, ct);
+        return all
+            .OrderBy(e => e.RowKey, StringComparer.Ordinal)
+            .TakeLast(limit)
+            .Select(e => new CoachChatMessage(
+                e.GetString("Role") ?? "user",
+                e.GetString("Text") ?? "",
+                e.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.UtcNow))
+            .ToList();
+    }
+
+    public async Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct = default)
+    {
+        // Trim to 64KB (Table property limit) — assistant replies are well under this;
+        // truncate defensively rather than failing the turn.
+        if (text.Length > 60_000) text = text[..60_000];
+        var invertedTicks = DateTimeOffset.MaxValue.Ticks - at.UtcTicks;
+        var entity = new TableEntity(userId.ToString(), $"COACHMSG|{invertedTicks:D19}|{Guid.NewGuid():N}")
+        {
+            ["Role"] = role,
+            ["Text"] = text,
+            ["CreatedAt"] = at,
+        };
+        await UpsertAsync(entity, ct);
+    }
+
+    public async Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default)
+    {
+        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'COACHMSG|'";
+        foreach (var entity in await QueryAsync(filter, ct))
+            await DeleteAsync(entity.PartitionKey, entity.RowKey, ct);
+    }
+
     private static CustomFood MapToCustomFood(TableEntity e)
     {
         var foodId = Guid.Parse(e.RowKey.Substring("CUSTOMFOOD|".Length));
