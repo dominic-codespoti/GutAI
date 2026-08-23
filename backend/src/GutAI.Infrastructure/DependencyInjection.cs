@@ -226,6 +226,8 @@ public static class DependencyInjection
                 sp.GetRequiredService<IConfiguration>(),
                 sp.GetRequiredService<IFoodSearchService>(),
                 sp.GetRequiredService<IWebNutritionLookup>(),
+                sp.GetRequiredService<FodmapService>(),
+                sp.GetRequiredService<GutRiskService>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
 
@@ -241,6 +243,8 @@ public static class DependencyInjection
                 sp.GetRequiredService<IConfiguration>(),
                 sp.GetRequiredService<IFoodSearchService>(),
                 sp.GetRequiredService<IWebNutritionLookup>(),
+                sp.GetRequiredService<FodmapService>(),
+                sp.GetRequiredService<GutRiskService>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
         }

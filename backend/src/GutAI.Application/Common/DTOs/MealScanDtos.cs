@@ -93,6 +93,17 @@ public sealed record MealScanItemDto
 
     /// <summary>Full provenance chain for this item's grounding (P3).</summary>
     public GroundingAttemptDto? Grounding { get; init; }
+
+    // ── Gut-health signals (P5) — ONLY for DB-grounded items. Web/ai items stay
+    //    signal-free by design: scraped values must never imply FODMAP safety.
+    [JsonPropertyName("fodmap_status")]
+    public string? FodmapStatus { get; set; }
+
+    [JsonPropertyName("fodmap_triggers")]
+    public List<string>? FodmapTriggers { get; set; } // top 3, "Name (Severity)"
+
+    [JsonPropertyName("gut_rating")]
+    public string? GutRating { get; set; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

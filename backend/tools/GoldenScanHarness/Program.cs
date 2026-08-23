@@ -99,6 +99,7 @@ public static class Program
         IMealVisionStage stage = new MealScanService(
             chatClient, new NullTableStore(), configuration,
             new NoopFoodSearch(), new NoopWebLookup(),
+            new FodmapService(), new GutRiskService(),
             loggerFactory.CreateLogger<MealScanService>());
 
         // ── Cache ──

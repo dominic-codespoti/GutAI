@@ -53,6 +53,8 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
     private readonly IConfiguration _config;
     private readonly ComponentGroundingEngine _grounding;
     private readonly IWebNutritionLookup _webLookup;
+    private readonly IFodmapService fodmapService;
+    private readonly IGutRiskService gutRiskService;
     private readonly ILogger<MealScanService> _logger;
 
     public MealScanService(
@@ -61,6 +63,8 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
         IConfiguration config,
         IFoodSearchService foodSearch,
         IWebNutritionLookup webLookup,
+        IFodmapService fodmapService,
+        IGutRiskService gutRiskService,
         ILogger<MealScanService> logger)
     {
         _chatClient = chatClient;
@@ -68,6 +72,8 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
         _config = config;
         _grounding = new ComponentGroundingEngine(foodSearch);
         _webLookup = webLookup;
+        this.fodmapService = fodmapService;
+        this.gutRiskService = gutRiskService;
         _logger = logger;
     }
 
@@ -179,6 +185,11 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
             groundedItems.Add(grounded.ToItem());
             if (!grounded.Attempt.AutoSelected) needsDisambiguation++;
         }
+
+        // ── P5: FODMAP + gut-risk signals for grounded items (fail-soft) ──
+        await MealScanHealthSignals.EnrichAllAsync(
+            groundedItems.Where(i => i.FoodProductId is not null),
+            _store, fodmapService, gutRiskService, ct);
 
         // ── Stage B3: free web cascade for items the DB couldn't ground (flag-gated) ──
         var maxWebQueries = _config.GetValue("MealScan:MaxWebQueriesPerScan", 2);
