@@ -98,7 +98,8 @@ public static class Program
 
         IMealVisionStage stage = new MealScanService(
             chatClient, new NullTableStore(), configuration,
-            new NoopFoodSearch(), loggerFactory.CreateLogger<MealScanService>());
+            new NoopFoodSearch(), new NoopWebLookup(),
+            loggerFactory.CreateLogger<MealScanService>());
 
         // ── Cache ──
         var cacheDir = Path.Combine(imagesDir, ".cache");
@@ -235,6 +236,13 @@ public static class Program
         public static CachedResult Failed(string reason) => new([], false, "", 0, [], "", "", reason);
     }
 
+    /// <summary>Web cascade not exercised by the harness.</summary>
+    private sealed class NoopWebLookup : IWebNutritionLookup
+    {
+        public Task<WebNutritionResult?> LookupAsync(string foodName, CancellationToken ct = default)
+            => Task.FromResult<WebNutritionResult?>(null);
+    }
+
     /// <summary>Grounding is not exercised by the harness (Stage B is deterministic and unit-tested separately).</summary>
     private sealed class NoopFoodSearch : IFoodSearchService
     {
@@ -255,6 +263,9 @@ public static class Program
         public Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
             => Task.FromResult<ScanSessionRecord?>(null);
         public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default)
+            => Task.FromResult<WebNutritionResult?>(null);
+        public Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default) => Task.CompletedTask;
 
         // Everything below is unreachable for the harness but required by the interface.
     public Task<User?> GetUserAsync(Guid userId, CancellationToken ct ) => Task.FromResult<User?>(null);

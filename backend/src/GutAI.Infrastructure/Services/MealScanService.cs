@@ -52,6 +52,7 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
     private readonly ITableStore _store;
     private readonly IConfiguration _config;
     private readonly ComponentGroundingEngine _grounding;
+    private readonly IWebNutritionLookup _webLookup;
     private readonly ILogger<MealScanService> _logger;
 
     public MealScanService(
@@ -59,12 +60,14 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
         ITableStore store,
         IConfiguration config,
         IFoodSearchService foodSearch,
+        IWebNutritionLookup webLookup,
         ILogger<MealScanService> logger)
     {
         _chatClient = chatClient;
         _store = store;
         _config = config;
         _grounding = new ComponentGroundingEngine(foodSearch);
+        _webLookup = webLookup;
         _logger = logger;
     }
 
@@ -175,6 +178,46 @@ public sealed class MealScanService : IMealScanService, IMealVisionStage
             var grounded = await _grounding.GroundAsync(component, ct);
             groundedItems.Add(grounded.ToItem());
             if (!grounded.Attempt.AutoSelected) needsDisambiguation++;
+        }
+
+        // ── Stage B3: free web cascade for items the DB couldn't ground (flag-gated) ──
+        var maxWebQueries = _config.GetValue("MealScan:MaxWebQueriesPerScan", 2);
+        var webUsed = 0;
+        foreach (var item in groundedItems.Where(i => i.Source == "ai"))
+        {
+            if (webUsed >= maxWebQueries) break;
+            WebNutritionResult? web = null;
+            try { web = await _webLookup.LookupAsync(item.Name, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Web lookup failed for '{Item}'.", item.Name); }
+            if (web is null) continue;
+
+            webUsed++;
+            var factor = item.Grams / 100m;
+            groundedItems.Remove(item);
+            groundedItems.Add(item with
+            {
+                CanonicalName = web.SourceName,
+                SourceUrl = web.SourceUrl,
+                Calories = decimal.Round(web.CaloriesKcal * factor),
+                ProteinG = decimal.Round(web.ProteinG * factor, 1),
+                CarbsG = decimal.Round(web.CarbsG * factor, 1),
+                FatG = decimal.Round(web.FatG * factor, 1),
+                FiberG = web.FiberG is null ? null : decimal.Round(web.FiberG.Value * factor, 1),
+                SugarG = web.SugarG is null ? null : decimal.Round(web.SugarG.Value * factor, 1),
+                SodiumMg = web.SodiumMg is null ? null : decimal.Round(web.SodiumMg.Value * factor),
+                MatchConfidence = 0.6m,
+                Grounding = new GroundingAttemptDto
+                {
+                    Query = item.Name,
+                    ResolutionStatus = "resolved_web",
+                    AutoSelected = false,          // still shown with a review chip in the UI
+                    SelectedFoodProductId = null,
+                    CanonicalName = web.SourceName,
+                    Candidates = [new GroundingCandidateDto(web.SourceName, null, "web", 0.6m)],
+                    MatchConfidence = 0.6m,
+                    Method = "web_cascade",
+                },
+            });
         }
 
         var warnings = new List<string>(decomposition.DroppedNotes);

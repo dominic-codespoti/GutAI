@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Azure.Data.Tables;
+using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using GutAI.Domain.Enums;
@@ -1212,6 +1213,47 @@ public class TableStorageStore : ITableStore
 
     public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
         => DeleteAsync(userId.ToString(), $"SCAN|{sessionId}", ct);
+
+    // ── Web nutrition cascade cache ──
+
+    public async Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default)
+    {
+        var e = await GetEntityOrNullAsync("WEBNUTRITION", normalizedName.ToLowerInvariant().Trim(), ct);
+        if (e is null) return null;
+        return new WebNutritionResult
+        {
+            CaloriesKcal = (decimal)(e.GetDouble("CaloriesKcal") ?? 0),
+            ProteinG = (decimal)(e.GetDouble("ProteinG") ?? 0),
+            CarbsG = (decimal)(e.GetDouble("CarbsG") ?? 0),
+            FatG = (decimal)(e.GetDouble("FatG") ?? 0),
+            FiberG = e.ContainsKey("FiberG") ? (decimal?)e.GetDouble("FiberG") : null,
+            SugarG = e.ContainsKey("SugarG") ? (decimal?)e.GetDouble("SugarG") : null,
+            SodiumMg = e.ContainsKey("SodiumMg") ? (decimal?)e.GetDouble("SodiumMg") : null,
+            SourceName = e.GetString("SourceName") ?? "",
+            SourceUrl = e.GetString("SourceUrl") ?? "",
+            CacheKey = normalizedName.ToLowerInvariant().Trim(),
+        };
+    }
+
+    public async Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default)
+    {
+        var key = result.CacheKey?.ToLowerInvariant().Trim()
+                  ?? throw new ArgumentException("CacheKey required", nameof(result));
+        var entity = new TableEntity("WEBNUTRITION", key)
+        {
+            ["CaloriesKcal"] = (double)result.CaloriesKcal,
+            ["ProteinG"] = (double)result.ProteinG,
+            ["CarbsG"] = (double)result.CarbsG,
+            ["FatG"] = (double)result.FatG,
+            ["SourceName"] = result.SourceName,
+            ["SourceUrl"] = result.SourceUrl,
+            ["CachedAt"] = DateTimeOffset.UtcNow,
+        };
+        if (result.FiberG is not null) entity["FiberG"] = (double)result.FiberG.Value;
+        if (result.SugarG is not null) entity["SugarG"] = (double)result.SugarG.Value;
+        if (result.SodiumMg is not null) entity["SodiumMg"] = (double)result.SodiumMg.Value;
+        await UpsertAsync(entity, ct);
+    }
 
     private static CustomFood MapToCustomFood(TableEntity e)
     {

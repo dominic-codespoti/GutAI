@@ -5,6 +5,7 @@ using Azure.AI.ContentUnderstanding;
 using Azure.AI.Projects;
 using Azure.Data.Tables;
 using Azure.Identity;
+using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Infrastructure.Caching;
 using GutAI.Infrastructure.Data;
@@ -224,8 +225,14 @@ public static class DependencyInjection
                 sp.GetRequiredService<ITableStore>(),
                 sp.GetRequiredService<IConfiguration>(),
                 sp.GetRequiredService<IFoodSearchService>(),
+                sp.GetRequiredService<IWebNutritionLookup>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
+
+            // Stage B3 — free web-results cascade for items the resolver couldn't ground.
+            // Flag-gated (Features:WebGrounding); keyless DDG search + Jina Reader + cheap extraction.
+            services.AddHttpClient<WebNutritionCascade>();
+            services.AddScoped<IWebNutritionLookup>(sp => sp.GetRequiredService<WebNutritionCascade>());
 
             // Stage A alone — used by the golden-image regression harness.
             services.AddSingleton<IMealVisionStage>(sp => new MealScanService(
@@ -233,6 +240,7 @@ public static class DependencyInjection
                 sp.GetRequiredService<ITableStore>(),
                 sp.GetRequiredService<IConfiguration>(),
                 sp.GetRequiredService<IFoodSearchService>(),
+                sp.GetRequiredService<IWebNutritionLookup>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
         }

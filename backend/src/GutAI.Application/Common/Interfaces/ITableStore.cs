@@ -1,3 +1,4 @@
+using GutAI.Application.Common.DTOs;
 using GutAI.Domain.Entities;
 
 namespace GutAI.Application.Common.Interfaces;
@@ -85,4 +86,8 @@ public interface ITableStore
     Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default);
     Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
     Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
+
+    // Web nutrition cascade cache (keyed by normalized food name)
+    Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default);
+    Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default);
 }
