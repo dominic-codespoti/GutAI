@@ -156,7 +156,8 @@ public static class DependencyInjection
             var config = sp.GetService<IConfiguration>();
             var logger = sp.GetService<ILogger<ContentUnderstandingService>>();
             var projectClient = sp.GetService<AIProjectClient>();
-            return new ContentUnderstandingService(client, openAiClient, config, logger, projectClient);
+            var chatClient = sp.GetService<IChatClient>();
+            return new ContentUnderstandingService(client, openAiClient, config, logger, projectClient, chatClient);
         });
 
         // Coach chat (Microsoft.Extensions.AI over Azure OpenAI)
@@ -211,7 +212,8 @@ public static class DependencyInjection
                     sp.GetRequiredService<FodmapService>(),
                     sp.GetRequiredService<GutRiskService>(),
                     sp.GetRequiredService<PersonalizedScoringService>(),
-                    sp.GetRequiredService<ILogger<CoachChatService>>()
+                    sp.GetRequiredService<ILogger<CoachChatService>>(),
+                    sp.GetService<IWebNutritionLookup>()
                 );
             });
 

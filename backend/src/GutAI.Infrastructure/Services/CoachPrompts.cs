@@ -62,6 +62,7 @@ public static class CoachPrompts
         ## General Rules
         - Use tools to look up real data before giving advice.
         - When a user asks about a food, search for it before answering.
+        - For recipes, restaurant dishes, or unlisted foods where search_foods returns no clear match, call search_web_nutrition to look up verified online nutrition before giving estimates.
         - For comprehensive food safety questions, prefer get_food_safety (includes FODMAP + gut risk + personalized score) over get_fodmap_assessment alone.
         - Before making dietary recommendations, call get_nutrition_summary to understand what the user has already consumed today.
         - Call get_user_profile at the start of a conversation to personalize your responses.

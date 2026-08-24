@@ -9,7 +9,12 @@ using Azure.AI.Projects.Agents;
 using Azure.Identity;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using AIChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using AIChatRole = Microsoft.Extensions.AI.ChatRole;
+using AITextContent = Microsoft.Extensions.AI.TextContent;
+using AIDataContent = Microsoft.Extensions.AI.DataContent;
 using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
 using OpenAI.Responses;
@@ -23,6 +28,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
     private readonly IConfiguration? _config;
     private readonly ILogger<ContentUnderstandingService>? _logger;
     private readonly AIProjectClient? _projectClient;
+    private readonly IChatClient? _chatClient;
     private readonly string _agentName;
 
     public ContentUnderstandingService(
@@ -30,13 +36,15 @@ public class ContentUnderstandingService : IContentUnderstandingService
         AzureOpenAIClient? openAiClient = null,
         IConfiguration? config = null,
         ILogger<ContentUnderstandingService>? logger = null,
-        AIProjectClient? projectClient = null)
+        AIProjectClient? projectClient = null,
+        IChatClient? chatClient = null)
     {
         _client = client;
         _openAiClient = openAiClient;
         _config = config;
         _logger = logger;
         _projectClient = projectClient;
+        _chatClient = chatClient;
         _agentName = config?["Foundry:AgentName"] ?? "nutrition-estimation-agent";
     }
 
@@ -122,6 +130,12 @@ public class ContentUnderstandingService : IContentUnderstandingService
             return null;
         }
 
+        // Prefer modern IChatClient structured output when configured
+        if (_chatClient != null)
+        {
+            return await DescribeFoodWithChatClientAsync(trimmedDescription, ct);
+        }
+
         // Prefer Foundry agent if configured
         if (_projectClient != null)
         {
@@ -136,6 +150,50 @@ public class ContentUnderstandingService : IContentUnderstandingService
         }
 
         return await DescribeFoodWithChatAsync(trimmedDescription, ct);
+    }
+
+    private async Task<CustomFoodDto?> DescribeFoodWithChatClientAsync(string description, CancellationToken ct)
+    {
+        try
+        {
+            _logger?.LogInformation("Invoking IChatClient for structured food description.");
+            var messages = new List<AIChatMessage>
+            {
+                new(AIChatRole.System, """
+                    You are a nutrition estimation AI for a food logging app.
+                    Convert a user's plain-language food description into a single reusable custom food entry.
+
+                    Return one JSON object matching the schema.
+                    Rules:
+                    - Infer a concise food name from the description.
+                    - Only include a brand when the user explicitly mentioned one.
+                    - Choose a standard serving size and unit (e.g. 100g, 1 cup, 1 piece).
+                    - Estimate realistic calories and macronutrients for the specified portion.
+                    - Estimate micronutrients and common minerals when reasonably inferable.
+                    - If the description lists ingredients, include them as a comma-separated list.
+                    - Estimate ExtractionConfidence from 0.0 to 1.0 based on how complete/clear the description was.
+                    """),
+                new(AIChatRole.User, description)
+            };
+
+            var response = await _chatClient!.GetResponseAsync<CustomFoodDto>(
+                messages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+
+            var dto = response.Result;
+            if (dto is null)
+            {
+                _logger?.LogWarning("IChatClient returned empty structured output for food description.");
+                return null;
+            }
+
+            FinalizeGeneratedFood(dto, description);
+            return dto;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "IChatClient food description failed. {Details}", DescribeException(ex));
+            return null;
+        }
     }
 
     private async Task<CustomFoodDto?> DescribeFoodWithAgentAsync(string description, CancellationToken ct)
@@ -188,7 +246,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
             var modelName = ResolveTextDeploymentName(_config);
             var chatClient = _openAiClient!.GetChatClient(modelName);
 
-            var messages = new List<ChatMessage>
+            var messages = new List<OpenAI.Chat.ChatMessage>
             {
                 new SystemChatMessage("""
                     You are a nutrition estimation AI for a food logging app.
@@ -380,11 +438,49 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
     private async Task<CustomFoodDto?> ParseWithLlmVisionAsync(Stream memoryStream, string contentType, CancellationToken ct)
     {
+        if (_chatClient != null)
+        {
+            try
+            {
+                using var mem = new MemoryStream();
+                memoryStream.Position = 0;
+                await memoryStream.CopyToAsync(mem, ct);
+                var rawData = BinaryData.FromBytes(mem.ToArray(), contentType == "image/png" ? "image/png" : "image/jpeg");
+
+                var aiMessages = new List<AIChatMessage>
+                {
+                    new(AIChatRole.System, """
+                        You are a nutrition extraction AI. Analyze the image of a food label or product and extract the nutritional information and ingredients.
+                        If energy is explicitly stated in kJ without Calories, convert it to calories (kcal) by dividing by 4.184.
+                        Extract all available nutrients including vitamins and minerals when present.
+                        """),
+                    new(AIChatRole.User, [
+                        new AITextContent("Extract the nutritional label data."),
+                        new AIDataContent(rawData.ToArray(), rawData.MediaType)
+                    ])
+                };
+
+                var aiResponse = await _chatClient.GetResponseAsync<CustomFoodDto>(
+                    aiMessages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+
+                var extracted = aiResponse.Result;
+                if (extracted != null)
+                {
+                    FinalizeGeneratedFood(extracted);
+                    return extracted;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "IChatClient vision label parse failed; trying legacy path: {Message}", ex.Message);
+            }
+        }
+
         var modelName = ResolveVisionDeploymentName(_config);
         var chatClient = _openAiClient!.GetChatClient(modelName);
         var imageBytes = BinaryData.FromStream(memoryStream);
 
-        var messages = new List<ChatMessage>
+        var legacyMessages = new List<OpenAI.Chat.ChatMessage>
         {
             new SystemChatMessage("""
                 You are a nutrition extraction AI. Analyze the image of a food label or product and extract the nutritional information and ingredients.
@@ -401,7 +497,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
             ResponseFormat = CreateFallbackResponseFormat()
         };
 
-        var response = await chatClient.CompleteChatAsync(messages, options, ct);
+        var response = await chatClient.CompleteChatAsync(legacyMessages, options, ct);
         var textResponse = string.Concat(response.Value.Content?.Select(part => part.Text) ?? Enumerable.Empty<string>());
 
         if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
@@ -413,8 +509,8 @@ public class ContentUnderstandingService : IContentUnderstandingService
         return dto;
     }
 
-    private static ChatResponseFormat CreateFallbackResponseFormat()
-        => ChatResponseFormat.CreateJsonSchemaFormat(
+    private static OpenAI.Chat.ChatResponseFormat CreateFallbackResponseFormat()
+        => OpenAI.Chat.ChatResponseFormat.CreateJsonSchemaFormat(
             jsonSchemaFormatName: "custom_food_extraction",
             jsonSchema: BinaryData.FromString("""
             {

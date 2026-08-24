@@ -1469,6 +1469,37 @@ public class NaturalLanguageFallbackServiceTests
     }
 
     [Fact]
+    public async Task ParseAsync_UnresolvedInCatalog_FallsBackToWebLookupWhenAvailable()
+    {
+        // No match in catalog
+        _foodApiMock.Setup(f => f.ResolveAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto { Status = FoodResolutionStatus.Unresolved, Selected = null });
+
+        var webMock = new Mock<IWebNutritionLookup>();
+        webMock.Setup(w => w.LookupAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WebNutritionResult
+            {
+                CaloriesKcal = 120m,
+                ProteinG = 8m,
+                CarbsG = 12m,
+                FatG = 4.5m,
+                SourceName = "USDA FoodData Central",
+                SourceUrl = "https://fdc.nal.usda.gov/123",
+            });
+
+        var service = new NaturalLanguageFallbackService(
+            _foodApiMock.Object, _storeMock.Object, _loggerMock.Object, webMock.Object);
+
+        var result = await service.ParseAsync("1 bowl of chicken laksa");
+
+        result.Should().ContainSingle();
+        result[0].NutritionProvenance.Should().Be("Sourced");
+        result[0].ResolutionStatus.Should().Be("ResolvedWeb");
+        result[0].MatchConfidence.Should().Be(0.85m);
+        result[0].Calories.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
     public void EstimateServingWeightG_StillWorks_AsForwardingMethod()
     {
         NaturalLanguageFallbackService.EstimateServingWeightG(MakeFood("chicken"), "oz", "chicken")

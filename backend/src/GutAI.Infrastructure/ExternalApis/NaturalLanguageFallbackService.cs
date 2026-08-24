@@ -13,15 +13,21 @@ public partial class NaturalLanguageFallbackService
 {
     private readonly IFoodSearchService _foodApi;
     private readonly ITableStore _store;
+    private readonly IWebNutritionLookup? _webLookup;
     private readonly ILogger<NaturalLanguageFallbackService> _logger;
 
     private static readonly TimeSpan SearchTimeout = TimeSpan.FromSeconds(4);
 
-    public NaturalLanguageFallbackService(IFoodSearchService foodApi, ITableStore store, ILogger<NaturalLanguageFallbackService> logger)
+    public NaturalLanguageFallbackService(
+        IFoodSearchService foodApi,
+        ITableStore store,
+        ILogger<NaturalLanguageFallbackService> logger,
+        IWebNutritionLookup? webLookup = null)
     {
         _foodApi = foodApi;
         _store = store;
         _logger = logger;
+        _webLookup = webLookup;
     }
 
     public virtual async Task<List<ParsedFoodItemDto>> ParseAsync(string text, CancellationToken ct = default)
@@ -79,12 +85,55 @@ public partial class NaturalLanguageFallbackService
                 }
                 else
                 {
-                    // Unresolved: nothing in the catalog had meaningful overlap with this food
-                    // name. Falling back to a generic estimate here (rather than omitting the
-                    // item) matches existing meal-logging UX, but NutritionProvenance.Estimated
-                    // and zero MatchConfidence distinguish it from a real sourced match.
-                    _logger.LogDebug("No food match found for '{FoodName}', using generic estimate", seg.FoodName);
-                    results.Add(CreateGenericEstimate(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier));
+                    // Attempt web cascade lookup for ungrounded dishes before falling back to generic estimate
+                    WebNutritionResult? webResult = null;
+                    if (_webLookup is not null)
+                    {
+                        try
+                        {
+                            webResult = await _webLookup.LookupAsync(seg.FoodName, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Web nutrition lookup failed for '{FoodName}'", seg.FoodName);
+                        }
+                    }
+
+                    if (webResult is not null)
+                    {
+                        var unitWeightG = EstimateUnitWeightG(null, seg.Unit, seg.FoodName) * seg.SizeMultiplier;
+                        var totalWeightG = unitWeightG * seg.Quantity;
+                        var scale = totalWeightG / 100m;
+
+                        results.Add(new ParsedFoodItemDto
+                        {
+                            Name = seg.FoodName,
+                            FoodProductId = null,
+                            Calories = Round(webResult.CaloriesKcal, scale),
+                            ProteinG = Round(webResult.ProteinG, scale),
+                            CarbsG = Round(webResult.CarbsG, scale),
+                            FatG = Round(webResult.FatG, scale),
+                            FiberG = Round(webResult.FiberG, scale),
+                            SugarG = Round(webResult.SugarG, scale),
+                            SodiumMg = Round(webResult.SodiumMg, scale),
+                            ServingWeightG = totalWeightG,
+                            ServingSize = FormatServingSize(seg.Quantity, seg.Unit),
+                            ServingQuantity = seg.Quantity,
+                            MatchConfidence = 0.85m,
+                            PortionConfidence = 0.75m,
+                            NutritionProvenance = nameof(NutritionProvenance.Sourced),
+                            ResolutionStatus = "ResolvedWeb",
+                        });
+                    }
+                    else
+                    {
+                        // Unresolved: nothing in the catalog or web cascade had meaningful overlap with this food
+                        // name. Falling back to a generic estimate here (rather than omitting the
+                        // item) matches existing meal-logging UX, but NutritionProvenance.Estimated
+                        // and zero MatchConfidence distinguish it from a real sourced match.
+                        _logger.LogDebug("No food match found for '{FoodName}', using generic estimate", seg.FoodName);
+                        results.Add(CreateGenericEstimate(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier));
+                    }
                 }
             }
             catch (Exception ex)
@@ -353,11 +402,11 @@ public partial class NaturalLanguageFallbackService
     internal static decimal ExtractSizeMultiplier(ref string foodName)
         => ServingEstimator.ExtractSizeMultiplier(ref foodName);
 
-    internal static decimal EstimateUnitWeightG(FoodProductDto product, string unit, string foodName)
-        => ServingEstimator.EstimateUnitWeightG(product.ServingQuantity, unit, foodName);
+    internal static decimal EstimateUnitWeightG(FoodProductDto? product, string unit, string foodName)
+        => ServingEstimator.EstimateUnitWeightG(product?.ServingQuantity, unit, foodName);
 
     // Keep the old name as a forwarding method for binary compat
-    internal static decimal EstimateServingWeightG(FoodProductDto product, string unit, string foodName)
+    internal static decimal EstimateServingWeightG(FoodProductDto? product, string unit, string foodName)
         => EstimateUnitWeightG(product, unit, foodName);
 
     private static bool IsWeightUnit(string unit) => ServingEstimator.IsWeightUnit(unit);

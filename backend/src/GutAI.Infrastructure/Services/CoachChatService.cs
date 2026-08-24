@@ -33,6 +33,7 @@ public class CoachChatService : IChatService
     private readonly FodmapService _fodmapService;
     private readonly GutRiskService _gutRiskService;
     private readonly PersonalizedScoringService _scoringService;
+    private readonly IWebNutritionLookup? _webLookup;
     private readonly ILogger<CoachChatService> _logger;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -54,7 +55,8 @@ public class CoachChatService : IChatService
         FodmapService fodmapService,
         GutRiskService gutRiskService,
         PersonalizedScoringService scoringService,
-        ILogger<CoachChatService> logger)
+        ILogger<CoachChatService> logger,
+        IWebNutritionLookup? webLookup = null)
     {
         _chatClient = chatClient;
         _store = store;
@@ -66,6 +68,7 @@ public class CoachChatService : IChatService
         _gutRiskService = gutRiskService;
         _scoringService = scoringService;
         _logger = logger;
+        _webLookup = webLookup;
     }
 
     public async IAsyncEnumerable<ChatStreamEvent> StreamResponseAsync(
@@ -222,6 +225,29 @@ public class CoachChatService : IChatService
                 (string query, CancellationToken ct) => ExecuteSearchFoods(Args(new { query }), ct),
                 name: "search_foods",
                 description: "Search the food database by name for matching food products. Call this first before any food-related operation to find the right food product ID. Returns up to 10 results with nutrition per 100g, brand, data source, and match confidence."),
+
+            AIFunctionFactory.Create(
+                async (string query, CancellationToken ct) =>
+                {
+                    if (_webLookup is null) return "Web nutrition search is currently unavailable.";
+                    var res = await _webLookup.LookupAsync(query, ct);
+                    if (res is null) return $"No online nutrition data found for '{query}'.";
+                    return JsonSerializer.Serialize(new
+                    {
+                        food = query,
+                        source = res.SourceName,
+                        sourceUrl = res.SourceUrl,
+                        calories100g = res.CaloriesKcal,
+                        protein100g = res.ProteinG,
+                        carbs100g = res.CarbsG,
+                        fat100g = res.FatG,
+                        fiber100g = res.FiberG,
+                        sugar100g = res.SugarG,
+                        sodiumMg100g = res.SodiumMg,
+                    }, JsonOpts);
+                },
+                name: "search_web_nutrition",
+                description: "Search the web for verified nutritional composition (per 100g) of restaurant dishes, recipes, cultural meals, or unlisted foods when search_foods returns no exact match."),
 
             AIFunctionFactory.Create(
                 (string food_product_id, CancellationToken ct) =>
