@@ -26,24 +26,19 @@ public static class DependencyInjection
     // Coach system instructions moved verbatim to Services/CoachPrompts.cs during the
     // P0b Assistants-API sunset migration.
 
-    private static DefaultAzureCredential CreateDefaultAzureCredential(IConfiguration configuration)
+    private static Azure.Core.TokenCredential CreateCredential(IConfiguration configuration)
     {
-        var options = new DefaultAzureCredentialOptions();
+        var env = configuration["ASPNETCORE_ENVIRONMENT"]
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? "Development";
 
-        if (string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase))
         {
-            // In local/dev containers we mount the host Azure profile. Excluding shared/IDE
-            // caches makes the active Azure CLI login the source of truth instead of stale
-            // cached tokens from a different tenant.
-#pragma warning disable CS0618
-            options.ExcludeSharedTokenCacheCredential = true;
-#pragma warning restore CS0618
-            options.ExcludeVisualStudioCredential = true;
-            options.ExcludeVisualStudioCodeCredential = true;
-            options.ExcludeInteractiveBrowserCredential = true;
+            // Direct Azure CLI credential in dev — instant, deterministic, 0 timeout probes.
+            return new AzureCliCredential();
         }
 
-        return new DefaultAzureCredential(options);
+        return new DefaultAzureCredential();
     }
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
@@ -65,7 +60,7 @@ public static class DependencyInjection
 
             if (!string.IsNullOrEmpty(storageAccountName))
             {
-                var cred = CreateDefaultAzureCredential(configuration);
+                var cred = CreateCredential(configuration);
                 var endpoint = new Uri($"https://{storageAccountName}.table.core.windows.net");
                 return new AzureTableOfflineDatabase(new TableServiceClient(endpoint, cred), cache, logger);
             }
@@ -151,7 +146,7 @@ public static class DependencyInjection
         var foundryEndpoint = configuration["Foundry:ProjectEndpoint"];
         if (!string.IsNullOrEmpty(foundryEndpoint))
         {
-            services.AddSingleton(new AIProjectClient(new Uri(foundryEndpoint), CreateDefaultAzureCredential(configuration)));
+            services.AddSingleton(new AIProjectClient(new Uri(foundryEndpoint), CreateCredential(configuration)));
         }
 
         services.AddScoped<IContentUnderstandingService>(sp =>
@@ -177,12 +172,12 @@ public static class DependencyInjection
             {
                 throw new InvalidOperationException("AzureOpenAI:ContentUnderstandingEndpoint or AzureOpenAI:Endpoint must be configured.");
             }
-            return new ContentUnderstandingClient(new Uri(endpoint), CreateDefaultAzureCredential(config));
+            return new ContentUnderstandingClient(new Uri(endpoint), CreateCredential(config));
         });
 
         if (!string.IsNullOrEmpty(aiEndpoint))
         {
-            var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), CreateDefaultAzureCredential(configuration));
+            var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), CreateCredential(configuration));
             services.AddSingleton(azureClient);
 
             // Coach model transport: Microsoft.Extensions.AI IChatClient over Azure OpenAI
@@ -194,7 +189,10 @@ public static class DependencyInjection
             {
                 var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
 #pragma warning disable OPENAI001 // experimental Responses surface
-                var inner = azureClient.GetResponsesClient().AsIChatClient(aiDeployment);
+                var transport = configuration["AzureOpenAI:Transport"] ?? "responses";
+                var inner = transport.Equals("responses", StringComparison.OrdinalIgnoreCase)
+                    ? azureClient.GetResponsesClient().AsIChatClient(aiDeployment)
+                    : azureClient.GetChatClient(aiDeployment).AsIChatClient();
 #pragma warning restore OPENAI001
                 return new ChatClientBuilder(inner)
                     .UseFunctionInvocation(loggerFactory)

@@ -90,7 +90,9 @@ public static class Program
         var azureClient = new Azure.AI.OpenAI.AzureOpenAIClient(new Uri(endpoint),
             new Azure.Identity.AzureCliCredential());
 #pragma warning disable OPENAI001 // experimental Responses surface
-        var innerClient = azureClient.GetResponsesClient().AsIChatClient(deployment);
+        var innerClient = configuration["AzureOpenAI:Transport"] == "chat"
+            ? azureClient.GetChatClient(deployment).AsIChatClient()
+            : azureClient.GetResponsesClient().AsIChatClient(deployment);
 #pragma warning restore OPENAI001
         IChatClient chatClient = new ChatClientBuilder(innerClient)
             .UseLogging(loggerFactory)
@@ -125,7 +127,7 @@ public static class Program
             var cacheKey = $"{hash[..24]}|{MealScanService.VisionPromptVersion}";
 
             VisionDecomposition decomp;
-            if (!refresh && cache.TryGetValue(cacheKey, out var cached))
+            if (!refresh && cache.TryGetValue(cacheKey, out var cached) && cached.FailedReason is null)
             {
                 decomp = cached.ToDecomposition();
                 Console.WriteLine($"·  {c.Image}: cached ({decomp.Components.Count} components)");
@@ -188,14 +190,15 @@ public static class Program
         }
 
         var reportPath = Path.Combine(cacheDir, "last-report.json");
-        await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(new
+        var report = JsonSerializer.Serialize(new
         {
             prompt_version = MealScanService.VisionPromptVersion,
             generated_at = DateTimeOffset.UtcNow,
             recall,
-            median_gram_error_percent = medianError,
+            median_gram_error_percent = double.IsNaN(medianError) ? (double?)null : medianError,
             cases = scores,
-        }, JsonOpts));
+        }, new JsonSerializerOptions(JsonOpts) { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals });
+        await File.WriteAllTextAsync(reportPath, report);
         Console.WriteLine($"\nReport: {reportPath}");
 
         if (!gate) return 0;

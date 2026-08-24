@@ -1,5 +1,4 @@
 {
-  "prompt_version": "informational-only-cache-uses-code-constant",
   "gate": {
     "min_recall": 0.80,
     "max_median_gram_error_percent": 35
@@ -8,10 +7,11 @@
     {
       "image": "case01.jpg",
       "expected": [
-        { "name": "rice", "grams": 180 },
-        { "name": "grilled chicken", "grams": 120 }
+        { "name": "pizza", "grams": 300 },
+        { "name": "ham", "grams": 40 },
+        { "name": "pineapple", "grams": 30 }
       ],
-      "notes": "EXAMPLE ENTRY — replace with your real photos. See README.md for the capture protocol."
+      "notes": "SMOKE TEST — Hawaiian pizza photo (Wikimedia Commons), approximate truth."
     }
   ]
 }
