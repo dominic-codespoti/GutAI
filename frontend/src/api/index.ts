@@ -36,6 +36,8 @@ import type {
   MealTypeNutrition,
   FavoriteFood,
   CustomFood,
+  MealScanDraft,
+  MealScanConfirmRequest,
 } from "../types";
 
 interface UpdateProfileRequest {
@@ -165,6 +167,46 @@ export const foodApi = {
     const data: CustomFood = await response.json();
     return { data };
   },
+};
+
+export const mealScanApi = {
+  scanImage: async (imageUri: string, mimeType: string = "image/jpeg") => {
+    const formData = new FormData();
+    if (Platform.OS === "web") {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      formData.append("file", blob, "meal.jpg");
+    } else {
+      formData.append("file", {
+        uri: imageUri,
+        name: "meal.jpg",
+        type: mimeType,
+      } as any);
+    }
+
+    const token = await getItem("accessToken");
+    const baseURL = api.defaults.baseURL || "";
+
+    const response = await fetch(`${baseURL}/api/meals/scan/image`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Meal photo scan failed");
+    }
+    const data: MealScanDraft = await response.json();
+    return { data };
+  },
+
+  getDraft: (id: string) => api.get<MealScanDraft>(`/api/meals/scan/${id}`),
+
+  discardDraft: (id: string) => api.delete(`/api/meals/scan/${id}`),
+
+  confirmDraft: (id: string, request: MealScanConfirmRequest) =>
+    api.put<{ mealId: string }>(`/api/meals/scan/${id}/confirm`, request),
 };
 
 export const symptomApi = {

@@ -554,3 +554,80 @@ export interface CustomFood {
   sodiumMg?: number | null;
   ingredients?: string | null;
 }
+
+// ── Meal Scan (P1–P6) ──
+
+export interface GroundingCandidate {
+  name: string;
+  food_product_id?: string | null;
+  source: string;
+  match_confidence: number;
+}
+
+export interface GroundingAttempt {
+  query: string;
+  resolution_status: string;
+  auto_selected: boolean;
+  selected_food_product_id?: string | null;
+  canonical_name?: string | null;
+  candidates: GroundingCandidate[];
+  match_confidence: number;
+  method: string;
+}
+
+export interface MealScanItem {
+  itemId: string;
+  name: string;
+  canonicalName?: string | null;
+  foodProductId?: string | null;
+  source: string;
+  sourceUrl?: string | null;
+  grams: number;
+  calories?: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  fatG?: number | null;
+  fiberG?: number | null;
+  sugarG?: number | null;
+  sodiumMg?: number | null;
+  matchConfidence: number;
+  visionConfidence: number;
+  candidateNames?: string[] | null;
+  grounding?: GroundingAttempt | null;
+  fodmap_status?: string | null;
+  fodmap_triggers?: string[] | null;
+  gut_rating?: string | null;
+}
+
+export interface MealScanDraft {
+  scanSessionId: string;
+  items: MealScanItem[];
+  warnings: string[];
+  referenceObjectVisible: boolean;
+  overallConfidence: number;
+}
+
+export interface MealScanConfirmItem {
+  itemId: string;
+  name: string;
+  grams: number;
+  foodProductId?: string | null;
+  source: string;
+  sourceUrl?: string | null;
+  matchConfidence: number;
+  visionConfidence: number;
+  calories?: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  fatG?: number | null;
+  fiberG?: number | null;
+  sugarG?: number | null;
+  sodiumMg?: number | null;
+}
+
+export interface MealScanConfirmRequest {
+  mealType?: string;
+  loggedAt?: string;
+  items: MealScanConfirmItem[];
+}
+
