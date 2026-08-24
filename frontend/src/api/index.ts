@@ -135,7 +135,7 @@ export const foodApi = {
   updateCustomFood: (id: string, data: CustomFood) =>
     api.put<CustomFood>(`/api/food/custom/${id}`, data),
   deleteCustomFood: (id: string) => api.delete(`/api/food/custom/${id}`),
-  parseLabel: async (imageUri: string, mimeType: string) => {
+  parseLabel: async (imageUri: string, mimeType: string = "image/jpeg") => {
     const formData = new FormData();
 
     if (Platform.OS === "web") {

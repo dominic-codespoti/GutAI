@@ -20,7 +20,8 @@ import { SwapSearchContent } from "./SwapSearchContent";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { useFavorites } from "../../src/hooks/useFavorites";
-import { mealApi, foodApi } from "../../src/api";
+import { mealApi, foodApi, mealScanApi } from "../../src/api";
+import * as ImagePicker from "expo-image-picker";
 import { toast } from "../../src/stores/toast";
 import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
 import { mapParsedItemToRequest } from "../../src/utils/mealMappers";
@@ -33,7 +34,15 @@ import { scaleNutrition, nutritionSummaryText } from "../../src/utils/nutrition"
 import { deleteItem, getItem, setItem } from "../../src/utils/storage";
 import { maybeRequestReview } from "../../src/utils/review";
 import { SearchResultSkeleton } from "../SkeletonLoader";
-import type { ParsedFoodItem, FoodProduct, FavoriteFood, RecentFood } from "../../src/types";
+import { MealScanReviewSheet } from "./MealScanReviewSheet";
+import type {
+  ParsedFoodItem,
+  FoodProduct,
+  FavoriteFood,
+  RecentFood,
+  MealScanDraft,
+  MealScanConfirmItem,
+} from "../../src/types";
 
 const EMPTY_PRODUCT_ID = "00000000-0000-0000-0000-000000000000";
 const MAX_CALORIES = 10000;
@@ -189,6 +198,12 @@ export function LogMealSheet() {
   const [activeTab, setActiveTab] = useState<LogMealTab>("describe");
   const [subView, setSubView] = useState<LogSubView>("menu");
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
+
+  // Meal scan state
+  const [mealScanDraft, setMealScanDraft] = useState<MealScanDraft | null>(null);
+  const [showMealScanReview, setShowMealScanReview] = useState(false);
+  const [isScanningMeal, setIsScanningMeal] = useState(false);
+  const [isScanningLabel, setIsScanningLabel] = useState(false);
 
   // Time
   const initialDate = new Date();
@@ -587,6 +602,127 @@ export function LogMealSheet() {
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+  };
+
+  const mealScanMutation = useMutation({
+    mutationFn: (uri: string) => mealScanApi.scanImage(uri).then((r) => r.data),
+    onSuccess: (draft) => {
+      setIsScanningMeal(false);
+      setMealScanDraft(draft);
+      setShowMealScanReview(true);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: (err: any) => {
+      setIsScanningMeal(false);
+      toast.error(err.message || "Failed to analyze meal photo.");
+    },
+  });
+
+  const confirmMealScanMutation = useMutation({
+    mutationFn: ({
+      sessionId,
+      mealType,
+      items,
+    }: {
+      sessionId: string;
+      mealType: string;
+      items: MealScanConfirmItem[];
+    }) => mealScanApi.confirmDraft(sessionId, { mealType, items }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["meals"] });
+      queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-foods"] });
+      queryClient.invalidateQueries({ queryKey: ["streak"] });
+      setShowMealScanReview(false);
+      setMealScanDraft(null);
+      handleClose();
+      toast.success("Meal logged!");
+      maybeRequestReview();
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: () => toast.error("Failed to log scanned meal."),
+  });
+
+  const parseLabelMutation = useMutation({
+    mutationFn: (uri: string) => foodApi.parseLabel(uri).then((r) => r.data),
+    onSuccess: (data: AiGeneratedFood) => {
+      setIsScanningLabel(false);
+      const normalized = normalizeCustomFood(data);
+      setAiPreview(normalized);
+      setActiveTab("describe");
+      toast.success("Nutrition facts extracted!");
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: () => {
+      setIsScanningLabel(false);
+      toast.error("Could not extract nutrition facts from that photo.");
+    },
+  });
+
+  const handleMealPhotoFromCamera = async () => {
+    if (!isPro) {
+      const ok = await presentPaywall();
+      if (!ok) return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Camera permission required.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setIsScanningMeal(true);
+    mealScanMutation.mutate(result.assets[0].uri);
+  };
+
+  const handleMealPhotoFromLibrary = async () => {
+    if (!isPro) {
+      const ok = await presentPaywall();
+      if (!ok) return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Photo library permission required.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setIsScanningMeal(true);
+    mealScanMutation.mutate(result.assets[0].uri);
+  };
+
+  const handleLabelPhoto = async () => {
+    if (!isPro) {
+      const ok = await presentPaywall();
+      if (!ok) return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Camera permission required.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setIsScanningLabel(true);
+    parseLabelMutation.mutate(result.assets[0].uri);
   };
 
   const openCamera = async () => {
@@ -1319,64 +1455,233 @@ export function LogMealSheet() {
           )}
 
           {/* ════════════════════════════════════════
-             SCAN TAB
+             SCAN TAB — UNIFIED SCAN INTENT DECK
              ════════════════════════════════════════ */}
           {activeTab === "scan" && (
-            <View>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textSecondary, marginBottom: 8 }}>
-                Barcode Lookup
-              </Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <TextInput
-                  placeholder="Enter barcode number"
-                  value={barcode}
-                  onChangeText={setBarcode}
-                  keyboardType="number-pad"
-                  returnKeyType="search"
-                  autoCorrect={false}
-                  maxLength={20}
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 16,
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={openCamera}
-                  accessibilityLabel="Scan barcode with camera"
-                  style={{
-                    backgroundColor: colors.primary,
-                    borderRadius: 8,
-                    width: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons name="camera" size={24} color={colors.textOnPrimary} />
-                </TouchableOpacity>
+            <ScrollView
+              style={{ maxHeight: 440 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Card 1: AI Meal Photo Scan */}
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: spacing.md,
+                  marginBottom: spacing.md,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Ionicons name="restaurant" size={18} color={colors.primaryLight} />
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
+                      AI Meal Photo Scan
+                    </Text>
+                  </View>
+                  {!isPro && (
+                    <View style={{ backgroundColor: colors.warning, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+                      <Text style={{ color: "#fff", fontSize: 9, fontWeight: "800" }}>PRO</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12, lineHeight: 18 }}>
+                  Photograph your plate — AI detects components, portions & calculates macros for review.
+                </Text>
+
+                {isScanningMeal ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, gap: 8 }}>
+                    <ActivityIndicator color={colors.primaryLight} size="small" />
+                    <Text style={{ color: colors.primaryLight, fontWeight: "600", fontSize: 13 }}>
+                      Analyzing meal & matching nutrition...
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={handleMealPhotoFromCamera}
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        backgroundColor: colors.primaryBg,
+                        borderColor: colors.primaryBorder,
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Ionicons name="camera" size={16} color={colors.primaryLight} />
+                      <Text style={{ color: colors.primaryLight, fontWeight: "700", fontSize: 13 }}>
+                        Take Photo
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleMealPhotoFromLibrary}
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        backgroundColor: colors.bg,
+                        borderColor: colors.border,
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Ionicons name="images-outline" size={16} color={colors.text} />
+                      <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }}>
+                        From Library
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
-              {barcodeQuery.isLoading && <SearchResultSkeleton count={1} />}
-              {barcodeQuery.isError && (
-                <Text style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}>
-                  Product not found for this barcode. Try search instead.
+              {/* Card 2: Barcode Scanner */}
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: spacing.md,
+                  marginBottom: spacing.md,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <Ionicons name="barcode-outline" size={18} color={colors.text} />
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
+                    Barcode Scanner
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12, lineHeight: 18 }}>
+                  Scan UPC / EAN barcode on packaged grocery products for instant lookup.
                 </Text>
-              )}
-              {barcodeQuery.data && (
-                <TouchableOpacity
-                  onPress={() => handleProductPress(barcodeQuery.data!)}
-                  style={{ marginTop: 12 }}
-                >
-                  <FoodSearchResult
-                    product={barcodeQuery.data}
-                    onPress={handleProductPress}
+
+                <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                  <TextInput
+                    placeholder="Enter barcode digits"
+                    placeholderTextColor={colors.textLight}
+                    value={barcode}
+                    onChangeText={setBarcode}
+                    keyboardType="number-pad"
+                    returnKeyType="search"
+                    autoCorrect={false}
+                    maxLength={20}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 15,
+                      backgroundColor: colors.bg,
+                      color: colors.text,
+                    }}
                   />
-                </TouchableOpacity>
-              )}
-            </View>
+                  <TouchableOpacity
+                    onPress={openCamera}
+                    style={{
+                      backgroundColor: colors.primary,
+                      borderRadius: 8,
+                      paddingHorizontal: 14,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <Ionicons name="camera" size={18} color={colors.textOnPrimary} />
+                    <Text style={{ color: colors.textOnPrimary, fontWeight: "700", fontSize: 13 }}>
+                      Scan
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {barcodeQuery.isLoading && <SearchResultSkeleton count={1} />}
+                {barcodeQuery.isError && (
+                  <Text style={{ color: colors.danger, fontSize: 13, marginTop: 4 }}>
+                    Product not found for this barcode. Try search tab instead.
+                  </Text>
+                )}
+                {barcodeQuery.data && (
+                  <TouchableOpacity
+                    onPress={() => handleProductPress(barcodeQuery.data!)}
+                    style={{ marginTop: 8 }}
+                  >
+                    <FoodSearchResult
+                      product={barcodeQuery.data}
+                      onPress={handleProductPress}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Card 3: Nutrition Label OCR */}
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: spacing.md,
+                  marginBottom: spacing.md,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Ionicons name="document-text-outline" size={18} color={colors.text} />
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
+                      Nutrition Facts Label
+                    </Text>
+                  </View>
+                  {!isPro && (
+                    <View style={{ backgroundColor: colors.warning, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+                      <Text style={{ color: "#fff", fontSize: 9, fontWeight: "800" }}>PRO</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12, lineHeight: 18 }}>
+                  Photograph the back-of-box nutrition panel to extract facts into custom food.
+                </Text>
+
+                {isScanningLabel ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, gap: 8 }}>
+                    <ActivityIndicator color={colors.primaryLight} size="small" />
+                    <Text style={{ color: colors.primaryLight, fontWeight: "600", fontSize: 13 }}>
+                      Extracting nutrition facts...
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={handleLabelPhoto}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      backgroundColor: colors.bg,
+                      borderColor: colors.border,
+                      borderWidth: 1,
+                      borderRadius: 8,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Ionicons name="camera-outline" size={16} color={colors.text} />
+                    <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }}>
+                      Scan Label Photo
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </ScrollView>
           )}
 
           {/* ════════════════════════════════════════
@@ -1472,6 +1777,24 @@ export function LogMealSheet() {
           )}
         </View>
       )}
+
+      <MealScanReviewSheet
+        draft={mealScanDraft}
+        visible={showMealScanReview && !!mealScanDraft}
+        onClose={() => {
+          setShowMealScanReview(false);
+          setMealScanDraft(null);
+        }}
+        onConfirm={async ({ mealType, items }) => {
+          if (!mealScanDraft) return;
+          await confirmMealScanMutation.mutateAsync({
+            sessionId: mealScanDraft.scanSessionId,
+            mealType,
+            items,
+          });
+        }}
+        isConfirming={confirmMealScanMutation.isPending}
+      />
     </BottomSheet>
   );
 }
