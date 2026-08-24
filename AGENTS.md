@@ -2,15 +2,17 @@
 
 You are an expert full-stack AI developer working on **GutAI**.
 Your goal is to write clean, correct, and bug-free code. Think step-by-step and DO NOT guess implementations.
-The tech stack is **React Native (Expo)** on the frontend and **.NET 8 Minimal APIs** (with Azure Table Storage) on the backend.
+The tech stack is **React Native (Expo)** on the frontend and **.NET 10 Minimal APIs** (with Azure Table Storage) on the backend.
 
 ## 📚 Knowledge Base Routing (Progressive Disclosure)
 
 DO NOT guess architectural details, domain logic, or test arrangements. If your task involves any of the following topics, you **MUST** read the corresponding documentation file using your file reading tool BEFORE writing code or making system changes:
 
 - **System Architecture & Setup**: `docs/ARCHITECTURE.md`
+- **Meal Photo Scan Pipeline & Grounding**: `docs/meal-scan-detailed-design.md`
+- **AI Calorie Estimation & Database Research**: `docs/ai-meal-scan-upgrade-research.md`
 - **End-to-End Testing (Playwright)**: `docs/PLAYWRIGHT_E2E_ANALYSIS.md`
-- **Deployment**: `docs/DEPLOYMENT.md`
+- **Deployment & Production Config**: `docs/DEPLOYMENT.md`
 
 ## 📝 Documentation Maintenance
 
@@ -80,7 +82,17 @@ Never overwrite existing entity fields with null when the update request omits t
 Never use `Lazy<Task<T>>` for faulting resources. A faulted `Lazy` permanently caches the exception.
 
 - **Rule:** Use `SemaphoreSlim` + null check for async lazy initialization, or reset the lazy on failure.
-- **Pattern:** `AssistantFactory` in `GutAI.Infrastructure.Services` demonstrates the correct pattern — uses `SemaphoreSlim` with a nullable cached ID that resets to `null` on failure, allowing retry on the next call.
+
+## 8. AI Meal Photo Scanning & Grounding Invariants
+
+Every AI meal scanning feature MUST adhere to the following deterministic boundaries:
+
+- **LLM Never Produces Nutrition Numbers:** The vision model outputs ONLY component identity, gram ranges (low, midpoint, high), and confidence. Nutrition macros (calories, P, C, F, sodium, etc.) are ALWAYS computed deterministically from verified database per-100g values multiplied by detected grams.
+- **Semantic Validation Outside the Model:** Structured JSON from LLMs guarantees syntactic shape, not semantic validity. Always run `MealVisionValidator.Validate` to enforce gram ordering ($low \le midpoint \le high$), physiological sanity caps ($\le 5\text{ kg}$ per item), and component count limits.
+- **Grounding Through Existing Resolver:** Every detected component MUST be grounded via `IFoodSearchService.ResolveAsync`. Auto-select only when status is `Exact` or `Probable` AND `MatchConfidence >= 0.85`. Ambiguous items MUST abstain to human review with candidates exposed.
+- **Stage-A Gram Immutability:** Portion estimates attach to the detected component, NEVER to the database product's default serving size. Grounding must not mutate Stage-A grams.
+- **Health Signal Isolation (Safety Rule):** `MealScanHealthSignals` (FODMAP status, triggers, gut rating) attach ONLY to items with a verified `FoodProductId`. Web-scraped and AI-estimated items physically cannot receive FODMAP signals.
+- **Regression Gating:** Prompt, schema, or model changes to Stage A MUST be versioned (`VisionPromptVersion`) and pass the `GoldenScanHarness` regression gate (`make golden-gate`).
 
 ---
 

@@ -28,10 +28,29 @@ The shipped system now draws a hard line between four different evidence types a
 - **Parsed meal provenance:** parsed items carry independent identity confidence, portion confidence, and nutrition provenance (`Sourced` / `Estimated` / `Unknown`). The frontend review step exposes those signals separately.
 - **FODMAP:** rule-based ingredient/name screening with three statuses — `PotentialTriggersDetected`, `NoKnownTriggersDetected`, `InsufficientInformation`. It is intentionally an **ingredient screen**, not a serving-level laboratory classification; unsupported cases remain unknown instead of showing a misleading green “Low FODMAP”.
 - **Gut risk / glycemic / personalized score:** additive screening, glycemic reference matching, and the personalized composite score intentionally remain separate systems. They are allowed to disagree because they represent different evidence.
-- **Food-symptom analysis:** one shared `FoodSymptomAssociationService` now powers Correlations, Food Diary, Elimination Diet, MCP, and chat. It uses a 1–6 hour onset window, respects explicit `RelatedMealLogId` links first, splits inferred evidence across competing candidate meals instead of double-counting it, compares exposed-vs-baseline symptom rates, and flags co-consumption limitations.
+- **Food-symptom analysis:** one shared `FoodSymptomAssociationService` now powers Correlations, Food Diary, Elimination Diet, and the Coach chat. It uses a 1–6 hour onset window, respects explicit `RelatedMealLogId` links first, splits inferred evidence across competing candidate meals instead of double-counting it, compares exposed-vs-baseline symptom rates, and flags co-consumption limitations.
 - **Frontend uncertainty propagation:** the UI exposes uncertainty as text, not color alone — e.g. “Multiple possible matches”, “Nutrition estimated”, “Portion assumed”, muted “Not Enough Info” FODMAP badges, baseline percentages on correlation cards, and missing-evidence disclosures.
 
 Known evidence limits remain explicit: ingredient order is not dose, proprietary FODMAP concentration thresholds are not embedded, GI reference matches do not establish an exact branded product’s measured GI, and observational food-symptom patterns still do not prove causation.
+
+### AI Coach & Meal Photo Scanning Architecture (2026-08)
+
+The system features two modern, production-hardened AI sub-systems:
+
+#### 1. Conversational Coach (`CoachChatService`)
+- **Transport:** Built on `Microsoft.Extensions.AI` (`IChatClient`) over Azure OpenAI **Responses** transport (replaces the retired Assistants API).
+- **Tool Calling:** `UseFunctionInvocation` middleware executes the 12 domain tools (`search_foods`, `log_meal`, `get_food_safety`, `get_todays_meals`, etc.) via `AIFunctionFactory` adapters. User identity is captured server-side from JWT claims and is NEVER a model-supplied argument.
+- **State & History:** App-owned conversation history stored in Azure Table Storage (`COACHMSG|` partition rows, inverted-tick ordering) instead of cloud-managed threads.
+- **System Instructions:** Encoded verbatim in `CoachPrompts.cs` preserving strict behavioral workflows (clarification handling, active workflow priority, present-before-log).
+
+#### 2. Meal Photo Scanning & Grounding Pipeline (`MealScanService`)
+- **Stage A (Vision Decomposition):** `POST /api/meals/scan/image` accepts a meal photo (preprocessed via ImageSharp for EXIF stripping, 2000px downscale, JPEG q80) and calls `IChatClient.GetResponseAsync<MealVisionResult>()` with strict schema output. Output carries component names, gram ranges ($low, midpoint, high$), scale notes, and confidence. The LLM **never produces calories or nutrition numbers**.
+- **Deterministic Semantic Validation:** `MealVisionValidator` checks $low \le midpoint \le high$, caps portions at $\le 5\text{ kg}$, enforces component count limits, and drops invalid items.
+- **Stage B (Database Grounding):** `ComponentGroundingEngine` resolves each component through `IFoodSearchService.ResolveAsync`. Auto-select occurs ONLY when status is `Exact` or `Probable` AND `MatchConfidence >= 0.85`. Ambiguous items abstain to human review with top-3 candidates exposed. Quantities attach to the detected component, never database default servings.
+- **Stage B3 (Zero-Cost Web Cascade):** `WebNutritionCascade` runs for unresolved items behind `Features:WebGrounding` (Table cache $\rightarrow$ DuckDuckGo HTML search $\rightarrow$ Jina Reader markdown $\rightarrow$ LLM extraction $\rightarrow$ physiological plausibility gate $\rightarrow$ cache write).
+- **Stage C & Health Signals:** Macros are computed deterministically from verified per-100g database values $\times$ grams. `MealScanHealthSignals` enriches grounded items with FODMAP status/triggers and gut ratings. Web-scraped and AI-estimated items physically cannot receive FODMAP signals.
+- **Frontend Review Sheet:** `MealScanReviewSheet.tsx` provides an interactive bottom sheet with confidence badges, provenance chips (`USDA`, `OFF`, `AU`, `Web ↗`, `AI`), FODMAP/gut badges, portion steppers with live macro scaling, 1-tap candidate swapper, and meal type logging.
+- **Regression Gating:** `backend/tools/GoldenScanHarness` tests Stage A across a golden test suite of meal photos (`golden-images/manifest.json`), reporting component recall, gram error, and token usage with an automated `--gate` exit rule.
 
 ### Verification hardening (Phase 7 closeout)
 

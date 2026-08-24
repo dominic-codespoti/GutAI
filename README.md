@@ -102,7 +102,7 @@ gut-ai/
 | POST   | `/api/auth/logout`          | Revoke tokens        |
 | POST   | `/api/auth/change-password` | Change password      |
 
-### Meals
+### Meals & Meal Scanning
 
 | Method | Path                              | Description             |
 | ------ | --------------------------------- | ----------------------- |
@@ -112,8 +112,20 @@ gut-ai/
 | PUT    | `/api/meals/{id}`                 | Update meal             |
 | DELETE | `/api/meals/{id}`                 | Soft-delete meal        |
 | POST   | `/api/meals/log-natural`          | Parse NLP text → items  |
+| POST   | `/api/meals/scan/image`           | AI meal photo scan → draft items |
+| GET    | `/api/meals/scan/{id}`            | Get meal scan draft     |
+| PUT    | `/api/meals/scan/{id}/confirm`    | Confirm & log scan draft|
+| DELETE | `/api/meals/scan/{id}`            | Discard scan draft      |
 | GET    | `/api/meals/daily-summary/{date}` | Daily nutrition totals  |
 | GET    | `/api/meals/export?from=&to=`     | Export meals + symptoms |
+
+### Coach Chat
+
+| Method | Path                | Description                                                |
+| ------ | ------------------- | ---------------------------------------------------------- |
+| POST   | `/api/chat/stream`  | Stream conversational coach responses with tool execution |
+| GET    | `/api/chat/history` | Get recent coach conversation history                      |
+| DELETE | `/api/chat/history` | Clear coach conversation history                           |
 
 ### Food & Safety
 
