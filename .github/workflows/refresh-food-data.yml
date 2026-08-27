@@ -1,0 +1,64 @@
+name: refresh-food-data
+
+# Manual dataset refresh. NOT run on a schedule: USDA/FSANZ bulk downloads are
+# large and the generators change generated C# that humans must review.
+# Run via workflow_dispatch after verifying the bulk endpoints below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      usda:
+        description: "Regenerate WholeFoodsDatabase (USDA Foundation+SR Legacy)"
+        type: boolean
+        default: false
+      branded:
+        description: "Regenerate BrandedFoodsDatabase (USDA Branded)"
+        type: boolean
+        default: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download and regenerate (USDA whole foods)
+        if: ${{ inputs.usda }}
+        run: |
+          # NOTE: confirm the current FDC bulk-export URL before relying on this job.
+          # https://fdc.nal.usda.gov/download-datasets
+          curl -fL "$FDC_URL" -o fdc.zip
+          mkdir work && unzip -o fdc.zip -d work
+          python3 backend/tools/UsdaFoodGenerator/generate.py \
+            --input work --output backend/src/GutAI.Infrastructure/Data/WholeFoodsDatabase.cs
+        env:
+          FDC_URL: ${{ vars.FDC_BULK_URL || 'https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_foundation_food_csv_2025-12-18.zip' }}
+
+      - name: Download and regenerate (USDA branded)
+        if: ${{ inputs.branded }}
+        run: |
+          curl -fL "$BRANDED_URL" -o branded.zip
+          mkdir work-branded && unzip -o branded.zip -d work-branded
+          python3 backend/tools/UsdaBrandedFoodGenerator/generate.py \
+            --input work-branded --output backend/src/GutAI.Infrastructure/Data/BrandedFoodsDatabase.cs
+        env:
+          BRANDED_URL: ${{ vars.FDC_BRANDED_URL || 'https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_branded_food_csv_2025-12-18.zip' }}
+
+      - name: Build to validate generated C#
+        if: ${{ inputs.usda || inputs.branded }}
+        run: dotnet build backend/src/GutAI.Infrastructure
+
+      - name: Open PR with refreshed snapshots
+        if: ${{ inputs.usda || inputs.branded }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: food-data-refresh
+          title: "chore: refresh embedded food datasets"
+          body: |
+            Regenerated embedded food catalogs from upstream bulk exports.
+            Review the record-count diff in each header before merging.
+          commit-message: "chore: refresh embedded food data snapshots"

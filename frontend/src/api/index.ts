@@ -1,6 +1,7 @@
 import { api } from "./client";
 import { Platform } from "react-native";
-import { toLocalDateStr } from "../utils/date";
+import { shiftDate, toLocalDateStr } from "../utils/date";
+import { getDeviceTimezoneId } from "../utils/timezone";
 import { getItem } from "../utils/storage";
 import type {
   AuthResponse,
@@ -38,6 +39,10 @@ import type {
   CustomFood,
   MealScanDraft,
   MealScanConfirmRequest,
+  PairingCodeResponse,
+  LinkedAccessToken,
+  ImportMealsRequest,
+  ImportMealsResult,
 } from "../types";
 
 interface UpdateProfileRequest {
@@ -56,9 +61,9 @@ interface UpdateGoalsRequest {
   dailyFiberGoalG: number;
 }
 
-/** JS getTimezoneOffset() returns minutes behind UTC. Passed to backend for local-day filtering. */
+/** JS getTimezoneOffset() returns minutes behind UTC. Passed to backend for legacy local-day filtering. */
 const tz = () => new Date().getTimezoneOffset();
-
+const tzId = () => getDeviceTimezoneId();
 export const authApi = {
   register: (email: string, password: string, displayName: string) =>
     api.post<AuthResponse>("/api/auth/register", {
@@ -78,7 +83,7 @@ export const authApi = {
 export const mealApi = {
   list: (date?: string) =>
     api.get<MealLog[]>("/api/meals", {
-      params: { date, tzOffsetMinutes: tz() },
+      params: { date, tzOffsetMinutes: tz(), timezoneId: tzId() },
     }),
   get: (id: string) => api.get<MealLog>(`/api/meals/${id}`),
   create: (data: CreateMealRequest) => api.post<MealLog>("/api/meals", data),
@@ -89,13 +94,20 @@ export const mealApi = {
     api.post<NaturalLanguageResponse>("/api/meals/log-natural", data),
   dailySummary: (date: string) =>
     api.get<DailyNutritionSummary>(`/api/meals/daily-summary/${date}`, {
-      params: { tzOffsetMinutes: tz() },
+      params: { tzOffsetMinutes: tz(), timezoneId: tzId() },
     }),
   export: (from?: string, to?: string) =>
-    api.get<DataExport>("/api/meals/export", { params: { from, to } }),
+    api.get<DataExport>("/api/meals/export", {
+      params: { from, to, timezoneId: tzId() },
+    }),
   recentFoods: (limit?: number) =>
     api.get<RecentFood[]>("/api/meals/recent-foods", { params: { limit } }),
-  streak: () => api.get<Streak>("/api/meals/streak"),
+  streak: () =>
+    api.get<Streak>("/api/meals/streak", { params: { timezoneId: tzId() } }),
+  import: (data: ImportMealsRequest) =>
+    api.post<ImportMealsResult>("/api/meals/import", data, {
+      params: { timezoneId: tzId() },
+    }),
 };
 
 export const foodApi = {
@@ -117,7 +129,9 @@ export const foodApi = {
   glycemic: (id: string) =>
     api.get<GlycemicAssessment>(`/api/food/${id}/glycemic`),
   personalizedScore: (id: string) =>
-    api.get<PersonalizedScore>(`/api/food/${id}/personalized-score`),
+    api.get<PersonalizedScore>(`/api/food/${id}/personalized-score`, {
+      params: { timezoneId: tzId() },
+    }),
   listAdditives: () => api.get<FoodAdditive[]>("/api/food/additives"),
   getAdditive: (id: number) =>
     api.get<FoodAdditive>(`/api/food/additives/${id}`),
@@ -212,10 +226,12 @@ export const mealScanApi = {
 export const symptomApi = {
   list: (params?: { date?: string }) =>
     api.get<SymptomLog[]>("/api/symptoms", {
-      params: { ...params, tzOffsetMinutes: tz() },
+      params: { ...params, tzOffsetMinutes: tz(), timezoneId: tzId() },
     }),
   history: (params?: { from?: string; to?: string; typeId?: number }) =>
-    api.get<SymptomLog[]>("/api/symptoms/history", { params }),
+    api.get<SymptomLog[]>("/api/symptoms/history", {
+      params: { ...params, timezoneId: tzId() },
+    }),
   create: (data: CreateSymptomRequest) =>
     api.post<SymptomLog>("/api/symptoms", data),
   update: (id: string, data: CreateSymptomRequest) =>
@@ -228,53 +244,54 @@ export const symptomApi = {
 export const insightApi = {
   correlations: (days?: number) => {
     const to = toLocalDateStr();
-    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
+    const from = shiftDate(to, -(days ?? 30));
     return api.get<Correlation[]>("/api/insights/correlations", {
-      params: { from, to },
+      params: { from, to, timezoneId: tzId() },
     });
   },
   nutritionTrends: (days?: number) => {
     const to = toLocalDateStr();
-    const from = toLocalDateStr(new Date(Date.now() - (days ?? 14) * 86400000));
+    const from = shiftDate(to, -(days ?? 14));
     return api.get<NutritionTrend[]>("/api/insights/nutrition-trends", {
-      params: { from, to, tzOffsetMinutes: tz() },
+      params: { from, to, tzOffsetMinutes: tz(), timezoneId: tzId() },
     });
   },
   additiveExposure: (days?: number) => {
     const to = toLocalDateStr();
-    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
+    const from = shiftDate(to, -(days ?? 30));
     return api.get<AdditiveExposure[]>("/api/insights/additive-exposure", {
-      params: { from, to },
+      params: { from, to, timezoneId: tzId() },
     });
   },
   triggerFoods: (days?: number) => {
     const to = toLocalDateStr();
-    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
+    const from = shiftDate(to, -(days ?? 30));
     return api.get<TriggerFood[]>("/api/insights/trigger-foods", {
-      params: { from, to },
+      params: { from, to, timezoneId: tzId() },
     });
   },
   foodDiaryAnalysis: (days?: number) => {
     const to = toLocalDateStr();
-    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
+    const from = shiftDate(to, -(days ?? 30));
     return api.get<FoodDiaryAnalysis>("/api/insights/food-diary-analysis", {
-      params: { from, to },
+      params: { from, to, timezoneId: tzId() },
     });
   },
   nutritionByMealType: (days?: number) => {
     const to = toLocalDateStr();
-    const from = toLocalDateStr(new Date(Date.now() - (days ?? 30) * 86400000));
+    const from = shiftDate(to, -(days ?? 30));
     return api.get<MealTypeNutrition[]>(
       "/api/insights/nutrition-by-meal-type",
       {
-        params: { from, to },
+        params: { from, to, timezoneId: tzId() },
       },
     );
   },
   eliminationDietStatus: () =>
-    api.get<EliminationDietStatus>("/api/insights/elimination-diet/status"),
+    api.get<EliminationDietStatus>("/api/insights/elimination-diet/status", {
+      params: { timezoneId: tzId() },
+    }),
 };
-
 export const userApi = {
   getProfile: () => api.get<UserProfile>("/api/user/profile"),
   updateProfile: (data: UpdateProfileRequest) =>
@@ -286,6 +303,10 @@ export const userApi = {
   removeAlert: (additiveId: number) =>
     api.delete(`/api/user/alerts/${additiveId}`),
   deleteAccount: () => api.delete("/api/user/account"),
+  createPairingCode: () =>
+    api.post<PairingCodeResponse>("/api/user/pairing-codes"),
+  listTokens: () => api.get<LinkedAccessToken[]>("/api/user/tokens"),
+  revokeToken: (id: string) => api.delete(`/api/user/tokens/${id}`),
 };
 
 export const chatApi = {

@@ -24,6 +24,33 @@ public class GoldenMetricsTests
     [InlineData("greek yogurt", "yogurt", true)]          // substring fallback
     [InlineData("pizza", "pasta", false)]
     [InlineData("orange juice", "apple juice", false)]
+    [InlineData("spaghetti", "spaghetti with tomato sauce", false)]  // scanned dropped detail — must NOT auto-credit
+    // Plural morphology tests
+    [InlineData("mixed berries", "mixed berry", true)]
+    [InlineData("roasted vegetables", "roasted vegetable", true)]
+    [InlineData("strawberries", "strawberry", true)]
+    [InlineData("potatoes", "potato", true)]
+    [InlineData("tomatoes", "tomato", true)]
+    [InlineData("steamed mushrooms", "steamed mushroom", true)]
+    // Alias families: salad greens
+    [InlineData("mixed greens", "salad greens", true)]
+    [InlineData("leafy greens", "salad greens", true)]
+    [InlineData("leafy salad", "salad greens", true)]
+    [InlineData("salad greens", "leafy greens", true)]
+    [InlineData("green salad", "mixed greens", true)]
+    // Alias families: queso
+    [InlineData("cheese sauce", "queso", true)]
+    [InlineData("queso dip", "queso", true)]
+    [InlineData("cheese sauce", "queso dip", true)]
+    // Alias families: smoothie
+    [InlineData("fruit smoothie", "smoothie", true)]
+    [InlineData("orange smoothie", "smoothie", true)]
+    [InlineData("fruit smoothie", "orange smoothie", true)]
+    // Alias families: mixed vegetables
+    [InlineData("corn vegetable hash", "mixed vegetables", true)]
+    [InlineData("mixed cooked vegetables", "mixed vegetables", true)]
+    [InlineData("corn vegetable hash", "mixed cooked vegetables", true)]
+    [InlineData("mixed vegetables", "corn vegetable hash", true)]
     public void MatchComponents_NameMatching(string scannedName, string expectedName, bool shouldMatch)
     {
         var expected = new List<GoldenExpected> { new() { Name = expectedName, Grams = 100m } };

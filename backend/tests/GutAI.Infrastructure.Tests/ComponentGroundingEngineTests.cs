@@ -206,5 +206,80 @@ public class ComponentGroundingEngineTests
         g.SelectedFoodProductId.Should().Be(product.Id);
         g.ResolutionStatus.Should().Be("probable");
     }
+
+    [Fact]
+    public async Task AmbiguousPrimary_DoesNotForcePrimaryCandidateAheadOfCompatibleAlternative()
+    {
+        var primary = Product("Beef Sausage Snack Pieces", source: "OpenFoodFacts", conf: 0.85m);
+        var alternative = Product("Sausage, cooked", source: "USDA", conf: 0.85m);
+        var mock = new Mock<IFoodSearchService>();
+        mock.Setup(f => f.ResolveAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string query, IReadOnlyCollection<Guid> _, CancellationToken _) =>
+                query == "sausage pieces"
+                    ? new FoodResolutionDto
+                    {
+                        Status = FoodResolutionStatus.Ambiguous,
+                        Selected = primary,
+                        MatchConfidence = 0.85m,
+                    }
+                    : new FoodResolutionDto
+                    {
+                        Status = FoodResolutionStatus.Probable,
+                        Selected = alternative,
+                        MatchConfidence = 0.85m,
+                    });
+
+        var engine = new ComponentGroundingEngine(mock.Object);
+        var grounded = await engine.GroundAsync(new ScannedComponent
+        {
+            Name = "sausage pieces",
+            SearchQueries = ["cooked sausage"],
+            EstimatedGramsLow = 40,
+            EstimatedGramsMidpoint = 55,
+            EstimatedGramsHigh = 80,
+            Confidence = 0.8m,
+        });
+
+        grounded.Attempt.Candidates[0].Name.Should().Be("Sausage, cooked");
+        grounded.Attempt.AutoSelected.Should().BeFalse();
+    }
+
+    // ── Compatibility veto: lexical confidence alone must not bypass form/state checks ──
+
+    [Fact]
+    public async Task LexicallyStrongMatch_CompatibilityMismatch_VetoedToAmbiguous()
+    {
+        // "sausage" fully token-covers "Beef Sausage Snack Pieces" — lexically this
+        // clears Probable + the 0.85 floor — but it's a packaged snack, not the cooked
+        // breakfast sausage observed. The compatibility scorer must veto the auto-select.
+        var snack = Product("Beef Sausage Snack Pieces", source: "OpenFoodFacts", conf: 0.85m);
+        snack = snack with { FoodKind = FoodKind.Branded, Brand = "Example Brand" };
+        var engine = EngineWith(new FoodResolutionDto
+        {
+            OriginalQuery = "sausage",
+            Status = FoodResolutionStatus.Probable,
+            Selected = snack,
+            MatchConfidence = 0.85m,
+        });
+
+        var grounded = await engine.GroundAsync(new ScannedComponent
+        {
+            Name = "sausage",
+            SearchQueries = ["cooked sausage"],
+            PreparationNote = "appears cooked",
+            EstimatedGramsLow = 40,
+            EstimatedGramsMidpoint = 55,
+            EstimatedGramsHigh = 80,
+            Confidence = 0.8m,
+        });
+
+        grounded.Attempt.AutoSelected.Should().BeFalse("a packaged snack must not silently ground a fresh-food observation");
+        grounded.Attempt.ResolutionStatus.Should().Be("ambiguous");
+        grounded.ResolvedProduct.Should().BeNull();
+        grounded.Attempt.Candidates.Should().Contain(c => c.Name == "Beef Sausage Snack Pieces", "it must still be exposed for human review, never dropped silently");
+    }
 }
 

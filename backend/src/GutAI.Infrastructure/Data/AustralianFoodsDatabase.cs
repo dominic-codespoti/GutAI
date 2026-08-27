@@ -122,7 +122,8 @@ public static class AustralianFoodsDatabase
         return _index.Value.Search(query, maxResults);
     }
 
-    private static FoodProductDto F(string name, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium) =>
+    // Note: Records generated before this change may encode missing optional nutrients as 0; regenerate to correct.
+    private static FoodProductDto F(string name, int cal, decimal protein, decimal carbs, decimal fat, decimal? fiber, decimal? sugar, decimal? sodium) =>
         new()
         {
             Name = name,
@@ -132,7 +133,7 @@ public static class AustralianFoodsDatabase
             Fat100g = fat,
             Fiber100g = fiber,
             Sugar100g = sugar,
-            SodiumMg100g = sodium * 1000m,
+            SodiumMg100g = sodium.HasValue ? sodium.Value * 1000m : null,
             DataSource = "AUSNUT",
             SourceVersion = "AUSNUT 2011-13",
             LicenseType = "CC BY 2.5 AU",
@@ -140,7 +141,7 @@ public static class AustralianFoodsDatabase
             FoodKind = GutAI.Domain.Enums.FoodKind.WholeFood,
         };
 
-    private static FoodProductDto B(string name, string brand, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium) =>
+    private static FoodProductDto B(string name, string brand, int cal, decimal protein, decimal carbs, decimal fat, decimal? fiber, decimal? sugar, decimal? sodium) =>
         new()
         {
             Name = name,
@@ -151,7 +152,7 @@ public static class AustralianFoodsDatabase
             Fat100g = fat,
             Fiber100g = fiber,
             Sugar100g = sugar,
-            SodiumMg100g = sodium * 1000m,
+            SodiumMg100g = sodium.HasValue ? sodium.Value * 1000m : null,
             DataSource = "AUSNUT",
             SourceVersion = "AUSNUT 2011-13",
             LicenseType = "CC BY 2.5 AU",

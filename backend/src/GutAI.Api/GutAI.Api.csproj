@@ -10,7 +10,8 @@
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.3.0" />
+    <!-- 1.2.0 keeps MCP's M.E.AI.Abstractions dependency on the 10.4 ABI used by Responses/Agent Framework. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.12.46" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="OpenTelemetry.Api" Version="1.15.3" />

@@ -6,6 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
 } from "react-native";
+import Animated, { FadeInDown, useReducedMotion } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
 import { insightApi, symptomApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,10 +19,15 @@ import type {
   FoodDiaryAnalysis,
   EliminationDietStatus,
   MealTypeNutrition,
+  FoodSymptomPattern,
 } from "../../src/types";
 import { useCallback, useState } from "react";
 import { InsightsSkeleton } from "../../components/SkeletonLoader";
 import { ErrorState } from "../../components/ErrorState";
+import { CollapsibleCard } from "../../components/CollapsibleCard";
+import { TrendChart, type TrendMetric } from "../../src/components/charts/TrendChart";
+import { MacroDonut } from "../../src/components/charts/MacroDonut";
+import { HBarList } from "../../src/components/charts/HBarList";
 import {
   severityColor,
   cspiColor,
@@ -30,7 +36,8 @@ import {
 } from "../../src/utils/colors";
 import { radius, spacing } from "../../src/utils/theme";
 import { mealTypeEmoji } from "../../src/utils/theme";
-import { toLocalDateStr } from "../../src/utils/date";
+import { shiftDate, toLocalDateStr } from "../../src/utils/date";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
 import {
   useThemeColors,
   useThemeFonts,
@@ -38,16 +45,20 @@ import {
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { useRouter } from "expo-router";
+import { useShareCard } from "../../components/share/ShareCardPortal";
 
 export default function InsightsScreen() {
   const colors = useThemeColors();
   const fonts = useThemeFonts();
+  const reduced = useReducedMotion();
   const { shadow, shadowMd } = useThemeShadow();
   const [period, setPeriod] = useState(30);
+  const timezoneId = getDeviceTimezoneId();
   const router = useRouter();
+  const shareCard = useShareCard();
   const [showAllCorrelations, setShowAllCorrelations] = useState(false);
-  const [showAllTrends, setShowAllTrends] = useState(false);
   const [showAllPatterns, setShowAllPatterns] = useState(false);
+  const [selectedTrendMetric, setSelectedTrendMetric] = useState<TrendMetric>("calories");
 
   const {
     data: trends,
@@ -55,7 +66,7 @@ export default function InsightsScreen() {
     isError: trendsError,
     refetch: refetchTrends,
   } = useQuery({
-    queryKey: ["nutrition-trends", period],
+    queryKey: ["nutrition-trends", period, timezoneId],
     queryFn: () => insightApi.nutritionTrends(period).then((r) => r.data),
   });
 
@@ -64,7 +75,7 @@ export default function InsightsScreen() {
     isLoading: loadingMealTypeMacros,
     refetch: refetchMealTypeMacros,
   } = useQuery({
-    queryKey: ["nutrition-by-meal-type", period],
+    queryKey: ["nutrition-by-meal-type", period, timezoneId],
     queryFn: () => insightApi.nutritionByMealType(period).then((r) => r.data),
   });
 
@@ -74,7 +85,7 @@ export default function InsightsScreen() {
     isError: exposureError,
     refetch: refetchExposure,
   } = useQuery({
-    queryKey: ["additive-exposure", period],
+    queryKey: ["additive-exposure", period, timezoneId],
     queryFn: () => insightApi.additiveExposure(period).then((r) => r.data),
   });
 
@@ -84,19 +95,19 @@ export default function InsightsScreen() {
     isError: corrError,
     refetch: refetchCorr,
   } = useQuery({
-    queryKey: ["correlations", period],
+    queryKey: ["correlations", period, timezoneId],
     queryFn: () => insightApi.correlations(period).then((r) => r.data),
   });
 
-  const periodStart = toLocalDateStr(new Date(Date.now() - period * 86400000));
   const todayStr = toLocalDateStr();
+  const periodStart = shiftDate(todayStr, -period);
 
   const {
     data: recentSymptoms,
     isLoading: loadingSymptoms,
     refetch: refetchSymptoms,
   } = useQuery({
-    queryKey: ["symptom-history", period],
+    queryKey: ["symptom-history", period, timezoneId],
     queryFn: () =>
       symptomApi
         .history({ from: periodStart, to: todayStr })
@@ -108,7 +119,7 @@ export default function InsightsScreen() {
     isLoading: loadingTrigger,
     refetch: refetchTrigger,
   } = useQuery({
-    queryKey: ["trigger-foods", period],
+    queryKey: ["trigger-foods", period, timezoneId],
     queryFn: () => insightApi.triggerFoods(period).then((r) => r.data),
   });
 
@@ -117,7 +128,7 @@ export default function InsightsScreen() {
     isLoading: loadingDiary,
     refetch: refetchDiary,
   } = useQuery({
-    queryKey: ["food-diary-analysis", period],
+    queryKey: ["food-diary-analysis", period, timezoneId],
     queryFn: () => insightApi.foodDiaryAnalysis(period).then((r) => r.data),
   });
 
@@ -126,7 +137,7 @@ export default function InsightsScreen() {
     isLoading: loadingElimination,
     refetch: refetchElimination,
   } = useQuery({
-    queryKey: ["elimination-diet-status"],
+    queryKey: ["elimination-diet-status", timezoneId],
     queryFn: () => insightApi.eliminationDietStatus().then((r) => r.data),
   });
 
@@ -158,7 +169,7 @@ export default function InsightsScreen() {
   const symptomsByDate = (recentSymptoms ?? []).reduce<
     Record<string, SymptomLog[]>
   >((acc, s) => {
-    const date = s.occurredAt.split("T")[0];
+    const date = toLocalDateStr(new Date(s.occurredAt));
     (acc[date] ??= []).push(s);
     return acc;
   }, {});
@@ -174,10 +185,6 @@ export default function InsightsScreen() {
   const visibleCorrelations = showAllCorrelations
     ? correlations
     : correlations?.slice(0, 5);
-  const visibleTrends = showAllTrends
-    ? [...(trends ?? [])].reverse()
-    : trends?.slice(-7).reverse();
-
   return (
     <SafeScreen edges={[]}>
       <ScrollView
@@ -337,7 +344,8 @@ export default function InsightsScreen() {
           </View>
 
           {/* Trigger Foods */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(0)}
             style={{
               backgroundColor: colors.card,
               borderRadius: radius.lg,
@@ -357,8 +365,29 @@ export default function InsightsScreen() {
               <Text style={fonts.h3} accessibilityRole="header">
                 Top Trigger Foods
               </Text>
+              <View style={{ flex: 1 }} />
+              {triggerFoods && triggerFoods.length > 0 ? (
+                <TouchableOpacity
+                  onPress={() =>
+                    shareCard({
+                      template: "triggerFoods",
+                      data: {
+                        periodLabel: `last ${period} days`,
+                        items: triggerFoods.map((tf) => ({
+                          food: tf.food,
+                          count: tf.totalOccurrences,
+                        })),
+                      },
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="Share top trigger foods"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="share-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              ) : null}
             </View>
-
             {loadingTrigger ? (
               <InsightsSkeleton />
             ) : triggerFoods && triggerFoods.length > 0 ? (
@@ -437,10 +466,11 @@ export default function InsightsScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
 
           {/* Correlations */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(50)}
             style={{
               backgroundColor: colors.card,
               borderRadius: radius.lg,
@@ -629,10 +659,11 @@ export default function InsightsScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
 
           {/* Nutrition Trends */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(100)}
             style={{
               backgroundColor: colors.card,
               borderRadius: radius.lg,
@@ -652,6 +683,31 @@ export default function InsightsScreen() {
               <Text style={fonts.h3} accessibilityRole="header">
                 Nutrition Trends
               </Text>
+              <View style={{ flex: 1 }} />
+              {trends && trends.length >= 2 ? (
+                <TouchableOpacity
+                  onPress={() =>
+                    shareCard({
+                      template: "weeklySummary",
+                      data: {
+                        rangeLabel: `last ${period} days`,
+                        mealsLogged:
+                          trends?.reduce((s, t) => s + (t.mealCount || 0), 0) ?? 0,
+                        avgCalories: trends?.length
+                          ? trends.reduce((s, t) => s + (t.calories || 0), 0) /
+                            trends.length
+                          : null,
+                        topTrigger: triggerFoods?.[0]?.food ?? null,
+                      },
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="Share weekly nutrition summary"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="share-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {loadingTrends ? (
@@ -663,139 +719,74 @@ export default function InsightsScreen() {
               />
             ) : trends && trends.length > 0 ? (
               <View>
-                {visibleTrends!.map((day) => {
-                  const source = showAllTrends ? trends : visibleTrends!;
-                  const maxCal = Math.max(...source.map((t) => t.calories), 1);
-                  const pct = Math.min((day.calories / maxCal) * 100, 100);
-                  return (
-                    <View key={day.date} style={{ marginBottom: spacing.sm }}>
-                      <View
+                <View
+                  style={{
+                    flexDirection: "row",
+                    marginBottom: spacing.md,
+                    gap: 6,
+                  }}
+                >
+                  {(
+                    [
+                      { key: "calories", label: "Calories" },
+                      { key: "protein", label: "Protein" },
+                      { key: "carbs", label: "Carbs" },
+                      { key: "fat", label: "Fat" },
+                    ] as const
+                  ).map(({ key, label }) => {
+                    const active = selectedTrendMetric === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => setSelectedTrendMetric(key)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={label}
                         style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: radius.md,
+                          backgroundColor: active ? colors.primary : colors.card,
                           alignItems: "center",
-                          marginBottom: 4,
+                          ...shadow,
+                          borderWidth: active ? 0 : 1,
+                          borderColor: colors.borderLight,
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 12,
-                            fontWeight: "600",
-                            color: colors.textSecondary,
-                          }}
-                        >
-                          {new Date(day.date + "T12:00:00").toLocaleDateString(
-                            undefined,
-                            {
-                              weekday: "short",
-                              month: "short",
-                              day: "numeric",
-                            },
-                          )}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 13,
                             fontWeight: "700",
-                            color: colors.text,
+                            color: active
+                              ? colors.textOnPrimary
+                              : colors.textSecondary,
                           }}
                         >
-                          {Math.round(day.calories)} cal
+                          {label}
                         </Text>
-                      </View>
-                      <View
-                        style={{
-                          height: 6,
-                          backgroundColor: colors.border,
-                          borderRadius: 3,
-                        }}
-                      >
-                        <View
-                          style={{
-                            height: 6,
-                            backgroundColor: colors.primaryLight,
-                            borderRadius: 3,
-                            width: `${pct}%`,
-                          }}
-                        />
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          marginTop: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: colors.protein,
-                            fontWeight: "600",
-                          }}
-                        >
-                          P: {Math.round(day.protein)}g
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: colors.carbs,
-                            fontWeight: "600",
-                          }}
-                        >
-                          C: {Math.round(day.carbs)}g
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: colors.fat,
-                            fontWeight: "600",
-                          }}
-                        >
-                          F: {Math.round(day.fat)}g
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: colors.fiber,
-                            fontWeight: "600",
-                          }}
-                        >
-                          Fb: {Math.round(day.fiber)}g
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: colors.textMuted,
-                            fontWeight: "600",
-                          }}
-                        >
-                          {day.mealCount} meals
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-                {trends.length > 7 && (
-                  <TouchableOpacity
-                    onPress={() => setShowAllTrends(!showAllTrends)}
-                    style={{
-                      alignItems: "center",
-                      paddingVertical: spacing.sm,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: colors.primary,
-                      }}
-                    >
-                      {showAllTrends
-                        ? "Show last 7 days"
-                        : `Show all ${trends.length} days`}
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TrendChart
+                  data={trends}
+                  metric={selectedTrendMetric}
+                  color={
+                    selectedTrendMetric === "calories"
+                      ? colors.primary
+                      : selectedTrendMetric === "protein"
+                      ? colors.protein
+                      : selectedTrendMetric === "carbs"
+                      ? colors.carbs
+                      : colors.fat
+                  }
+                  onDayPress={(date) =>
+                    router.push({
+                      pathname: "/(tabs)/meals",
+                      params: { date },
+                    })
+                  }
+                />
               </View>
             ) : (
               <View
@@ -811,13 +802,14 @@ export default function InsightsScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
 
           {/* Macro Breakdown by Meal Type */}
           {!loadingMealTypeMacros &&
             mealTypeMacros &&
             mealTypeMacros.length > 0 && (
-              <View
+              <Animated.View
+                entering={reduced ? undefined : FadeInDown.delay(150)}
                 style={{
                   backgroundColor: colors.card,
                   borderRadius: radius.lg,
@@ -841,142 +833,14 @@ export default function InsightsScreen() {
                   </Text>
                 </View>
 
-                {mealTypeMacros.map((mt: MealTypeNutrition) => {
-                  const totalMacroG =
-                    mt.totalProteinG + mt.totalCarbsG + mt.totalFatG;
-                  const proteinPct =
-                    totalMacroG > 0
-                      ? (mt.totalProteinG / totalMacroG) * 100
-                      : 0;
-                  const carbsPct =
-                    totalMacroG > 0 ? (mt.totalCarbsG / totalMacroG) * 100 : 0;
-                  const fatPct =
-                    totalMacroG > 0 ? (mt.totalFatG / totalMacroG) * 100 : 0;
-                  const emoji = mealTypeEmoji[mt.mealType] ?? "🍽️";
-                  return (
-                    <View
-                      key={mt.mealType}
-                      style={{
-                        backgroundColor: colors.bg,
-                        borderRadius: radius.md,
-                        padding: 14,
-                        marginBottom: spacing.sm,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: 8,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            fontWeight: "600",
-                            color: colors.text,
-                          }}
-                        >
-                          {emoji} {mt.mealType}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: "700",
-                            color: colors.text,
-                          }}
-                        >
-                          {Math.round(mt.totalCalories)} cal
-                        </Text>
-                      </View>
-                      {/* Stacked macro bar */}
-                      <View
-                        style={{
-                          height: 8,
-                          borderRadius: 4,
-                          flexDirection: "row",
-                          overflow: "hidden",
-                          backgroundColor: colors.border,
-                        }}
-                      >
-                        {proteinPct > 0 && (
-                          <View
-                            style={{
-                              width: `${proteinPct}%`,
-                              height: 8,
-                              backgroundColor: colors.protein,
-                            }}
-                          />
-                        )}
-                        {carbsPct > 0 && (
-                          <View
-                            style={{
-                              width: `${carbsPct}%`,
-                              height: 8,
-                              backgroundColor: colors.carbs,
-                            }}
-                          />
-                        )}
-                        {fatPct > 0 && (
-                          <View
-                            style={{
-                              width: `${fatPct}%`,
-                              height: 8,
-                              backgroundColor: colors.fat,
-                            }}
-                          />
-                        )}
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          marginTop: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: colors.protein,
-                            fontWeight: "600",
-                          }}
-                        >
-                          P: {Math.round(mt.totalProteinG)}g (
-                          {Math.round(proteinPct)}%)
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: colors.carbs,
-                            fontWeight: "600",
-                          }}
-                        >
-                          C: {Math.round(mt.totalCarbsG)}g (
-                          {Math.round(carbsPct)}%)
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: colors.fat,
-                            fontWeight: "600",
-                          }}
-                        >
-                          F: {Math.round(mt.totalFatG)}g ({Math.round(fatPct)}%)
-                        </Text>
-                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                          {mt.mealCount} meals
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
+                <MacroDonut data={mealTypeMacros} />
+              </Animated.View>
             )}
 
           {/* Additive Exposure - only show when data exists */}
           {!loadingExposure && (
-            <View
+            <Animated.View
+              entering={reduced ? undefined : FadeInDown.delay(200)}
               style={{
                 backgroundColor: colors.card,
                 borderRadius: radius.lg,
@@ -1001,59 +865,13 @@ export default function InsightsScreen() {
               </View>
 
               {exposure && exposure.length > 0 ? (
-                exposure.map((item: AdditiveExposure) => (
-                  <View
-                    key={item.additive}
-                    style={{
-                      backgroundColor: colors.bg,
-                      borderRadius: radius.sm,
-                      padding: spacing.md,
-                      marginBottom: 4,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontWeight: "600",
-                          color: colors.text,
-                          fontSize: 14,
-                        }}
-                      >
-                        {item.additive}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: cspiColor(item.cspiRating),
-                          fontWeight: "600",
-                        }}
-                      >
-                        {item.cspiRating}
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        backgroundColor: cspiColor(item.cspiRating) + "18",
-                        borderRadius: 6,
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontWeight: "700",
-                          color: cspiColor(item.cspiRating),
-                          fontSize: 14,
-                        }}
-                      >
-                        {item.count}×
-                      </Text>
-                    </View>
-                  </View>
-                ))
+                <HBarList
+                  items={exposure.map((e: AdditiveExposure) => ({
+                    label: e.additive,
+                    value: e.count,
+                    rating: e.cspiRating,
+                  }))}
+                />
               ) : (
                 <View
                   style={{ alignItems: "center", paddingVertical: spacing.md }}
@@ -1074,12 +892,13 @@ export default function InsightsScreen() {
                   </Text>
                 </View>
               )}
-            </View>
+            </Animated.View>
           )}
 
           {/* Food Diary Analysis - only timing insights & recommendations (patterns shown above) */}
           {!loadingDiary && (
-            <View
+            <Animated.View
+              entering={reduced ? undefined : FadeInDown.delay(250)}
               style={{
                 backgroundColor: colors.card,
                 borderRadius: radius.lg,
@@ -1216,11 +1035,152 @@ export default function InsightsScreen() {
                   </Text>
                 </View>
               )}
-            </View>
+            </Animated.View>
+          )}
+
+          {/* Diary Patterns */}
+          {!loadingDiary && diaryAnalysis && (
+            <Animated.View
+              entering={reduced ? undefined : FadeInDown.delay(300)}
+            >
+              <CollapsibleCard
+              title="Diary Patterns"
+              emoji="🔍"
+              badge={
+                diaryAnalysis.patternsFound > 0
+                  ? `${diaryAnalysis.patternsFound} pattern${diaryAnalysis.patternsFound === 1 ? "" : "s"}`
+                  : undefined
+              }
+              badgeColor={colors.primary}
+              defaultOpen={diaryAnalysis.patternsFound > 0}
+            >
+              {diaryAnalysis.patterns && diaryAnalysis.patterns.length > 0 ? (
+                <>
+                  {(showAllPatterns
+                    ? diaryAnalysis.patterns
+                    : diaryAnalysis.patterns.slice(0, 5)
+                  ).map((p: FoodSymptomPattern, i: number) => {
+                    const food = p.foodName;
+                    const symptomList = p.symptomName;
+                    const occurrences = p.occurrences;
+                    const avgSev = Number(p.averageSeverity);
+                    const confidence = p.confidence || "Low";
+                    return (
+                      <View
+                        key={`${food}-${symptomList}-${i}`}
+                        style={{
+                          backgroundColor: colors.bg,
+                          borderRadius: radius.md,
+                          padding: 12,
+                          marginBottom: spacing.sm,
+                          borderLeftWidth: 4,
+                          borderLeftColor: confidenceColor(confidence),
+                        }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              fontWeight: "700",
+                              color: colors.text,
+                              flex: 1,
+                              marginRight: 8,
+                            }}
+                          >
+                            {food}
+                          </Text>
+                          <View
+                            style={{
+                              backgroundColor:
+                                confidenceColor(confidence) + "18",
+                              borderRadius: 6,
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontWeight: "700",
+                                color: confidenceColor(confidence),
+                              }}
+                            >
+                              {confidence}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: colors.textSecondary,
+                            marginTop: 3,
+                          }}
+                        >
+                          Symptoms: {symptomList}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.textMuted,
+                            marginTop: 2,
+                          }}
+                        >
+                          {occurrences}× occurrences · Avg severity:{" "}
+                          {Number(avgSev).toFixed(1)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  {diaryAnalysis.patterns.length > 5 && (
+                    <TouchableOpacity
+                      onPress={() => setShowAllPatterns(!showAllPatterns)}
+                      style={{
+                        alignItems: "center",
+                        paddingVertical: spacing.sm,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "600",
+                          color: colors.primary,
+                        }}
+                      >
+                        {showAllPatterns
+                          ? "Show less"
+                          : `Show all ${diaryAnalysis.patterns.length} patterns`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <View
+                  style={{ alignItems: "center", paddingVertical: spacing.md }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: colors.textMuted,
+                      textAlign: "center",
+                    }}
+                  >
+                    No repeating food-symptom patterns yet
+                  </Text>
+                </View>
+              )}
+              </CollapsibleCard>
+            </Animated.View>
           )}
 
           {/* Elimination Diet Status */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(300)}
             style={{
               backgroundColor: colors.card,
               borderRadius: radius.lg,
@@ -1451,16 +1411,32 @@ export default function InsightsScreen() {
                           marginBottom: 4,
                         }}
                       >
-                        <Text
-                          style={{
-                            flex: 1,
-                            fontSize: 13,
-                            fontWeight: "600",
-                            color: colors.text,
-                          }}
-                        >
-                          {r.foodName}
-                        </Text>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "600",
+                              color: colors.text,
+                            }}
+                          >
+                            {r.foodName}
+                          </Text>
+                          {(r.averageSeverity != null || r.testCount != null) && (
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                marginTop: 2,
+                              }}
+                            >
+                              {r.averageSeverity != null && r.testCount != null
+                                ? `Avg severity ${Number(r.averageSeverity).toFixed(1)} · ${r.testCount} ${r.testCount === 1 ? "test" : "tests"}`
+                                : r.averageSeverity != null
+                                  ? `Avg severity ${Number(r.averageSeverity).toFixed(1)}`
+                                  : `${r.testCount} ${r.testCount === 1 ? "test" : "tests"}`}
+                            </Text>
+                          )}
+                        </View>
                         <View
                           style={{
                             backgroundColor:
@@ -1547,7 +1523,7 @@ export default function InsightsScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
         </View>
 
         <TouchableOpacity

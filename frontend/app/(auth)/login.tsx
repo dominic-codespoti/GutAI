@@ -107,7 +107,7 @@ export default function LoginScreen() {
                 letterSpacing: -1,
               }}
             >
-              GutLens
+              GutAI
             </Text>
             <Text style={{ ...fonts.body, marginTop: 4 }}>
               Track your meals & gut health

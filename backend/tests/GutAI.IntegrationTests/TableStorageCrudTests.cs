@@ -1113,3 +1113,89 @@ public class InsightReportStoreTests(AzuriteFixture fx)
         result.Should().BeNull();
     }
 }
+
+[Collection("Azurite")]
+public class CoachChatMessageStoreTests(AzuriteFixture fx)
+{
+    [Fact]
+    public async Task GetRecentCoachMessages_ReturnsNewestLimitInChronologicalOrder()
+    {
+        var userId = Guid.NewGuid();
+        var baseTime = new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.Zero);
+
+        // Seed 6 messages spaced 1 minute apart
+        for (var i = 1; i <= 6; i++)
+        {
+            var role = i % 2 == 1 ? "user" : "assistant";
+            await fx.Store.UpsertCoachMessageAsync(userId, baseTime.AddMinutes(i), role, $"Message {i}");
+        }
+
+        // Request limit 3 -> should pick newest 3 (Messages 4, 5, 6) in chronological order
+        var messages = await fx.Store.GetRecentCoachMessagesAsync(userId, 3);
+
+        messages.Should().HaveCount(3);
+        messages.Select(m => m.Text).Should().ContainInOrder("Message 4", "Message 5", "Message 6");
+        messages[0].CreatedAt.Should().Be(baseTime.AddMinutes(4));
+        messages[1].CreatedAt.Should().Be(baseTime.AddMinutes(5));
+        messages[2].CreatedAt.Should().Be(baseTime.AddMinutes(6));
+    }
+
+    [Fact]
+    public async Task CoachHistory_AssignsDistinctIdsWhenTimestampsMatch()
+    {
+        var userId = Guid.NewGuid();
+        var timestamp = new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.Zero);
+
+        await fx.Store.UpsertCoachMessageAsync(userId, timestamp, "user", "First");
+        await fx.Store.UpsertCoachMessageAsync(userId, timestamp, "assistant", "Second");
+
+        var messages = await fx.Store.GetRecentCoachMessagesAsync(userId, 10);
+
+        messages.Select(m => m.Id).Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public async Task CoachHistory_IgnoresOtherEntitiesAndDeletePreservesThem()
+    {
+        var userId = Guid.NewGuid();
+        var mealId = Guid.NewGuid();
+        var loggedAt = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        await fx.Store.UpsertMealLogAsync(new MealLog
+        {
+            Id = mealId,
+            UserId = userId,
+            LoggedAt = loggedAt,
+            MealType = MealType.Lunch,
+        });
+        await fx.Store.UpsertCoachMessageAsync(
+            userId,
+            new DateTimeOffset(loggedAt),
+            "user",
+            "Only coach message");
+
+        var messages = await fx.Store.GetRecentCoachMessagesAsync(userId, 10);
+
+        messages.Should().ContainSingle();
+        messages[0].Text.Should().Be("Only coach message");
+
+        await fx.Store.DeleteCoachMessagesAsync(userId);
+
+        (await fx.Store.GetMealLogAsync(userId, mealId)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task DeleteCoachMessages_RemovesAllMessagesForUser()
+    {
+        var userId = Guid.NewGuid();
+        var baseTime = new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.Zero);
+
+        await fx.Store.UpsertCoachMessageAsync(userId, baseTime, "user", "Message 1");
+        await fx.Store.UpsertCoachMessageAsync(userId, baseTime.AddMinutes(1), "assistant", "Message 2");
+
+        await fx.Store.DeleteCoachMessagesAsync(userId);
+
+        var messages = await fx.Store.GetRecentCoachMessagesAsync(userId, 10);
+        messages.Should().BeEmpty();
+    }
+}

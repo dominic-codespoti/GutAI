@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
+import Animated, { FadeInDown, useReducedMotion } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { useGlobalSearchParams } from "expo-router";
 import { mealApi } from "../../src/api";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
@@ -17,6 +19,8 @@ import { useThemeColors } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { MealCardSkeleton } from "../../components/SkeletonLoader";
 import { MealDateNav } from "../../components/meals/MealDateNav";
+import { EmptyState } from "../../components/EmptyState";
+import DiaryArt from "../../assets/onboarding/empty-diary.svg";
 import { DailySummary } from "../../components/meals/DailySummary";
 import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { SwipeHint } from "../../components/meals/SwipeHint";
@@ -25,7 +29,8 @@ import { MealFab } from "../../components/meals/MealFab";
 import { useDefaultMealFabActions } from "../../components/meals/useDefaultMealFabActions";
 import { MealTemplatesSheet } from "../../components/meals/MealTemplatesSheet";
 import { saveMealTemplate } from "../../src/utils/mealTemplates";
-import { buildLoggedAt } from "../../src/utils/date";
+import { buildLoggedAt, today } from "../../src/utils/date";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
 import { toast } from "../../src/stores/toast";
 import type { MealLog, MealTemplate } from "../../src/types";
 
@@ -33,19 +38,29 @@ const MEAL_TYPE_ORDER = ["Breakfast", "Lunch", "Dinner", "Snack"];
 
 export default function MealsScreen() {
   const colors = useThemeColors();
+  const reduced = useReducedMotion();
   const [templatesVisible, setTemplatesVisible] = useState(false);
   const selectedDate = useMealSheetStore((s) => s.selectedDate);
+  const setDate = useMealSheetStore((s) => s.setDate);
+  const timezoneId = getDeviceTimezoneId();
   const fabActions = useDefaultMealFabActions();
+  const { date: paramDate } = useGlobalSearchParams<{ date?: string }>();
+
+  useEffect(() => {
+    if (paramDate) {
+      const valid = /^\d{4}-\d{2}-\d{2}$/.test(paramDate);
+      setDate(valid ? paramDate : today());
+    }
+  }, [paramDate, setDate]);
 
   const { createMeal, deleteMeal, removeItem } = useMealMutations();
-
   const {
     data: meals,
     isLoading,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["meals", selectedDate],
+    queryKey: ["meals", selectedDate, timezoneId],
     queryFn: () => mealApi.list(selectedDate).then((r) => r.data),
   });
 
@@ -53,7 +68,7 @@ export default function MealsScreen() {
     data: dailySummary,
     refetch: refetchSummary,
   } = useQuery({
-    queryKey: ["daily-summary", selectedDate],
+    queryKey: ["daily-summary", selectedDate, timezoneId],
     queryFn: () => mealApi.dailySummary(selectedDate).then((r) => r.data),
   });
 
@@ -141,20 +156,33 @@ export default function MealsScreen() {
                 <Text style={{ color: colors.textOnPrimary, fontWeight: "600" }}>Retry</Text>
               </TouchableOpacity>
             </View>
+          ) : meals && meals.length === 0 ? (
+            <EmptyState
+              icon="restaurant-outline"
+              illustration={<DiaryArt width={200} height={150} />}
+              title="No meals logged yet"
+              body="Log your first meal to start tracking calories and gut health."
+              actionLabel="Log a meal"
+              onAction={() => mealSheet.openLog()}
+            />
           ) : (
-            grouped.map(([type, typeMeals]) => (
-              <MealGroup
+            grouped.map(([type, typeMeals], groupIndex) => (
+              <Animated.View
                 key={type}
-                type={type}
-                onSaveTemplate={handleSaveTemplate}
-                meals={typeMeals}
-                totalCalories={typeMeals.reduce((sum, m) => sum + m.totalCalories, 0)}
-                onEdit={handleEdit}
-                onCopy={handleCopy}
-                onDelete={handleDelete}
-                onSwapItem={handleSwapItem}
-                onDeleteItem={handleDeleteItem}
-              />
+                entering={reduced ? undefined : FadeInDown.delay(groupIndex * 60)}
+              >
+                <MealGroup
+                  type={type}
+                  onSaveTemplate={handleSaveTemplate}
+                  meals={typeMeals}
+                  totalCalories={typeMeals.reduce((sum, m) => sum + m.totalCalories, 0)}
+                  onEdit={handleEdit}
+                  onCopy={handleCopy}
+                  onDelete={handleDelete}
+                  onSwapItem={handleSwapItem}
+                  onDeleteItem={handleDeleteItem}
+                />
+              </Animated.View>
             ))
           )}
         </View>

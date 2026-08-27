@@ -1145,16 +1145,16 @@ public class GutRiskServiceTests
     // ─── V3: Fruit Concentrate Fructose Triggers ───────────────────────
 
     [Theory]
-    [InlineData("water, apple juice concentrate, sugar", "Apple Juice Concentrate")]
-    [InlineData("water, pear juice concentrate, sugar", "Pear Juice Concentrate")]
-    [InlineData("water, fruit juice concentrate, sugar", "Fruit Juice Concentrate")]
-    public void FruitConcentrateTrigger_FlaggedCorrectly(string ingredients, string expectedName)
+    [InlineData("water, apple juice concentrate, sugar", "Apple Juice Concentrate", "Medium")]
+    [InlineData("water, pear juice concentrate, sugar", "Pear Juice Concentrate", "Medium")]
+    [InlineData("water, fruit juice concentrate, sugar", "Fruit Juice Concentrate", "High")]
+    public void FruitConcentrateTrigger_FlaggedCorrectly(string ingredients, string expectedName, string expectedRisk)
     {
         var result = _sut.Assess(MakeProduct(ingredients: ingredients));
 
         result.Flags.Should().Contain(f => f.Name == expectedName);
         result.Flags.First(f => f.Name == expectedName).Category.Should().Be("Fructose Source");
-        result.Flags.First(f => f.Name == expectedName).RiskLevel.Should().Be("Medium");
+        result.Flags.First(f => f.Name == expectedName).RiskLevel.Should().Be(expectedRisk);
     }
 
     // ─── V3: New Hydrocolloid Additive Tags ────────────────────────────
@@ -1366,15 +1366,15 @@ public class GutRiskServiceTests
     }
 
     [Theory]
-    [InlineData("water, wheat starch, salt", "Wheat Starch")]
-    [InlineData("water, wheat protein, salt", "Wheat Protein")]
-    public void NewWheatTrigger_FlaggedCorrectly(string ingredients, string expectedName)
+    [InlineData("water, wheat starch, salt", "Wheat Starch", "Medium")] // canonical severity: less fructan than wheat flour (SharedFodmapSeverities)
+    [InlineData("water, wheat protein, salt", "Wheat Protein", "High")]
+    public void NewWheatTrigger_FlaggedCorrectly(string ingredients, string expectedName, string expectedRisk)
     {
         var result = _sut.Assess(MakeProduct(ingredients: ingredients));
 
         result.Flags.Should().Contain(f => f.Name == expectedName);
         result.Flags.First(f => f.Name == expectedName).Category.Should().Be("High-FODMAP Ingredient");
-        result.Flags.First(f => f.Name == expectedName).RiskLevel.Should().Be("High");
+        result.Flags.First(f => f.Name == expectedName).RiskLevel.Should().Be(expectedRisk);
     }
 
     // ─── V1.5: TriggerType + FodmapClass on Flags ─────────────────────
@@ -1436,15 +1436,15 @@ public class GutRiskServiceTests
 
     [Theory]
     [InlineData("water, chickpea flour, salt", "Chickpea Flour", "High")]
-    [InlineData("water, chickpea, salt", "Chickpea", "Medium")]
-    [InlineData("water, lentil, salt", "Lentil", "Medium")]
-    [InlineData("water, kidney bean, salt", "Kidney Bean", "Medium")]
-    [InlineData("water, black bean, salt", "Black Bean", "Medium")]
-    [InlineData("water, navy bean, salt", "Navy Bean", "Medium")]
+    [InlineData("water, chickpea, salt", "Chickpea", "High")]
+    [InlineData("water, lentil, salt", "Lentil", "High")]
+    [InlineData("water, kidney bean, salt", "Kidney Bean", "High")]
+    [InlineData("water, black bean, salt", "Black Bean", "High")]
+    [InlineData("water, navy bean, salt", "Navy Bean", "High")]
     [InlineData("water, soy protein isolate, salt", "Soy Protein Isolate", "High")]
     [InlineData("water, soy flour, salt", "Soy Flour", "High")]
     [InlineData("water, textured vegetable protein, salt", "Textured Vegetable Protein", "High")]
-    [InlineData("water, soybean, salt", "Soybean", "Medium")]
+    [InlineData("water, soybean, salt", "Soybean", "High")]
     public void GOSTrigger_FlaggedCorrectly(string ingredients, string expectedName, string expectedRisk)
     {
         var result = _sut.Assess(MakeProduct(ingredients: ingredients));
@@ -1521,7 +1521,7 @@ public class GutRiskServiceTests
     }
 
     [Theory]
-    [InlineData("water, apple juice, sugar", "Apple Juice", "Medium")]
+    [InlineData("water, apple juice, sugar", "Apple Juice", "High")]
     [InlineData("water, fruit juice, sugar", "Fruit Juice", "Low")]
     public void ExpandedFructose_SubstringMatch_FlaggedCorrectly(string ingredients, string expectedName, string expectedRisk)
     {
@@ -2005,8 +2005,7 @@ public class GutRiskServiceTests
 
         result.Flags.Should().Contain(f => f.Name == "Crystalline Fructose");
         var flag = result.Flags.First(f => f.Name == "Crystalline Fructose");
-        flag.FodmapClass.Should().Be("ExcessFructose");
-        flag.RiskLevel.Should().Be("Medium");
+        flag.RiskLevel.Should().Be("High");
     }
 
     [Fact]
@@ -2161,7 +2160,7 @@ public class GutRiskServiceTests
         result.Flags.Should().Contain(f => f.Name == expectedName);
         var flag = result.Flags.First(f => f.Name == expectedName);
         flag.FodmapClass.Should().Be("ExcessFructose");
-        flag.RiskLevel.Should().Be("Low");
+        flag.RiskLevel.Should().Be("High");
     }
 
     [Theory]

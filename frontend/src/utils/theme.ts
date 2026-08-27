@@ -25,6 +25,7 @@ export const lightColors = {
   bg: "#f8fafc",
   card: "#ffffff",
   cardHover: "#f8fafc",
+  tabBar: "#ffffff",
 
   text: "#0f172a",
   textSecondary: "#475569",
@@ -44,7 +45,52 @@ export const lightColors = {
   fiber: "#8b5cf6",
   sugar: "#f97316",
   sodium: "#06b6d4",
+
+  /* Camera surfaces are theme-independent (always dark) */
+  cameraBackdrop: "#000000",
+  cameraScrim: "rgba(0,0,0,0.35)",
+  cameraOnScrim: "#ffffff",
+  cameraOnScrimMuted: "rgba(255,255,255,0.88)",
 };
+
+
+/** Food-source identity chip colors — fixed hues like the macro colors above (not theme-reactive). */
+export const sourceChipColors = {
+  usda: { bg: "#EDE9FE", border: "#DDD6FE", text: "#6D28D9" },
+  off: { bg: "#FFEDD5", border: "#FED7AA", text: "#C2410C" },
+  au: { bg: "#DBEAFE", border: "#BFDBFE", text: "#1D4ED8" },
+  web: { bg: "#EDE9FE", border: "#DDD6FE", text: "#6D28D9" },
+  ai: { bg: "#FCE7F3", border: "#FBCFE8", text: "#BE185D" },
+} as const;
+
+/** Toast palettes — keyed by variant, selected by active color scheme (see stores/theme). */
+export const toastColors = {
+  light: {
+    error: { bg: "#fef2f2", border: "#fca5a5", text: "#991b1b" },
+    success: { bg: "#f0fdf4", border: "#86efac", text: "#166534" },
+    info: { bg: "#eff6ff", border: "#93c5fd", text: "#1e40af" },
+  },
+  dark: {
+    error: { bg: "#1f0a0a", border: "#991b1b", text: "#fca5a5" },
+    success: { bg: "#052e16", border: "#166534", text: "#86efac" },
+    info: { bg: "#0c1929", border: "#1e40af", text: "#93c5fd" },
+  },
+} as const;
+
+/**
+ * Share-card palette — deliberately fixed (social cards are brand assets,
+ * always light regardless of app theme). Mirrors the sourceChipColors precedent.
+ */
+export const shareCardColors = {
+  bg: "#ffffff",
+  bgAccent: "#f0fdf4",
+  text: "#0f172a",
+  textMuted: "#64748b",
+  primary: "#16a34a",
+  border: "#e2e8f0",
+  warning: "#f59e0b",
+  danger: "#ef4444",
+} as const;
 
 export const darkColors: typeof lightColors = {
   primary: "#22c55e",
@@ -69,10 +115,11 @@ export const darkColors: typeof lightColors = {
   bg: "#0f172a",
   card: "#1e293b",
   cardHover: "#253349",
+  tabBar: "#0b1426",
 
   text: "#f1f5f9",
-  textSecondary: "#94a3b8",
-  textMuted: "#64748b",
+  textSecondary: "#cbd5e1",
+  textMuted: "#94a3b8",
   textLight: "#475569",
 
   border: "#334155",
@@ -88,6 +135,12 @@ export const darkColors: typeof lightColors = {
   fiber: "#a78bfa",
   sugar: "#fb923c",
   sodium: "#22d3ee",
+
+  /* Camera surfaces are theme-independent (always dark) */
+  cameraBackdrop: "#000000",
+  cameraScrim: "rgba(0,0,0,0.35)",
+  cameraOnScrim: "#ffffff",
+  cameraOnScrimMuted: "rgba(255,255,255,0.88)",
 };
 
 /** Backward-compatible export — defaults to light. Use `useThemeColors()` for reactive dark mode. */

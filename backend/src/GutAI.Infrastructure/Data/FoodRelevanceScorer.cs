@@ -60,7 +60,7 @@ internal static class FoodRelevanceScorer
         if (queryTokens.Length >= 2)
         {
             if (primaryCoverage < 0.5f) score -= 20f;
-            else if (primaryCoverage == 0.5f) score -= 10f;
+            else if (primaryCoverage == 0.5f && nameCoverage < 1f) score -= 10f;
         }
 
         var nameStem = FoodTextNormalizer.Depluralize(nameLower);
@@ -112,16 +112,22 @@ internal static class FoodRelevanceScorer
             if (pt0 == qt0) firstTokenBonus = 20f;
             else if (pt0.StartsWith(qt0) && pt0.Length <= qt0.Length + 3) firstTokenBonus = 12f;
             else if (qt0.StartsWith(pt0)) firstTokenBonus = 10f;
+            else if (primaryTokens.Any(pt => queryTokens.Any(qt => pt == qt || pt == FoodTextNormalizer.Depluralize(qt))))
+                firstTokenBonus = 15f * nameCoverage;
 
-            if (queryTokens.Length >= 2)
+            if (queryTokens.Length >= 2 && pt0 == qt0)
                 firstTokenBonus *= nameCoverage;
 
             score += firstTokenBonus;
         }
 
         if (queryTokens.Length >= 2 && nameCoverage >= 1f)
+        {
             score += 15f;
-
+            // Bonus for inverted USDA matches (e.g. "cooked sausage" matching "Sausage, cooked" or "Sausage, pork, cooked")
+            if (primaryTokens.Any(pt => queryTokens.Any(qt => pt == qt || pt == FoodTextNormalizer.Depluralize(qt))))
+                score += 20f;
+        }
         var nameStem = FoodTextNormalizer.Depluralize(nameLower);
         var queryStem = ctx.QueryStem;
         if (nameLower == queryLower) score += 50f;

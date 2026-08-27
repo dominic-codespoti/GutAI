@@ -7,6 +7,7 @@ import {
   Dimensions,
   Text,
   Animated,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useThemeColors } from "../../src/stores/theme";
@@ -15,6 +16,8 @@ import { LogMealSheet } from "../../components/meals/LogMealSheet";
 import { EditMealSheet } from "../../components/meals/EditMealSheet";
 import { CopyMealSheet } from "../../components/meals/CopyMealSheet";
 import { ItemSwapSheet } from "../../components/meals/ItemSwapSheet";
+import { CelebrationOverlay } from "../../components/CelebrationOverlay";
+import { ShareCardPortal } from "../../components/share/ShareCardPortal";
 import * as haptics from "../../src/utils/haptics";
 import Svg, { Path, Defs, Filter, FeDropShadow } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,7 +55,7 @@ function TabBarBackground() {
       height={shadowH}
       style={{ position: "absolute", top: -CURVE_DEPTH - 10, left: 0 }}
     >
-      <Path d={d} fill={colors.card} filter="url(#shadow)" translateY={10} />
+      <Path d={d} fill={colors.tabBar} filter="url(#shadow)" transform="translate(0 10)" />
     </Svg>
   );
 }
@@ -83,7 +86,7 @@ function CustomTabBar({
         right: 0,
         height: TAB_BAR_HEIGHT + insets.bottom,
         paddingBottom: insets.bottom,
-        backgroundColor: colors.card,
+        backgroundColor: colors.tabBar,
       }}
     >
       <TabBarBackground />
@@ -133,11 +136,15 @@ function CustomTabBar({
                     alignItems: "center",
                     justifyContent: "center",
                     marginTop: -(CURVE_DEPTH + 8),
-                    shadowColor: colors.primary,
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                    elevation: 8,
+                    ...(Platform.OS === "web"
+                      ? { boxShadow: "0 4px 8px rgba(22, 163, 74, 0.3)" }
+                      : {
+                          shadowColor: colors.primary,
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: 0.3,
+                          shadowRadius: 8,
+                          elevation: 8,
+                        }),
                   }}
                 >
                   <Ionicons
@@ -198,7 +205,7 @@ function AnimatedTabIcon({
   const handlePressIn = () => {
     Animated.spring(scale, {
       toValue: 0.85,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       speed: 50,
       bounciness: 4,
     }).start();
@@ -207,7 +214,7 @@ function AnimatedTabIcon({
   const handlePressOut = () => {
     Animated.spring(scale, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       speed: 50,
       bounciness: 8,
     }).start();
@@ -381,7 +388,8 @@ export default function TabLayout() {
       <LogMealSheet />
       <EditMealSheet />
       <CopyMealSheet />
-      <ItemSwapSheet />
+      <CelebrationOverlay />
+      <ShareCardPortal />
     </>
   );
 }

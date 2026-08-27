@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using Azure;
 using Azure.AI.ContentUnderstanding;
 using Azure.AI.Extensions.OpenAI;
-using Azure.AI.OpenAI;
 using Azure.AI.Projects;
 using Azure.AI.Projects.Agents;
 using Azure.Identity;
@@ -16,7 +15,6 @@ using AIChatRole = Microsoft.Extensions.AI.ChatRole;
 using AITextContent = Microsoft.Extensions.AI.TextContent;
 using AIDataContent = Microsoft.Extensions.AI.DataContent;
 using Microsoft.Extensions.Logging;
-using OpenAI.Chat;
 using OpenAI.Responses;
 
 namespace GutAI.Infrastructure.Services;
@@ -24,24 +22,27 @@ namespace GutAI.Infrastructure.Services;
 public class ContentUnderstandingService : IContentUnderstandingService
 {
     private readonly ContentUnderstandingClient _client;
-    private readonly AzureOpenAIClient? _openAiClient;
-    private readonly IConfiguration? _config;
     private readonly ILogger<ContentUnderstandingService>? _logger;
     private readonly AIProjectClient? _projectClient;
     private readonly IChatClient? _chatClient;
     private readonly string _agentName;
 
+    /// <summary>
+    /// Structured extraction options for the configured reasoning deployment.
+    /// Temperature remains null so reasoning models omit the unsupported field.
+    /// </summary>
+    private static readonly ChatOptions ExtractionOptions = new();
+
+    private static readonly AIChatRole DeveloperRole = new("developer");
+
     public ContentUnderstandingService(
         ContentUnderstandingClient client,
-        AzureOpenAIClient? openAiClient = null,
         IConfiguration? config = null,
         ILogger<ContentUnderstandingService>? logger = null,
         AIProjectClient? projectClient = null,
         IChatClient? chatClient = null)
     {
         _client = client;
-        _openAiClient = openAiClient;
-        _config = config;
         _logger = logger;
         _projectClient = projectClient;
         _chatClient = chatClient;
@@ -86,37 +87,34 @@ public class ContentUnderstandingService : IContentUnderstandingService
             _logger?.LogWarning(ex, "Analyzer failed; attempting LLM fallback. {Details}", DescribeException(ex));
         }
 
-        // Fallback to LLM Vision model
-        if (_openAiClient != null && _config != null)
+        // Fallback to the Responses-backed IChatClient.
+        if (_chatClient is null)
         {
-            try
-            {
-                var modelName = ResolveVisionDeploymentName(_config);
-                _logger?.LogInformation("LLM fallback starting with deployment {DeploymentName}.", modelName);
-
-                // Create new stream for LLM to avoid potential position issues
-                await using var llmStream = new MemoryStream();
-                memoryStream.Position = 0;
-                await memoryStream.CopyToAsync(llmStream, ct);
-                llmStream.Position = 0;
-
-                var fallbackResult = await ParseWithLlmVisionAsync(llmStream, contentType, ct);
-                if (fallbackResult != null && HasMeaningfulExtraction(fallbackResult))
-                {
-                    _logger?.LogInformation("LLM fallback succeeded.");
-                    return fallbackResult;
-                }
-
-                _logger?.LogWarning("LLM fallback returned no usable nutrition data.");
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "LLM fallback failed. {Details}", DescribeException(ex));
-            }
+            _logger?.LogWarning("LLM label fallback unavailable because the Responses chat client is not configured.");
+            return null;
         }
-        else
+
+        try
         {
-            _logger?.LogWarning("LLM fallback unavailable because Azure OpenAI is not configured.");
+            _logger?.LogInformation("LLM label fallback starting through the Responses chat client.");
+
+            await using var llmStream = new MemoryStream();
+            memoryStream.Position = 0;
+            await memoryStream.CopyToAsync(llmStream, ct);
+            llmStream.Position = 0;
+
+            var fallbackResult = await ParseWithLlmVisionAsync(llmStream, contentType, ct);
+            if (fallbackResult != null && HasMeaningfulExtraction(fallbackResult))
+            {
+                _logger?.LogInformation("LLM fallback succeeded.");
+                return fallbackResult;
+            }
+
+            _logger?.LogWarning("LLM fallback returned no usable nutrition data.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "LLM fallback failed. {Details}", DescribeException(ex));
         }
 
         return null;
@@ -130,26 +128,20 @@ public class ContentUnderstandingService : IContentUnderstandingService
             return null;
         }
 
-        // Prefer modern IChatClient structured output when configured
+        // All configured model inference goes through the Responses-backed IChatClient
+        // or the Foundry Responses agent. There is no Chat Completions fallback.
         if (_chatClient != null)
         {
             return await DescribeFoodWithChatClientAsync(trimmedDescription, ct);
         }
 
-        // Prefer Foundry agent if configured
         if (_projectClient != null)
         {
             return await DescribeFoodWithAgentAsync(trimmedDescription, ct);
         }
 
-        // Fallback to direct chat completions
-        if (_openAiClient == null || _config == null)
-        {
-            _logger?.LogWarning("Text food description is unavailable because neither Foundry agent nor Azure OpenAI is configured.");
-            return null;
-        }
-
-        return await DescribeFoodWithChatAsync(trimmedDescription, ct);
+        _logger?.LogWarning("Text food description is unavailable because no Responses-backed AI client is configured.");
+        return null;
     }
 
     private async Task<CustomFoodDto?> DescribeFoodWithChatClientAsync(string description, CancellationToken ct)
@@ -159,7 +151,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
             _logger?.LogInformation("Invoking IChatClient for structured food description.");
             var messages = new List<AIChatMessage>
             {
-                new(AIChatRole.System, """
+                new(DeveloperRole, """
                     You are a nutrition estimation AI for a food logging app.
                     Convert a user's plain-language food description into a single reusable custom food entry.
 
@@ -177,7 +169,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
             };
 
             var response = await _chatClient!.GetResponseAsync<CustomFoodDto>(
-                messages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+                messages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
 
             var dto = response.Result;
             if (dto is null)
@@ -239,56 +231,6 @@ public class ContentUnderstandingService : IContentUnderstandingService
         }
     }
 
-    private async Task<CustomFoodDto?> DescribeFoodWithChatAsync(string description, CancellationToken ct)
-    {
-        try
-        {
-            var modelName = ResolveTextDeploymentName(_config);
-            var chatClient = _openAiClient!.GetChatClient(modelName);
-
-            var messages = new List<OpenAI.Chat.ChatMessage>
-            {
-                new SystemChatMessage("""
-                    You are a nutrition estimation AI for a food logging app.
-                    Convert a user's plain-language food description into a single reusable custom food entry.
-
-                    Return one JSON object matching the schema.
-                    Rules:
-                    - Infer a concise food name from the description.
-                    - Only include a brand when the user explicitly mentioned one.
-                    - Estimate nutrition for one typical serving of the described food.
-                    - Use grams for serving size when no better unit is obvious.
-                    - Ingredients must be a concise comma-separated ingredient list for the described dish or product, not a transcript of the prompt.
-                    - Do not invent a barcode.
-                    - ExtractionConfidence must be a number between 0 and 1 representing how confident you are in the estimate.
-                    - Prefer realistic, internally consistent nutrition values.
-                    """),
-                new UserChatMessage($"Describe this food: {description}")
-            };
-
-            var options = new ChatCompletionOptions
-            {
-                ResponseFormat = CreateFallbackResponseFormat()
-            };
-
-            var response = await chatClient.CompleteChatAsync(messages, options, ct);
-            var textResponse = string.Concat(response.Value.Content?.Select(part => part.Text) ?? Enumerable.Empty<string>());
-
-            if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
-            {
-                _logger?.LogWarning("Text food description returned unparseable JSON for prompt '{Prompt}'.", Truncate(description, 120));
-                return null;
-            }
-
-            FinalizeGeneratedFood(dto, description);
-            return dto;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Text food description failed. {Details}", DescribeException(ex));
-            return null;
-        }
-    }
 
     private static string? ExtractResponseText(object responseValue)
     {
@@ -449,7 +391,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
                 var aiMessages = new List<AIChatMessage>
                 {
-                    new(AIChatRole.System, """
+                    new(DeveloperRole, """
                         You are a nutrition extraction AI. Analyze the image of a food label or product and extract the nutritional information and ingredients.
                         If energy is explicitly stated in kJ without Calories, convert it to calories (kcal) by dividing by 4.184.
                         Extract all available nutrients including vitamins and minerals when present.
@@ -461,7 +403,7 @@ public class ContentUnderstandingService : IContentUnderstandingService
                 };
 
                 var aiResponse = await _chatClient.GetResponseAsync<CustomFoodDto>(
-                    aiMessages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+                    aiMessages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
 
                 var extracted = aiResponse.Result;
                 if (extracted != null)
@@ -472,84 +414,13 @@ public class ContentUnderstandingService : IContentUnderstandingService
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "IChatClient vision label parse failed; trying legacy path: {Message}", ex.Message);
+                _logger?.LogWarning(ex, "Responses vision label parse failed: {Message}", ex.Message);
             }
         }
 
-        var modelName = ResolveVisionDeploymentName(_config);
-        var chatClient = _openAiClient!.GetChatClient(modelName);
-        var imageBytes = BinaryData.FromStream(memoryStream);
-
-        var legacyMessages = new List<OpenAI.Chat.ChatMessage>
-        {
-            new SystemChatMessage("""
-                You are a nutrition extraction AI. Analyze the image of a food label or product and extract the nutritional information and ingredients.
-                If energy is explicitly stated in kJ without Calories, convert it to calories (kcal) by dividing by 4.184.
-                Extract all available nutrients including vitamins and minerals when present.
-                """),
-            new UserChatMessage(
-                ChatMessageContentPart.CreateTextPart("Extract the nutritional label data."),
-                ChatMessageContentPart.CreateImagePart(imageBytes, contentType))
-        };
-
-        var options = new ChatCompletionOptions
-        {
-            ResponseFormat = CreateFallbackResponseFormat()
-        };
-
-        var response = await chatClient.CompleteChatAsync(legacyMessages, options, ct);
-        var textResponse = string.Concat(response.Value.Content?.Select(part => part.Text) ?? Enumerable.Empty<string>());
-
-        if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
-        {
-            return null;
-        }
-
-        FinalizeGeneratedFood(dto);
-        return dto;
+        return null;
     }
 
-    private static OpenAI.Chat.ChatResponseFormat CreateFallbackResponseFormat()
-        => OpenAI.Chat.ChatResponseFormat.CreateJsonSchemaFormat(
-            jsonSchemaFormatName: "custom_food_extraction",
-            jsonSchema: BinaryData.FromString("""
-            {
-              "type": "object",
-              "properties": {
-                "Name": { "type": "string" },
-                "BrandName": { "type": ["string", "null"] },
-                "ServingSize": { "type": "number" },
-                "ServingSizeUnit": { "type": "string" },
-                "Calories": { "type": "number" },
-                "ProteinG": { "type": "number" },
-                "CarbG": { "type": "number" },
-                "FatG": { "type": "number" },
-                "FiberG": { "type": ["number", "null"] },
-                "SugarG": { "type": ["number", "null"] },
-                "SodiumMg": { "type": ["number", "null"] },
-                "SaturatedFatG": { "type": ["number", "null"] },
-                "TransFatG": { "type": ["number", "null"] },
-                "CholesterolMg": { "type": ["number", "null"] },
-                "PotassiumMg": { "type": ["number", "null"] },
-                "CalciumMg": { "type": ["number", "null"] },
-                "IronMg": { "type": ["number", "null"] },
-                "MagnesiumMg": { "type": ["number", "null"] },
-                "ZincMg": { "type": ["number", "null"] },
-                "VitaminA_IU": { "type": ["number", "null"] },
-                "VitaminC_Mg": { "type": ["number", "null"] },
-                "VitaminD_Mcg": { "type": ["number", "null"] },
-                "VitaminB12_Mcg": { "type": ["number", "null"] },
-                "Omega3G": { "type": ["number", "null"] },
-                "CaffeineMg": { "type": ["number", "null"] },
-                "Ingredients": { "type": ["string", "null"] },
-                "Barcode": { "type": ["string", "null"] },
-                "ExtractionConfidence": { "type": ["number", "null"] }
-              },
-              "required": ["Name", "ServingSize", "ServingSizeUnit", "Calories", "ProteinG", "CarbG", "FatG", "ExtractionConfidence"],
-              "additionalProperties": false
-            }
-            """),
-            jsonSchemaIsStrict: false);
 
     internal static string ResolveTextDeploymentName(IConfiguration? config)
         => config?["AzureOpenAI:DeploymentName"] ?? "gpt-4o";

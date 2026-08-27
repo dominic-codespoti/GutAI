@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, View, StyleSheet } from "react-native";
+import { Animated, Platform, View, StyleSheet } from "react-native";
 import { useThemeColors } from "../stores/theme";
 
 const DOT_SIZE = 6;
@@ -16,12 +16,12 @@ function Dot({ delay, color }: { delay: number; color: string }) {
         Animated.timing(anim, {
           toValue: 1,
           duration: ANIMATION_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(anim, {
           toValue: 0,
           duration: ANIMATION_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]),
     );

@@ -16,14 +16,19 @@ import { MealFab } from "../../components/meals/MealFab";
 import { useDefaultMealFabActions } from "../../components/meals/useDefaultMealFabActions";
 import { useRouter } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
-import ReanimatedObj, {
+import Animated, {
   useSharedValue,
   useAnimatedProps,
   useAnimatedStyle,
   withTiming,
   Easing,
+  FadeInDown,
+  useReducedMotion,
 } from "react-native-reanimated";
 import { SafeScreen } from "../../components/SafeScreen";
+import { CountUpText } from "../../components/CountUpText";
+import { useShareCard } from "../../components/share/ShareCardPortal";
+import { StreakCalendar } from "../../components/StreakCalendar";
 import {
   useThemeColors,
   useThemeFonts,
@@ -31,9 +36,10 @@ import {
 } from "../../src/stores/theme";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import { toLocalDateStr } from "../../src/utils/date";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
 
-const AnimatedCircle = ReanimatedObj.createAnimatedComponent(Circle);
-const AnimatedView = ReanimatedObj.createAnimatedComponent(View);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedView = Animated.createAnimatedComponent(View);
 
 function CalorieRing({
   eaten,
@@ -100,15 +106,14 @@ function CalorieRing({
         />
       </Svg>
       <View style={{ position: "absolute", alignItems: "center" }}>
-        <Text
+        <CountUpText
+          value={eaten}
           style={{
             fontSize: 32,
             fontWeight: "800",
             color: overGoal ? c.danger : c.primary,
           }}
-        >
-          {eaten}
-        </Text>
+        />
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: -2 }}>
           of {goal} cal
         </Text>
@@ -187,13 +192,15 @@ function MacroBar({
 }
 
 export default function DashboardScreen() {
+  const reduced = useReducedMotion();
+  const shareCard = useShareCard();
   const c = useThemeColors();
   const f = useThemeFonts();
   const { shadow: sh, shadowMd: shMd } = useThemeShadow();
   const [macrosExpanded, setMacrosExpanded] = useState(false);
-
   const user = useAuthStore((s) => s.user);
   const today = toLocalDateStr();
+  const timezoneId = getDeviceTimezoneId();
   const router = useRouter();
   const fabActions = useDefaultMealFabActions();
 
@@ -203,7 +210,7 @@ export default function DashboardScreen() {
     isError: mealsError,
     refetch: refetchMeals,
   } = useQuery({
-    queryKey: ["meals", today],
+    queryKey: ["meals", today, timezoneId],
     queryFn: () => mealApi.list(today).then((r) => r.data),
   });
 
@@ -212,7 +219,7 @@ export default function DashboardScreen() {
     isLoading: loadingSummary,
     refetch: refetchSummary,
   } = useQuery({
-    queryKey: ["daily-summary", today],
+    queryKey: ["daily-summary", today, timezoneId],
     queryFn: () => mealApi.dailySummary(today).then((r) => r.data),
   });
 
@@ -221,36 +228,44 @@ export default function DashboardScreen() {
     isLoading: loadingSymptoms,
     refetch: refetchSymptoms,
   } = useQuery({
-    queryKey: ["symptoms-today", today],
+    queryKey: ["symptoms-today", today, timezoneId],
     queryFn: () => symptomApi.list({ date: today }).then((r) => r.data),
   });
-
   const { data: alerts, refetch: refetchAlerts } = useQuery({
     queryKey: ["alerts"],
     queryFn: () => userApi.getAlerts().then((r) => r.data),
   });
 
   const { data: triggerFoods, refetch: refetchTriggerFoods } = useQuery({
-    queryKey: ["trigger-foods-dashboard"],
+    queryKey: ["trigger-foods-dashboard", timezoneId],
     queryFn: () => insightApi.triggerFoods(30).then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: streak, refetch: refetchStreak } = useQuery({
-    queryKey: ["streak"],
+    queryKey: ["streak", timezoneId],
     queryFn: () => mealApi.streak().then((r) => r.data),
     staleTime: 10 * 60 * 1000,
   });
 
+  const { data: trends, refetch: refetchTrends } = useQuery({
+    queryKey: ["nutrition-trends", 28, timezoneId],
+    queryFn: () => insightApi.nutritionTrends(28).then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      refetchMeals(), refetchSummary(), refetchSymptoms(),
-      refetchAlerts(), refetchTriggerFoods(), refetchStreak(),
-    ]);
-    setRefreshing(false);
-  }, [refetchMeals, refetchSummary, refetchSymptoms, refetchAlerts, refetchTriggerFoods, refetchStreak]);
+    try {
+      await Promise.all([
+        refetchMeals(), refetchSummary(), refetchSymptoms(),
+        refetchAlerts(), refetchTriggerFoods(), refetchStreak(),
+        refetchTrends(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchMeals, refetchSummary, refetchSymptoms, refetchAlerts, refetchTriggerFoods, refetchStreak, refetchTrends]);
 
   const isLoading = loadingMeals || loadingSummary;
 
@@ -456,7 +471,15 @@ export default function DashboardScreen() {
               </Text>
             </View>
             {streak && streak.currentStreak > 0 && (
-              <View
+              <TouchableOpacity
+                onPress={() =>
+                  shareCard({
+                    template: "streak",
+                    data: { days: streak.currentStreak },
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Share your ${streak.currentStreak} day logging streak`}
                 style={{
                   flex: 1,
                   backgroundColor: c.warningBg,
@@ -467,15 +490,25 @@ export default function DashboardScreen() {
                   ...sh,
                 }}
               >
-                <Text
+                <View
                   style={{
-                    fontSize: 24,
-                    fontWeight: "800",
-                    color: c.warning,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: "100%",
+                    marginBottom: 2,
                   }}
                 >
-                  {streak.currentStreak} 🔥
-                </Text>
+                  <CountUpText
+                    value={streak.currentStreak}
+                    style={{
+                      fontSize: 24,
+                      fontWeight: "800",
+                      color: c.warning,
+                    }}
+                  />
+                  <Text style={{ fontSize: 23, marginLeft: 5 }}>🔥</Text>
+                </View>
                 <Text
                   style={{
                     fontSize: 11,
@@ -488,12 +521,44 @@ export default function DashboardScreen() {
                 >
                   Streak
                 </Text>
-              </View>
+              </TouchableOpacity>
+            )}
+            {(!streak || streak.currentStreak === 0) && (
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: "/(tabs)/meals", params: { date: today } })}
+                accessibilityRole="button"
+                accessibilityLabel="Start your streak. Log meals daily to build your streak. Tap to go to meals."
+                style={{
+                  flex: 1,
+                  backgroundColor: c.warningBg,
+                  borderRadius: radius.md,
+                  padding: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  ...sh,
+                }}
+              >
+                <Ionicons name="flame" size={24} color={c.warning} />
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: c.warning,
+                    fontWeight: "600",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    textAlign: "center",
+                    marginTop: 2,
+                  }}
+                >
+                  Start streak
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
           {/* Calorie Ring Card */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(0 * 70).springify().damping(18)}
             style={{
               backgroundColor: c.card,
               borderRadius: radius.lg,
@@ -540,10 +605,11 @@ export default function DashboardScreen() {
                 <Text style={f.caption}>remaining</Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Macros Card */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(1 * 70).springify().damping(18)}
             style={{
               backgroundColor: c.card,
               borderRadius: radius.lg,
@@ -626,10 +692,51 @@ export default function DashboardScreen() {
                 />
               </>
             )}
-          </View>
+          </Animated.View>
+
+          {/* Your consistency Card */}
+          {trends && (
+            <Animated.View
+              entering={reduced ? undefined : FadeInDown.delay(2 * 70).springify().damping(18)}
+              style={{
+                backgroundColor: c.card,
+                borderRadius: radius.lg,
+                padding: spacing.xl,
+                marginBottom: spacing.lg,
+                ...sh,
+              }}
+            >
+              <Text
+                style={{ ...f.h4, marginBottom: spacing.lg }}
+                accessibilityRole="header"
+              >
+                Your consistency
+              </Text>
+              <StreakCalendar
+                data={trends.map((t) => ({
+                  date: t.date,
+                  logged: t.mealCount > 0,
+                  mealCount: t.mealCount,
+                }))}
+              />
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: c.textMuted,
+                  textAlign: "center",
+                  marginTop: spacing.md,
+                }}
+              >
+                {trends.filter((t) => t.mealCount > 0).length} of 28 days logged
+              </Text>
+            </Animated.View>
+          )}
 
           {/* Today's Meals */}
-          <View style={{ marginBottom: spacing.xl }}>
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(3 * 70).springify().damping(18)}
+            style={{ marginBottom: spacing.xl }}
+          >
             <View
               style={{
                 flexDirection: "row",
@@ -642,7 +749,7 @@ export default function DashboardScreen() {
                 Today's Meals
               </Text>
               <TouchableOpacity
-                onPress={() => router.push("/(tabs)/meals")}
+                onPress={() => router.push({ pathname: "/(tabs)/meals", params: { date: today } })}
                 accessibilityRole="link"
                 accessibilityLabel="See all meals"
               >
@@ -661,7 +768,7 @@ export default function DashboardScreen() {
               meals.map((meal) => (
                 <TouchableOpacity
                   key={meal.id}
-                  onPress={() => router.push("/(tabs)/meals")}
+                  onPress={() => router.push({ pathname: "/(tabs)/meals", params: { date: today } })}
                   style={{
                     backgroundColor: c.card,
                     borderRadius: radius.md,
@@ -757,7 +864,7 @@ export default function DashboardScreen() {
                   No meals logged today
                 </Text>
                 <TouchableOpacity
-                  onPress={() => router.push("/(tabs)/meals")}
+                  onPress={() => router.push({ pathname: "/(tabs)/meals", params: { date: today } })}
                   style={{
                     marginTop: spacing.md,
                     backgroundColor: c.primaryBg,
@@ -778,10 +885,13 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </Animated.View>
 
           {/* Today's Symptoms */}
-          <View style={{ marginBottom: spacing.xl }}>
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(4 * 70).springify().damping(18)}
+            style={{ marginBottom: spacing.xl }}
+          >
             <View
               style={{
                 flexDirection: "row",
@@ -794,7 +904,7 @@ export default function DashboardScreen() {
                 Today's Symptoms
               </Text>
               <TouchableOpacity
-                onPress={() => router.push("/(tabs)/symptoms")}
+                onPress={() => router.push({ pathname: "/(tabs)/symptoms", params: { date: today } })}
                 accessibilityRole="link"
                 accessibilityLabel="See all symptoms"
               >
@@ -813,7 +923,7 @@ export default function DashboardScreen() {
               todaysSymptoms.map((log) => (
                 <TouchableOpacity
                   key={log.id}
-                  onPress={() => router.push("/(tabs)/symptoms")}
+                  onPress={() => router.push({ pathname: "/(tabs)/symptoms", params: { date: today } })}
                   style={{
                     backgroundColor: c.card,
                     borderRadius: radius.md,
@@ -903,7 +1013,7 @@ export default function DashboardScreen() {
                   No symptoms today — great!
                 </Text>
                 <TouchableOpacity
-                  onPress={() => router.push("/(tabs)/symptoms")}
+                  onPress={() => router.push({ pathname: "/(tabs)/symptoms", params: { date: today } })}
                   style={{
                     marginTop: spacing.md,
                     backgroundColor: c.primaryBg,
@@ -924,10 +1034,11 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </Animated.View>
 
           {/* Trigger Foods */}
-          <View
+          <Animated.View
+            entering={reduced ? undefined : FadeInDown.delay(5 * 70).springify().damping(18)}
             style={{
               backgroundColor: c.card,
               borderRadius: radius.lg,
@@ -1007,7 +1118,7 @@ export default function DashboardScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
         </View>
       </ScrollView>
 

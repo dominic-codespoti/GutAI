@@ -100,6 +100,34 @@ public static class RateLimitingExtensions
                 });
             });
 
+            // MCP endpoint — reachable anonymously (pairing tool), so partition by user
+            // when a token is present and fall back to a tight per-IP window otherwise.
+            options.AddPolicy("mcp", httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value;
+                if (userId != null)
+                {
+                    return RateLimitPartition.GetTokenBucketLimiter($"mcp_{userId}", _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 120,
+                        ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                        TokensPerPeriod = 120,
+                        AutoReplenishment = true,
+                        QueueLimit = 0,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    });
+                }
+
+                var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter($"mcp_{ip}", _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                });
+            });
+
             options.OnRejected = async (context, ct) =>
             {
                 context.HttpContext.Response.ContentType = "application/problem+json";

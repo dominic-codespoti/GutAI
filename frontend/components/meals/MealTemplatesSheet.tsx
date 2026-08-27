@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "../BottomSheet";
 import { useThemeColors } from "../../src/stores/theme";
 import { radius, spacing } from "../../src/utils/theme";
+import * as haptics from "../../src/utils/haptics";
 import type { MealTemplate } from "../../src/types";
 import { deleteMealTemplate, listMealTemplates } from "../../src/utils/mealTemplates";
 
@@ -25,6 +26,7 @@ export function MealTemplatesSheet({ visible, onClose, onUse }: Props) {
   }, [visible]);
 
   const remove = async (id: string) => {
+    haptics.heavy();
     await deleteMealTemplate(id);
     setTemplates((current) => current.filter((template) => template.id !== id));
   };
@@ -40,7 +42,15 @@ export function MealTemplatesSheet({ visible, onClose, onUse }: Props) {
         </Text>
       ) : templates.map((template) => (
         <View key={template.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
-          <TouchableOpacity onPress={() => onUse(template)} style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel={`Use ${template.name} template`}>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.light();
+              onUse(template);
+            }}
+            style={{ flex: 1 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Use ${template.name} template`}
+          >
             <Text style={{ color: colors.text, fontWeight: "600" }}>{template.name}</Text>
             <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{template.items.length} items · {template.mealType}</Text>
           </TouchableOpacity>

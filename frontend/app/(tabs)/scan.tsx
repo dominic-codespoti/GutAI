@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { isAxiosError } from "axios";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,13 +12,15 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
-import * as Haptics from "expo-haptics";
+import * as haptics from "../../src/utils/haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { foodApi, userApi, mealApi, mealScanApi } from "../../src/api";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { toast } from "../../src/stores/toast";
+import { useCelebrationStore } from "../../src/stores/celebration";
+import { confirm } from "../../src/utils/confirm";
 import { ErrorState } from "../../components/ErrorState";
 import { NutritionBar } from "../../components/NutritionBar";
 import { FoodSearchResult } from "../../components/FoodSearchResult";
@@ -32,12 +35,16 @@ import type {
   FavoriteFood,
   FoodProduct,
   RecentFood,
-  MealScanDraft,
   MealScanConfirmItem,
+  MealScanDraft,
 } from "../../src/types";
 import { useRouter, useGlobalSearchParams } from "expo-router";
 import { ratingColor, cspiEmoji } from "../../src/utils/colors";
 import { maybeRequestReview } from "../../src/utils/review";
+import {
+  maybeWriteMealToPlatform,
+  mealWriteFromResponse,
+} from "../../src/services/health";
 import { useThemeColors } from "../../src/stores/theme";
 import { SearchResultSkeleton } from "../../components/SkeletonLoader";
 
@@ -50,6 +57,7 @@ type FoodBrowseItem = {
   product: FoodProduct;
   allowDetails?: boolean;
   hideFavorite?: boolean;
+  isCustomFood?: boolean;
 };
 
 type FoodBrowseSection = {
@@ -171,6 +179,8 @@ export default function ScanScreen() {
   const [scanDraft, setScanDraft] = useState<MealScanDraft | null>(null);
   const [showScanReview, setShowScanReview] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const lastScanPhotoRef = useRef<string | null>(null);
+  const celebrate = useCelebrationStore((s) => s.celebrate);
 
   useEffect(() => {
     if (params.tab === "favorites") {
@@ -265,16 +275,16 @@ export default function ScanScreen() {
   const handleBarcodeScanned = ({ data }: { data: string }) => {
     setShowCamera(false);
     setBarcode(data);
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
+    haptics.success();
   };
 
   const openCamera = async () => {
+    haptics.light();
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
         toast.error("Camera permission is required to scan barcodes");
+        haptics.error();
         return;
       }
     }
@@ -337,13 +347,12 @@ export default function ScanScreen() {
 
   const scanMealMutation = useMutation({
     mutationFn: (uri: string) => mealScanApi.scanImage(uri).then((r) => r.data),
-    onSuccess: (draft) => {
+    onSuccess: (draft, uri) => {
       setIsScanning(false);
+      lastScanPhotoRef.current = typeof uri === "string" ? uri : null;
       setScanDraft(draft);
       setShowScanReview(true);
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      haptics.success();
     },
     onError: (err: any) => {
       setIsScanning(false);
@@ -361,7 +370,7 @@ export default function ScanScreen() {
       mealType: string;
       items: MealScanConfirmItem[];
     }) => mealScanApi.confirmDraft(sessionId, { mealType, items }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["meals"] });
       queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
       queryClient.invalidateQueries({ queryKey: ["recent-foods"] });
@@ -370,11 +379,23 @@ export default function ScanScreen() {
       setScanDraft(null);
       toast.success("Meal logged!");
       maybeRequestReview();
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      haptics.success();
+      const first = variables.items[0]?.name;
+      const kcal = variables.items.reduce((sum, i) => sum + (i.calories ?? 0), 0);
+      celebrate({
+        title: "Meal logged!",
+        subtitle: first
+          ? `${first}${variables.items.length > 1 ? ` +${variables.items.length - 1} more` : ""}`
+          : undefined,
+        photoUri: lastScanPhotoRef.current ?? undefined,
+        kcal,
+      });
+      lastScanPhotoRef.current = null;
     },
-    onError: () => toast.error("Failed to log scanned meal."),
+    onError: () => {
+      toast.error("Failed to log scanned meal.");
+      haptics.error();
+    },
   });
 
   const handleMealPhotoFromCamera = async () => {
@@ -388,7 +409,7 @@ export default function ScanScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -408,7 +429,7 @@ export default function ScanScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -447,23 +468,25 @@ export default function ScanScreen() {
         ],
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["meals"] });
       queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
       queryClient.invalidateQueries({ queryKey: ["recent-foods"] });
       queryClient.invalidateQueries({ queryKey: ["favorite-foods"] });
       queryClient.invalidateQueries({ queryKey: ["streak"] });
       queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["diary-analysis"] });
+      queryClient.invalidateQueries({ queryKey: ["trigger-foods"] });
+      queryClient.invalidateQueries({ queryKey: ["food-diary-analysis"] });
       queryClient.invalidateQueries({ queryKey: ["additive-exposure"] });
       queryClient.invalidateQueries({ queryKey: ["nutrition-trends"] });
       setShowAddToMeal(false);
       setAddToMealProduct(null);
       toast.success("Added to meal!");
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      haptics.success();
       maybeRequestReview();
+      if (res?.data) {
+        maybeWriteMealToPlatform(mealWriteFromResponse(res.data));
+      }
     },
     onError: () => toast.error("Failed to add to meal"),
   });
@@ -484,8 +507,30 @@ export default function ScanScreen() {
     setCustomServingText("");
     setShowAddToMeal(true);
   };
-
   const openCreateWithAi = () => router.push("/food/create");
+  const openEditCustomFood = (foodId: string) =>
+    router.push({
+      pathname: "/food/create",
+      params: { id: foodId },
+    });
+
+  const deleteCustomFoodMutation = useMutation({
+    mutationFn: (foodId: string) => foodApi.deleteCustomFood(foodId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-foods"] });
+      toast.success("Food deleted");
+    },
+    onError: () => toast.error("Failed to delete custom food."),
+  });
+
+  const handleDeleteCustomFood = (food: FoodProduct) => {
+    if (!food.id) return;
+    confirm(
+      "Delete Custom Food",
+      `Are you sure you want to delete "${food.name}"? This cannot be undone.`,
+      () => deleteCustomFoodMutation.mutate(food.id)
+    );
+  };
   const isSearching = searchText.trim().length >= 2;
 
   useEffect(() => {
@@ -515,6 +560,7 @@ export default function ScanScreen() {
       product: food,
       allowDetails: !!food.id && food.id !== EMPTY_PRODUCT_ID,
       hideFavorite: true,
+      isCustomFood: true,
     }),
   );
   const catalogBrowseItems: FoodBrowseItem[] = (searchResults.data ?? []).map(
@@ -606,7 +652,7 @@ export default function ScanScreen() {
               paddingVertical: 2,
             }}
           >
-            <Text style={{ color: "#fff", fontSize: 9, fontWeight: "800" }}>PRO</Text>
+            <Text style={{ color: colors.textOnPrimary, fontSize: 9, fontWeight: "800" }}>PRO</Text>
           </View>
         )}
       </View>
@@ -744,15 +790,51 @@ export default function ScanScreen() {
       {barcodeQuery.isLoading && <SearchResultSkeleton count={1} />}
       {barcodeQuery.isError && (
         <View style={{ marginTop: 8 }}>
-          <Text
-            style={{
-              color: colors.danger,
-              fontSize: 13,
-              marginBottom: 8,
-            }}
-          >
-            Product not found for this barcode. Try search below.
-          </Text>
+          {isAxiosError(barcodeQuery.error) &&
+          barcodeQuery.error.response?.status === 404 ? (
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontSize: 13,
+                marginBottom: 8,
+              }}
+            >
+              No product found for this barcode
+            </Text>
+          ) : (
+            <View style={{ marginBottom: 8, gap: 8 }}>
+              <Text
+                style={{
+                  color: colors.danger,
+                  fontSize: 13,
+                }}
+              >
+                Couldn't reach the product database
+              </Text>
+              <TouchableOpacity
+                onPress={() => barcodeQuery.refetch()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry barcode lookup"
+                style={{
+                  alignSelf: "flex-start",
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textOnPrimary,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  Retry
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
       {barcodeQuery.data && (
@@ -805,7 +887,7 @@ export default function ScanScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
-          maxLength={200}
+          onSubmitEditing={() => haptics.light()}
           style={{
             borderWidth: 1,
             borderColor: colors.border,
@@ -1338,7 +1420,7 @@ export default function ScanScreen() {
 
   if (showCamera) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#000" }}>
+      <View style={{ flex: 1, backgroundColor: colors.cameraBackdrop }}>
         <CameraView
           style={{ flex: 1 }}
           facing="back"
@@ -1354,7 +1436,7 @@ export default function ScanScreen() {
             paddingTop: 56,
             paddingHorizontal: 20,
             paddingBottom: 20,
-            backgroundColor: "rgba(0,0,0,0.35)",
+            backgroundColor: colors.cameraScrim,
           }}
         >
           <TouchableOpacity
@@ -1363,11 +1445,11 @@ export default function ScanScreen() {
             accessibilityLabel="Close barcode scanner"
             style={{ alignSelf: "flex-start", padding: 4 }}
           >
-            <Ionicons name="close" size={28} color="#fff" />
+            <Ionicons name="close" size={28} color={colors.cameraOnScrim} />
           </TouchableOpacity>
           <Text
             style={{
-              color: "#fff",
+              color: colors.cameraOnScrim,
               fontSize: 22,
               fontWeight: "700",
               marginTop: 12,
@@ -1377,7 +1459,7 @@ export default function ScanScreen() {
           </Text>
           <Text
             style={{
-              color: "rgba(255,255,255,0.88)",
+              color: colors.cameraOnScrimMuted,
               fontSize: 14,
               marginTop: 6,
             }}
@@ -1401,12 +1483,54 @@ export default function ScanScreen() {
           sections={browseSections}
           keyExtractor={(item) => item.key}
           renderItem={({ item }) => (
-            <FoodSearchResult
-              product={item.product}
-              onPress={handleProductPress}
-              onDetailPress={item.allowDetails ? handleDetailPress : undefined}
-              hideFavorite={item.hideFavorite}
-            />
+            <View style={{ position: "relative" }}>
+              <FoodSearchResult
+                product={item.product}
+                onPress={handleProductPress}
+                onDetailPress={item.allowDetails ? handleDetailPress : undefined}
+                hideFavorite={item.hideFavorite}
+                style={item.isCustomFood ? { paddingRight: 76 } : undefined}
+              />
+              {item.isCustomFood && item.product.id ? (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 10,
+                    right: 8,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => openEditCustomFood(item.product.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${item.product.name}`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      padding: 6,
+                      borderRadius: 6,
+                      backgroundColor: colors.bg,
+                    }}
+                  >
+                    <Ionicons name="pencil-outline" size={16} color={colors.secondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteCustomFood(item.product)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${item.product.name}`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      padding: 6,
+                      borderRadius: 6,
+                      backgroundColor: colors.bg,
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
           )}
           renderSectionHeader={renderBrowseSectionHeader}
           ListHeaderComponent={

@@ -10,6 +10,7 @@ COPY src/GutAI.Infrastructure/GutAI.Infrastructure.csproj src/GutAI.Infrastructu
 COPY tests/GutAI.Api.Tests/GutAI.Api.Tests.csproj tests/GutAI.Api.Tests/
 COPY tests/GutAI.Infrastructure.Tests/GutAI.Infrastructure.Tests.csproj tests/GutAI.Infrastructure.Tests/
 COPY tests/GutAI.IntegrationTests/GutAI.IntegrationTests.csproj tests/GutAI.IntegrationTests/
+COPY tools/GoldenScanHarness/GutAI.GoldenScanHarness.csproj tools/GoldenScanHarness/
 
 RUN dotnet restore
 

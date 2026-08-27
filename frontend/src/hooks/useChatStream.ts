@@ -1,12 +1,14 @@
 import { useRef, useCallback } from "react";
 import EventSource, { MessageEvent } from "react-native-sse";
 import { getItem } from "../utils/storage";
+import { getDeviceTimezoneId } from "../utils/timezone";
 import { BASE_URL } from "../api/client";
-import type { ChatStreamEvent } from "../types";
+import type { ChatStreamEvent, ToolResultSummary } from "../types";
 
 interface StreamHandlers {
   onContent: (text: string) => void;
   onToolStatus: (toolName: string, status: string) => void;
+  onToolResult: (toolName: string, summary: ToolResultSummary | null) => void;
   onError: (errorMessage: string) => void;
   onDone: () => void;
 }
@@ -16,6 +18,7 @@ export function useChatStream() {
 
   const startStream = useCallback(async (message: string, handlers: StreamHandlers) => {
     const token = await getItem("accessToken");
+    const timezoneId = getDeviceTimezoneId();
 
     const es = new EventSource(`${BASE_URL}/api/chat/stream`, {
       method: "POST",
@@ -23,7 +26,7 @@ export function useChatStream() {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, timezoneId }),
     });
 
     streamRef.current = es;
@@ -43,6 +46,8 @@ export function useChatStream() {
           handlers.onContent(parsed.content);
         } else if (parsed.tool_call) {
           handlers.onToolStatus(parsed.tool_call, parsed.status ?? "executing");
+        } else if (parsed.tool_result) {
+          handlers.onToolResult(parsed.tool_result, parsed.summary ?? null);
         } else if (parsed.error) {
           handlers.onError(parsed.error);
         }

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { View, Animated } from "react-native";
+import { View, Animated, Platform, type StyleProp, type ViewStyle } from "react-native";
 import { getThemeColors } from "../src/stores/theme";
 
 function SkeletonBlock({
@@ -9,7 +9,7 @@ function SkeletonBlock({
 }: {
   width: number | string;
   height: number;
-  style?: any;
+  style?: StyleProp<ViewStyle>;
 }) {
   const opacity = useRef(new Animated.Value(0.3)).current;
   const colors = getThemeColors();
@@ -20,12 +20,12 @@ function SkeletonBlock({
         Animated.timing(opacity, {
           toValue: 0.7,
           duration: 800,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(opacity, {
           toValue: 0.3,
           duration: 800,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]),
     );
@@ -49,10 +49,15 @@ function SkeletonBlock({
   );
 }
 
-function skeletonCard(children: React.ReactNode, style?: any) {
+function skeletonCard(
+  children: React.ReactNode,
+  style?: StyleProp<ViewStyle>,
+  key?: string | number,
+) {
   const colors = getThemeColors();
   return (
     <View
+      key={key}
       style={[
         {
           backgroundColor: colors.card,
@@ -202,6 +207,7 @@ export function SymptomSkeleton() {
             <SkeletonBlock width={40} height={20} style={{ borderRadius: 4 }} />
           </View>,
           { borderRadius: 10, padding: 14, marginBottom: 6 },
+          i,
         ),
       )}
     </>
@@ -231,6 +237,7 @@ export function InsightsSkeleton() {
             />
           </>,
           { borderRadius: 8, padding: 12, marginBottom: 4 },
+          i,
         ),
       )}
     </View>

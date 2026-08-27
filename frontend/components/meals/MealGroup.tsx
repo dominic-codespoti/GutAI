@@ -1,6 +1,5 @@
-import { View, Text, Alert, Platform } from "react-native";
-import { TouchableOpacity } from "react-native";
-import * as Haptics from "expo-haptics";
+import { View, Text, Alert, Platform, TouchableOpacity } from "react-native";
+import * as haptics from "../../src/utils/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import { useThemeColors, useThemeShadow } from "../../src/stores/theme";
@@ -34,7 +33,7 @@ export function MealGroup({
   const colors = useThemeColors();
   const { shadow } = useThemeShadow();
   const handleLongPressMeal = (meal: MealLog) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.medium();
     if (Platform.OS === "web") {
       onEdit(meal);
       return;

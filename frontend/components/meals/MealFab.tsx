@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   Text,
   TouchableOpacity,
@@ -69,7 +70,7 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
     anim.stopAnimation();
     Animated.spring(anim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       friction: 7,
       tension: 90,
     }).start();
@@ -80,7 +81,7 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
     Animated.timing(anim, {
       toValue: 0,
       duration: 140,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start(({ finished }) => {
       if (finished) {
         setRenderMenu(false);
@@ -132,11 +133,11 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
           }}
         >
           <Animated.View
-            pointerEvents="none"
             style={{
               flex: 1,
               backgroundColor: colors.overlay,
               opacity: backdropOpacity,
+              pointerEvents: "none",
             }}
           />
         </Pressable>
@@ -144,12 +145,12 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
 
       {renderMenu && (
         <Animated.View
-          pointerEvents={open ? "auto" : "none"}
           style={{
             position: "absolute",
             right: right + ACTION_RIGHT_OFFSET,
             bottom: bottom + MENU_BOTTOM_OFFSET,
             opacity: anim,
+            pointerEvents: open ? "auto" : "none",
             transform: [{ translateY: menuTranslateY }, { scale: menuScale }],
           }}
         >
@@ -194,7 +195,7 @@ export function MealFab({ actions, bottom = 28, right = 24 }: MealFabProps) {
           alignItems: "center",
           justifyContent: "center",
           ...shadowMd,
-          elevation: 8,
+          ...(Platform.OS === "web" ? {} : { elevation: 8 }),
         }}
       >
         <Animated.View style={{ transform: [{ rotate: iconRotate }] }}>
@@ -308,7 +309,7 @@ function MealFabActionButton({
             alignItems: "center",
             justifyContent: "center",
             ...(open ? buttonShadow : null),
-            elevation: open ? 7 : 0,
+            ...(Platform.OS === "web" ? {} : { elevation: open ? 7 : 0 }),
           }}
         >
           <Ionicons name={action.icon} size={22} color={colors.textOnPrimary} />

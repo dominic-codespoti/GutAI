@@ -83,6 +83,25 @@ When you search for or log a food, we may query external nutrition databases to 
 
 No other third-party services receive your data.
 
+### Optional AI Assistant Connections
+
+If you choose to connect an external AI assistant (e.g., a chat app that supports MCP), GutAI issues you a one-time pairing code to link it. Once linked:
+
+- The connected assistant can **read** your meal and symptom data (and derived insights such as trigger foods) through a read-only access token scoped to your account.
+- The connection is **read-only** — the assistant cannot delete or alter your records.
+- Your data passes through the AI provider that operates that assistant; their handling of that data is governed by their own privacy policy.
+- You can see every connected assistant and revoke its access instantly at any time (Settings → Connected AI Assistants). Revocation takes effect immediately.
+- Access tokens are stored only as cryptographic hashes; they can never be viewed again after creation.
+
+### Optional Health Platform Sync
+
+GutAI can optionally exchange meal data with Apple Health (iOS) and Google Health Connect (Android), strictly on your explicit request:
+
+- **Import:** you can pull meal/nutrition history that other apps stored in your device's health store into GutAI. Imported entries are labeled as estimates and never treated as verified data.
+- **Export:** you can choose to have meals you log in GutAI written to your device's health store. This toggle is off by default.
+- Data read or written this way stays on your device and within the operating system's health store; GutAI does not route it through any third-party service. You can revoke permission at any time from iOS/Android system settings, and delete synced history from those platforms directly.
+- When reading, GutAI skips records it originally wrote itself, so enabling both directions never duplicates your meals.
+
 ---
 
 ## 5. Data Storage & Security

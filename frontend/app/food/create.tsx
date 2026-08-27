@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Image,
   StyleSheet,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeScreen } from "../../components/SafeScreen";
@@ -17,18 +17,22 @@ import { useThemeColors } from "../../src/stores/theme";
 import { foodApi, mealApi } from "../../src/api";
 import { MealTypePicker } from "../../components/MealTypePicker";
 import { today, buildLoggedAt } from "../../src/utils/date";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "../../src/stores/toast";
 import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
 import { maybeRequestReview } from "../../src/utils/review";
+import { confirm } from "../../src/utils/confirm";
+import {
+  maybeWriteMealToPlatform,
+  mealWriteFromResponse,
+} from "../../src/services/health";
 import {
   normalizeCustomFood,
   customFoodToMealItem,
   ROUND,
 } from "../../src/utils/customFood";
 import type { AiGeneratedFood } from "../../src/utils/customFood";
-import type { CustomFood } from "../../src/types";
-
+import type { CustomFood, FoodProduct } from "../../src/types";
 type CreateMethod = "manual" | "description" | "label";
 type LabelSource = "camera" | "library";
 
@@ -64,6 +68,8 @@ function sourceLabel(source: "description" | "label" | null) {
 export default function CreateCustomFoodScreen() {
   const c = useThemeColors();
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const isEditMode = !!id;
   const qc = useQueryClient();
   const { isPro } = useSubscriptionStore();
 
@@ -73,7 +79,7 @@ export default function CreateCustomFoodScreen() {
     calories: 0, proteinG: 0, carbG: 0, fatG: 0,
     fiberG: 0, sugarG: 0, sodiumMg: 0, ingredients: "",
   });
-
+  const [initializedFromCustom, setInitializedFromCustom] = useState(false);
   // ── UI state ──
   const [method, setMethod] = useState<CreateMethod>("manual");
   const [generating, setGenerating] = useState(false);
@@ -90,6 +96,51 @@ export default function CreateCustomFoodScreen() {
   // ── Label state ──
   const [labelImageUri, setLabelImageUri] = useState<string | null>(null);
   const [labelSource, setLabelSource] = useState<LabelSource | null>(null);
+
+  // ── Edit mode data loading ──
+  const customFoodsQuery = useQuery({
+    queryKey: ["custom-foods"],
+    queryFn: () => foodApi.customFoods().then((r) => r.data),
+    enabled: isEditMode,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!isEditMode || initializedFromCustom || !customFoodsQuery.data) return;
+    const existing = customFoodsQuery.data.find((f: FoodProduct) => f.id === id);
+    if (existing) {
+      const servingQty = existing.servingQuantity && existing.servingQuantity > 0 ? existing.servingQuantity : 100;
+      const unitMatch = existing.servingSize ? existing.servingSize.replace(/^[\d.]+\s*/, "").trim() : "g";
+      const servingUnit = unitMatch || "g";
+      const ratio = servingQty / 100;
+
+      const cal = existing.calories100g != null ? ROUND(existing.calories100g * ratio) : 0;
+      const prot = existing.protein100g != null ? ROUND(existing.protein100g * ratio) : 0;
+      const carbs = existing.carbs100g != null ? ROUND(existing.carbs100g * ratio) : 0;
+      const fat = existing.fat100g != null ? ROUND(existing.fat100g * ratio) : 0;
+      const fiber = existing.fiber100g != null ? ROUND(existing.fiber100g * ratio) : null;
+      const sugar = existing.sugar100g != null ? ROUND(existing.sugar100g * ratio) : null;
+      const sodium = existing.sodiumMg100g != null ? ROUND(existing.sodiumMg100g * ratio) : null;
+
+      setForm({
+        id: existing.id,
+        name: existing.name || "",
+        brandName: existing.brand || "",
+        servingSize: servingQty,
+        servingSizeUnit: servingUnit,
+        calories: cal,
+        proteinG: prot,
+        carbG: carbs,
+        fatG: fat,
+        fiberG: fiber,
+        sugarG: sugar,
+        sodiumMg: sodium,
+        ingredients: existing.ingredients || "",
+      });
+      setMethod("manual");
+      setInitializedFromCustom(true);
+    }
+  }, [isEditMode, initializedFromCustom, customFoodsQuery.data, id]);
 
   // ── Mutations ──
   const parseLabel = useMutation({
@@ -122,31 +173,47 @@ export default function CreateCustomFoodScreen() {
   });
 
   const saveFood = useMutation({
-    mutationFn: () => foodApi.createCustomFood(form),
+    mutationFn: () => (isEditMode && id ? foodApi.updateCustomFood(id, form) : foodApi.createCustomFood(form)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["custom-foods"] });
-      toast.success("Food saved!");
+      toast.success(isEditMode ? "Food updated!" : "Food saved!");
       router.navigate("/(tabs)/scan?tab=my-foods");
     },
-    onError: () => toast.error("Failed to save custom food."),
+    onError: () => toast.error(isEditMode ? "Failed to update custom food." : "Failed to save custom food."),
+  });
+
+  const deleteFood = useMutation({
+    mutationFn: (foodId: string) => foodApi.deleteCustomFood(foodId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["custom-foods"] });
+      toast.success("Food deleted");
+      router.navigate("/(tabs)/scan?tab=my-foods");
+    },
+    onError: () => toast.error("Failed to delete custom food."),
   });
 
   const saveAndLogFood = useMutation({
     mutationFn: async () => {
-      const saved = await foodApi.createCustomFood(form);
+      const saved = isEditMode && id
+        ? await foodApi.updateCustomFood(id, form)
+        : await foodApi.createCustomFood(form);
       const customFood = saved.data;
-      await mealApi.create({
+      const productId = customFood.id || id;
+      return mealApi.create({
         mealType: logMealType,
         loggedAt: buildLoggedAt(logDate),
-        items: [customFoodToMealItem({ ...form, id: customFood.id }, generatedBy ? confidenceScore : null)],
+        items: [customFoodToMealItem({ ...form, id: productId }, generatedBy ? confidenceScore : null)],
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["meals"] });
       qc.invalidateQueries({ queryKey: ["daily-summary"] });
       qc.invalidateQueries({ queryKey: ["custom-foods"] });
       toast.success("Saved & logged!");
       maybeRequestReview();
+      if (res?.data) {
+        maybeWriteMealToPlatform(mealWriteFromResponse(res.data));
+      }
       router.back();
     },
     onError: () => toast.error("Failed to save and log."),
@@ -162,8 +229,43 @@ export default function CreateCustomFoodScreen() {
     }
   };
 
-  const isFormValid = form.name.trim().length > 0;
+  const validateForm = (): string | null => {
+    const trimmedName = form.name?.trim() ?? "";
+    if (!trimmedName || trimmedName.length > 300) {
+      return "Name is required and must not exceed 300 characters.";
+    }
+    if (form.servingSize <= 0 || form.servingSize > 10000) {
+      return "Serving size must be greater than 0 and not exceed 10000.";
+    }
+    if (
+      form.calories < 0 ||
+      form.proteinG < 0 ||
+      form.carbG < 0 ||
+      form.fatG < 0 ||
+      (form.fiberG != null && form.fiberG < 0) ||
+      (form.sugarG != null && form.sugarG < 0) ||
+      (form.sodiumMg != null && form.sodiumMg < 0)
+    ) {
+      return "Nutrition values cannot be negative.";
+    }
+    if (
+      form.calories > 50000 ||
+      form.proteinG > 5000 ||
+      form.carbG > 5000 ||
+      form.fatG > 5000
+    ) {
+      return "Nutrition values are unrealistically high.";
+    }
+    if (form.ingredients && form.ingredients.length > 2000) {
+      return "Ingredients must not exceed 2000 characters.";
+    }
+    return null;
+  };
+
+  const validationError = validateForm();
+  const isFormValid = validationError === null;
   const isLogDateValid = /^\d{4}-\d{2}-\d{2}$/.test(logDate) && !Number.isNaN(new Date(`${logDate}T12:00:00`).getTime());
+
 
   // ── Description handlers ──
   const handleGenerateDescription = async () => {
@@ -184,7 +286,7 @@ export default function CreateCustomFoodScreen() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") { toast.error("Camera permission required."); return; }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -202,7 +304,7 @@ export default function CreateCustomFoodScreen() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") { toast.error("Photo library permission required."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -223,10 +325,39 @@ export default function CreateCustomFoodScreen() {
   };
 
   // ── Save handlers ──
-  const handleSave = () => saveFood.mutate();
-  const handleSaveAndLog = () => saveAndLogFood.mutate();
+  const handleDelete = () => {
+    if (!id) return;
+    confirm(
+      "Delete Custom Food",
+      `Are you sure you want to delete "${form.name || "this custom food"}"? This cannot be undone.`,
+      () => deleteFood.mutate(id)
+    );
+  };
 
-  const anySaving = saveFood.isPending || saveAndLogFood.isPending;
+  // ── Save handlers ──
+  const handleSave = () => {
+    const error = validateForm();
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    saveFood.mutate();
+  };
+
+  const handleSaveAndLog = () => {
+    const error = validateForm();
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    if (!isLogDateValid) {
+      toast.error("Please enter a valid date (YYYY-MM-DD).");
+      return;
+    }
+    saveAndLogFood.mutate();
+  };
+
+  const anySaving = saveFood.isPending || saveAndLogFood.isPending || deleteFood.isPending;
 
   // ── Tab config ──
   const tabs: { key: CreateMethod; label: string; pro: boolean }[] = [
@@ -251,15 +382,30 @@ export default function CreateCustomFoodScreen() {
   return (
     <SafeScreen edges={["top"]}>
       <View style={{ flexDirection: "row", alignItems: "center", padding: 16 }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ paddingRight: 16 }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ paddingRight: 16 }} accessibilityRole="button" accessibilityLabel="Go back">
           <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: "bold", color: c.text }}>Create Custom Food</Text>
+          <Text style={{ fontSize: 20, fontWeight: "bold", color: c.text }}>
+            {isEditMode ? "Edit Custom Food" : "Create Custom Food"}
+          </Text>
           <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 2 }}>
-            Manual entry is free. Pro can generate from a description or nutrition label.
+            {isEditMode
+              ? "Update details or delete this custom food."
+              : "Manual entry is free. Pro can generate from a description or nutrition label."}
           </Text>
         </View>
+        {isEditMode && (
+          <TouchableOpacity
+            onPress={handleDelete}
+            disabled={anySaving}
+            accessibilityRole="button"
+            accessibilityLabel="Delete custom food"
+            style={{ padding: 8, opacity: anySaving ? 0.5 : 1 }}
+          >
+            <Ionicons name="trash-outline" size={22} color={c.danger} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView style={{ paddingHorizontal: 16 }} keyboardShouldPersistTaps="handled">
@@ -301,7 +447,7 @@ export default function CreateCustomFoodScreen() {
               </Text>
               {pro && !isPro && (
                 <View style={{ backgroundColor: c.warning, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1 }}>
-                  <Text style={{ color: "#fff", fontSize: 8, fontWeight: "800" }}>PRO</Text>
+                  <Text style={{ color: c.textOnPrimary, fontSize: 8, fontWeight: "800" }}>PRO</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -680,16 +826,36 @@ export default function CreateCustomFoodScreen() {
         {/* ════════════════════════
             SAVE ACTIONS
             ════════════════════════ */}
+        {/* ════════════════════════
+            SAVE & DELETE ACTIONS
+            ════════════════════════ */}
+        {validationError && form.name.trim().length > 0 && (
+          <View
+            style={{
+              backgroundColor: c.dangerBg,
+              borderColor: c.dangerBorder,
+              borderWidth: 1,
+              borderRadius: 8,
+              padding: 10,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: c.danger, fontSize: 13, fontWeight: "500" }}>
+              {validationError}
+            </Text>
+          </View>
+        )}
+
         <TouchableOpacity
           onPress={handleSave}
           disabled={!isFormValid || anySaving}
           style={[s.saveBtn, { backgroundColor: c.primary, opacity: isFormValid && !anySaving ? 1 : 0.5 }]}
         >
-          {anySaving ? (
-            <ActivityIndicator color="#fff" />
+          {saveFood.isPending ? (
+            <ActivityIndicator color={c.textOnPrimary} />
           ) : (
-            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
-              Save to My Foods
+            <Text style={{ color: c.textOnPrimary, fontWeight: "bold", fontSize: 16 }}>
+              {isEditMode ? "Update Custom Food" : "Save to My Foods"}
             </Text>
           )}
         </TouchableOpacity>
@@ -708,14 +874,42 @@ export default function CreateCustomFoodScreen() {
             opacity: isFormValid && isLogDateValid && !anySaving ? 1 : 0.5,
           }}
         >
-          {anySaving ? (
+          {saveAndLogFood.isPending ? (
             <ActivityIndicator color={c.primary} />
           ) : (
             <Text style={{ color: c.primary, fontWeight: "700", fontSize: 15 }}>
-              Save & Log
+              {isEditMode ? "Update & Log" : "Save & Log"}
             </Text>
           )}
         </TouchableOpacity>
+
+        {isEditMode && (
+          <TouchableOpacity
+            onPress={handleDelete}
+            disabled={anySaving}
+            accessibilityRole="button"
+            accessibilityLabel="Delete custom food"
+            style={{
+              paddingVertical: 14,
+              borderRadius: 12,
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 12,
+              borderWidth: 1,
+              borderColor: c.dangerBorder,
+              backgroundColor: c.dangerBg,
+              opacity: anySaving ? 0.5 : 1,
+            }}
+          >
+            {deleteFood.isPending ? (
+              <ActivityIndicator color={c.danger} />
+            ) : (
+              <Text style={{ color: c.danger, fontWeight: "700", fontSize: 15 }}>
+                Delete Custom Food
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
         </>
         )}
 

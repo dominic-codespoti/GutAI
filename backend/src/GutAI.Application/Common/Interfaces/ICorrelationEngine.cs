@@ -4,5 +4,5 @@ namespace GutAI.Application.Common.Interfaces;
 
 public interface ICorrelationEngine
 {
-    Task<List<CorrelationDto>> ComputeCorrelationsAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default);
+    Task<List<CorrelationDto>> ComputeCorrelationsAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default, string? timezoneId = null);
 }

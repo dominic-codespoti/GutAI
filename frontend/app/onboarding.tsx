@@ -25,6 +25,11 @@ import { radius, spacing } from "../src/utils/theme";
 import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 import * as haptics from "../src/utils/haptics";
 import { SafeScreen } from "../components/SafeScreen";
+import WelcomeArt from "../assets/onboarding/welcome.svg";
+import AllergiesArt from "../assets/onboarding/allergies.svg";
+import DietArt from "../assets/onboarding/diet.svg";
+import ConditionsArt from "../assets/onboarding/gut-conditions.svg";
+import GoalsArt from "../assets/onboarding/goals.svg";
 
 export default function OnboardingScreen() {
   const colors = useThemeColors();
@@ -117,7 +122,7 @@ export default function OnboardingScreen() {
 
       const { data } = await userApi.getProfile();
       setUser(data);
-      toast.success("Welcome to GutLens! 🎉");
+      toast.success("Welcome to GutAI! 🎉");
       router.replace("/(tabs)");
     } catch {
       toast.error("Setup failed, you can update later in Profile");
@@ -145,15 +150,16 @@ export default function OnboardingScreen() {
   const steps = [
     // Step 0: Welcome
     <View key="welcome" style={{ alignItems: "center", paddingVertical: 40 }}>
-      <Text style={{ fontSize: 48, marginBottom: spacing.lg }}>🥗</Text>
+      <WelcomeArt width={220} height={170} accessibilityLabel="Illustration: a warm welcome spread" />
       <Text
         style={{
           ...fonts.h1,
           marginBottom: spacing.sm,
+          marginTop: spacing.lg,
         }}
         accessibilityRole="header"
       >
-        Welcome to GutLens
+        Welcome to GutAI
       </Text>
       <Text
         style={{
@@ -163,12 +169,15 @@ export default function OnboardingScreen() {
         }}
       >
         Track meals, monitor gut health symptoms, and discover food-symptom
-        correlations — all running locally on your device.
+        correlations with evidence you can check.
       </Text>
     </View>,
 
     // Step 1: Allergies
     <View key="allergies">
+      <View style={{ alignItems: "center", marginBottom: spacing.md }}>
+        <AllergiesArt width={180} height={130} accessibilityLabel="Illustration: medicine and care" />
+      </View>
       <Text
         style={{
           ...fonts.h2,
@@ -186,6 +195,9 @@ export default function OnboardingScreen() {
 
     // Step 2: Diet
     <View key="diet">
+      <View style={{ alignItems: "center", marginBottom: spacing.md }}>
+        <DietArt width={180} height={130} accessibilityLabel="Illustration: balanced diet choices" />
+      </View>
       <Text
         style={{
           ...fonts.h2,
@@ -258,6 +270,9 @@ export default function OnboardingScreen() {
 
     // Step 3: Gut Conditions
     <View key="conditions">
+      <View style={{ alignItems: "center", marginBottom: spacing.md }}>
+        <ConditionsArt width={180} height={130} accessibilityLabel="Illustration: calm mindfulness" />
+      </View>
       <Text
         style={{
           ...fonts.h2,
@@ -333,9 +348,10 @@ export default function OnboardingScreen() {
         );
       })}
     </View>,
-
-    // Step 4: Goals
     <View key="goals">
+      <View style={{ alignItems: "center", marginBottom: spacing.md }}>
+        <GoalsArt width={180} height={130} accessibilityLabel="Illustration: personal goals" />
+      </View>
       <Text
         style={{
           ...fonts.h2,

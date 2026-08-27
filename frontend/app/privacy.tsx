@@ -10,7 +10,7 @@ import { SafeScreen } from "../components/SafeScreen";
 import { radius, spacing } from "../src/utils/theme";
 import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 
-const CONTACT_EMAIL = "support@workoutquestapp.com";
+const CONTACT_EMAIL = "domcodespoti@gmail.com";
 
 export default function PrivacyPolicyScreen() {
   const colors = useThemeColors();
@@ -33,11 +33,11 @@ export default function PrivacyPolicyScreen() {
           Privacy Policy
         </Text>
         <Text style={{ ...fonts.caption, marginBottom: spacing.xl }}>
-          Effective Date: February 24, 2026 · Last Updated: February 24, 2026
+          Effective Date: February 24, 2026 · Last Updated: August 26, 2026
         </Text>
 
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          GutLens ("we", "us", "our") is a gut-health food diary app that helps
+          GutAI ("we", "us", "our") is a gut-health food diary app that helps
           you track meals, monitor symptoms, and discover food-related patterns.
           This privacy policy explains what data we collect, how we use it, and
           your rights.
@@ -92,8 +92,8 @@ export default function PrivacyPolicyScreen() {
           ]}
         />
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          We generate these insights locally from your own data to help you
-          understand patterns. They are not shared externally.
+          These insights are computed on our servers from your diary data, are
+          not shared externally, and are not used to train AI models.
         </Text>
 
         <SectionHeading>2. Data We Do NOT Collect</SectionHeading>
@@ -103,8 +103,7 @@ export default function PrivacyPolicyScreen() {
             "Device identifiers or advertising IDs",
             "Contacts, call logs, or messages",
             "Analytics or behavioral tracking",
-            "Push notification tokens (not yet implemented)",
-            "Biometric data",
+            "Push notification tokens — optional meal reminders are scheduled locally on your device and are never sent through our servers",
           ]}
         />
 
@@ -135,10 +134,10 @@ export default function PrivacyPolicyScreen() {
         </Text>
         <BulletList
           items={[
-            "Edamam — Nutrition lookup and meal parsing",
             "USDA FoodData Central — Nutrition lookup",
             "Open Food Facts — Barcode-based food lookup",
             "CalorieNinjas — Fallback nutrition parsing",
+            "Microsoft Azure OpenAI — Meal descriptions, coach chat messages, and meal photos you submit are processed solely to generate your results (parsing, coaching replies, photo analysis)",
           ]}
         />
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
@@ -185,7 +184,7 @@ export default function PrivacyPolicyScreen() {
 
         <SectionHeading>8. Children's Privacy</SectionHeading>
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          GutLens is not directed at children under 13 (or 16 in the EU/EEA). We
+          GutAI is not directed at children under 13 (or 16 in the EU/EEA). We
           do not knowingly collect data from children. If you believe a child
           has provided us with personal data, please contact us and we will
           delete it.

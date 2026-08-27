@@ -1,46 +1,49 @@
 {
   "gate": {
     "min_recall": 0.75,
-    "max_median_gram_error_percent": 45
+    "max_median_gram_error_percent": 45,
+    "min_nutrition_backed_rate": 0.70,
+    "max_false_positive_rate": 0.35
   },
   "cases": [
     {
       "image": "case01.jpg",
+      "mode": "composite",
       "expected": [
-        { "name": "pizza", "grams": 300 },
-        { "name": "ham", "grams": 40 },
-        { "name": "pineapple", "grams": 30 }
+        { "name": "hawaiian pizza", "grams": 350 }
       ],
       "notes": "Hawaiian pizza slice/plate"
     },
     {
       "image": "case02.jpg",
+      "mode": "components",
       "expected": [
-        { "name": "salmon fillet", "grams": 180 },
-        { "name": "lemon", "grams": 20 }
+        { "name": "fish fillet", "grams": 150 },
+        { "name": "corn vegetable hash", "grams": 100 },
+        { "name": "mixed greens salad", "grams": 40 }
       ],
-      "notes": "Grilled salmon with lemon"
+      "notes": "Plated fish fillet over a corn-vegetable hash, topped with a dressed arugula/tomato salad and a sauce drizzle (garnish-scale, not logged separately). Original manifest wrongly said 'grilled salmon with salad' with only 2 components; species/cut is not verifiable from the image, so name it generically."
     },
     {
       "image": "case03.jpg",
+      "mode": "composite",
       "expected": [
-        { "name": "romaine lettuce", "grams": 120 },
-        { "name": "croutons", "grams": 30 },
-        { "name": "parmesan cheese", "grams": 20 },
-        { "name": "caesar dressing", "grams": 30 }
+        { "name": "caesar salad", "grams": 300 }
       ],
-      "notes": "Caesar salad with croutons and cheese"
+      "notes": "Caesar salad as one assembled dish"
     },
     {
       "image": "case04.jpg",
+      "mode": "components",
       "expected": [
-        { "name": "hamburger", "grams": 220 },
+        { "name": "pulled pork sandwich", "grams": 220 },
         { "name": "french fries", "grams": 150 }
       ],
-      "notes": "Burger and fries combo"
+      "notes": "Pulled pork sandwich and fries combo"
     },
     {
       "image": "case05.jpg",
+      "mode": "components",
       "expected": [
         { "name": "fried egg", "grams": 100 },
         { "name": "sausage", "grams": 120 },
@@ -51,6 +54,7 @@
     },
     {
       "image": "case06.jpg",
+      "mode": "components",
       "expected": [
         { "name": "steak", "grams": 250 },
         { "name": "asparagus", "grams": 80 }
@@ -59,12 +63,65 @@
     },
     {
       "image": "case07.jpg",
+      "mode": "composite",
       "expected": [
-        { "name": "pork katsu", "grams": 160 },
-        { "name": "curry sauce", "grams": 140 },
-        { "name": "rice", "grams": 200 }
+        { "name": "pork katsu curry", "grams": 450 },
+        { "name": "shredded cabbage", "grams": 40 },
+        { "name": "miso soup", "grams": 150 }
       ],
-      "notes": "Japanese Katsu Curry bowl"
+      "notes": "Japanese katsu curry set meal: curry rice bowl plus miso soup and shredded cabbage sides. Original manifest only listed the bowl and missed the two visible side dishes."
+    },
+    {
+      "image": "case08.jpg",
+      "mode": "components",
+      "expected": [
+        { "name": "scrambled eggs", "grams": 180 },
+        { "name": "mushroom", "grams": 55 },
+        { "name": "leafy greens", "grams": 30 },
+        { "name": "toast", "grams": 40 },
+        { "name": "avocado", "grams": 65 }
+      ],
+      "notes": "Downloaded personal breakfast plate; approximate diary weights pending user confirmation"
+    },
+    {
+      "image": "case09.jpg",
+      "mode": "composite",
+      "expected": [
+        { "name": "spaghetti with tomato sauce", "grams": 300 }
+      ],
+      "notes": "Spaghetti al pomodoro as one prepared dish"
+    },
+    {
+      "image": "case10.jpg",
+      "mode": "components",
+      "expected": [
+        { "name": "oatmeal", "grams": 200 },
+        { "name": "blackberry", "grams": 30 },
+        { "name": "raspberry", "grams": 30 },
+        { "name": "blueberry", "grams": 30 },
+        { "name": "peanut butter", "grams": 20 }
+      ],
+      "notes": "Oatmeal bowl with berries and peanut butter; approximate weights"
+    },
+    {
+      "image": "case11.jpg",
+      "mode": "components",
+      "expected": [
+        { "name": "salad", "grams": 250 },
+        { "name": "guacamole", "grams": 60 },
+        { "name": "tortilla chips", "grams": 60 },
+        { "name": "queso dip", "grams": 40 },
+        { "name": "salsa", "grams": 50 }
+      ],
+      "notes": "Restaurant taco-style salad plate with sides"
+    },
+    {
+      "image": "case12.jpg",
+      "mode": "composite",
+      "expected": [
+        { "name": "fruit smoothie", "grams": 350 }
+      ],
+      "notes": "Fruit smoothie in a glass"
     }
   ]
 }

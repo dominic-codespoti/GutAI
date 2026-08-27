@@ -191,24 +191,25 @@ public class FodmapServiceTests
     }
 
     [Fact]
-    public void TwoHighTriggers_Drops50Points()
+    public void TwoDistinctFructansAndModerateLactose_Score14()
     {
         var result = _sut.Assess(MakeProduct("Garlic Onion Dip", "onion, garlic, cream"));
-        // onion+garlic → same Fructan subcategory, deduped to 1 High trigger (×0.40)
-        // cream → Lactose Moderate trigger (×0.85)
-        // Total: 100 × 0.40 × 0.85 = 34
-        result.IngredientScreeningScore.Should().Be(34);
+        // Name-level dedup keeps distinct foods individually visible:
+        // onion → Onion (Fructan) High (×0.40); garlic → Garlic (Fructan) High (×0.40);
+        // cream → Lactose Moderate (×0.85)
+        // Total: 100 × 0.40 × 0.40 × 0.85 = 13.6 → 14
+        result.IngredientScreeningScore.Should().Be(14);
     }
 
     [Fact]
     public void ManyHighTriggers_ClampedAt0()
     {
         var result = _sut.Assess(MakeProduct("Everything Bagel", "wheat flour, onion, garlic, honey, apple, inulin"));
-        // wheat/onion/garlic/inulin → 1 Fructan trigger (High ×0.40)
-        // honey → 1 Excess Fructose trigger (High ×0.40)
-        // apple → 1 "Excess Fructose + Sorbitol" trigger (High ×0.40)
-        // Total: 100 × 0.40 × 0.40 × 0.40 = 6.4 → 6
-        result.IngredientScreeningScore.Should().Be(6);
+        // Name-level dedup counts every distinct food:
+        // wheat flour/onion/garlic/inulin → 4 distinct Fructan High triggers (×0.40 each)
+        // honey → Honey (Excess Fructose) High (×0.40); apple → Apple (Fructose + Sorbitol) High (×0.40)
+        // Total: 100 × 0.40⁶ = 0.41 → 0
+        result.IngredientScreeningScore.Should().Be(0);
     }
 
     [Fact]
@@ -493,10 +494,14 @@ public class FodmapServiceTests
     {
         var result = _sut.Assess(MakeProduct("Garlic & Onion Pasta Sauce",
             "tomatoes, onion, garlic, wheat flour, olive oil, basil"));
-        // onion, garlic, wheat flour all share Fructan/Oligosaccharide — deduped to 1 trigger
-        result.Triggers.Should().Contain(t => t.SubCategory == "Fructan");
-        result.TriggerCount.Should().Be(1);
-        result.IngredientScreeningScore.Should().Be(40);
+        // Name-level dedup keeps each fructan source individually visible and counted:
+        // onion + garlic + wheat flour → 3 distinct Fructan High triggers
+        result.Triggers.Should().Contain(t => t.Name == "Onion (Fructan)");
+        result.Triggers.Should().Contain(t => t.Name == "Garlic (Fructan)");
+        result.Triggers.Should().Contain(t => t.Name == "Wheat (Fructan)");
+        // 4th row: the product NAME matches the whole-food "pasta" entry ("Pasta (Fructan)").
+        result.TriggerCount.Should().Be(4);
+        result.IngredientScreeningScore.Should().Be(3); // 100 × 0.40⁴
     }
 
     [Fact]
@@ -610,9 +615,9 @@ public class FodmapServiceTests
         // erythritol → Erythritol/Polyol (Low)
         var result = _sut.Assess(MakeProduct(ingredients: "garlic, asparagus, erythritol"));
         result.HighCount.Should().Be(1); // garlic
-        result.ModerateCount.Should().Be(0); // asparagus deduped
+        result.ModerateCount.Should().Be(1); // asparagus — distinct food, no longer deduped away
         result.LowCount.Should().Be(1); // erythritol
-        result.TriggerCount.Should().Be(2);
+        result.TriggerCount.Should().Be(3);
     }
 
     // ─── AssessText Method ──────────────────────────────────────────────
@@ -1030,5 +1035,178 @@ public class FodmapServiceTests
         result.IngredientScreeningScore.Should().BeLessThan(60);
         result.Status.Should().Be(nameof(FodmapAssessmentStatus.PotentialTriggersDetected));
         result.Triggers.Should().Contain(t => t.Severity == "High");
+    }
+
+    // ─── Regression probes: dedup, boundaries, negation, mitigations ────
+
+    [Fact]
+    public void DistinctFructans_AreIndividuallyListedAndCounted()
+    {
+        var result = _sut.Assess(MakeProduct("Dip Mix", "onion, garlic, salt"));
+        result.Triggers.Should().Contain(t => t.Name == "Onion (Fructan)");
+        result.Triggers.Should().Contain(t => t.Name == "Garlic (Fructan)");
+        result.TriggerCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void SynonymPatterns_StillCollapseToOneTrigger()
+    {
+        // "wheat flour", "whole wheat" and the \bwheat\b regex share the canonical
+        // Name "Wheat (Fructan)" — synonym collapsing must survive Name-level dedup.
+        var result = _sut.Assess(MakeProduct("Bread", "wheat flour, whole wheat, wheat bran, water"));
+        result.Triggers.Count(t => t.Name == "Wheat (Fructan)").Should().Be(1);
+    }
+
+    [Fact]
+    public void BreadedChicken_DoesNotFalsePositiveOnBread()
+    {
+        var result = _sut.Assess(MakeProduct("Breaded Chicken", "breaded chicken breast, salt, pepper"));
+        result.Triggers.Should().NotContain(t => t.Name.Contains("Bread"));
+    }
+
+    [Theory]
+    [InlineData("shallots")]
+    [InlineData("chickpeas")]
+    public void PluralIngredientForms_StillMatch(string ingredient)
+    {
+        var result = _sut.Assess(MakeProduct(ingredients: $"water, {ingredient}, salt"));
+        result.TriggerCount.Should().BeGreaterThan(0, $"'{ingredient}' must still be detected");
+    }
+
+    [Fact]
+    public void NegatedLactoseFreeClaim_DoesNotSuppressLactoseTriggers()
+    {
+        var result = _sut.Assess(MakeProduct("Choc Drink", "not lactose-free chocolate drink, whole milk, sugar"));
+        result.Triggers.Should().Contain(t => t.SubCategory == "Lactose");
+    }
+
+    [Fact]
+    public void TinnedChickpeas_DowngradeFromHighToModerate()
+    {
+        var result = _sut.Assess(MakeProduct("Tinned Chickpeas", "chickpeas, water, salt"));
+        var trigger = result.Triggers.FirstOrDefault(t => t.Name.Contains("Chickpea"));
+        trigger.Should().NotBeNull();
+        trigger!.Severity.Should().Be("Moderate");
+        trigger.Explanation.Should().Contain("Canned");
+    }
+
+    [Fact]
+    public void CannedKidneyBeans_DowngradeFromHighToModerate()
+    {
+        var result = _sut.Assess(MakeProduct("Salad Topping", "canned kidney beans, water, salt"));
+        var trigger = result.Triggers.FirstOrDefault(t => t.Name.Contains("Kidney Bean"));
+        trigger.Should().NotBeNull();
+        trigger!.Severity.Should().Be("Moderate");
+    }
+
+    [Fact]
+    public void FirmTofu_WithIndependentSoyFlour_KeepsSoybeanEvidence()
+    {
+        // Soy flour is its own GOS source — the firm-tofu exception must not swallow it.
+        var result = _sut.Assess(MakeProduct("Firm Tofu Bowl", "firm tofu, soybean flour, water"));
+        result.Triggers.Should().Contain(t => t.Name == "Soybean (GOS)");
+    }
+
+    [Fact]
+    public void ExcessFructoseHeuristic_IsSuppressedWhenNamedSourcePresent()
+    {
+        var result = _sut.Assess(MakeProduct("Fruit Punch", "apple juice, water", sugar: 31m));
+        // Apple Juice (Excess Fructose) is already flagged; the sugar heuristic previously
+        // added a second excess-fructose row and squared the penalty for one substance.
+        result.Triggers.Count(t => t.SubCategory == "Excess Fructose").Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(30, false)]   // boundary: strictly greater-than 30 fires
+    [InlineData(30.01, true)]
+    public void ExcessFructoseHeuristic_SugarThresholdBoundary(decimal sugar, bool shouldFlag)
+    {
+        var result = _sut.Assess(MakeProduct("Sweet Base", "water, fructose syrup", sugar: sugar));
+        result.Triggers.Any(t => t.SubCategory == "Excess Fructose").Should().Be(shouldFlag);
+    }
+
+    [Fact]
+    public void Pistachio_ProducesBothChemistryRows()
+    {
+        var result = _sut.Assess(MakeProduct("Nut Mix", "pistachios, almonds, salt"));
+        result.Triggers.Should().Contain(t => t.Name == "Pistachio (Fructan)");
+        result.Triggers.Should().Contain(t => t.Name == "Pistachio (GOS)");
+    }
+
+    [Fact]
+    public void SorbitolIngredient_And_E420Tag_CollapseToSingleRow()
+    {
+        var result = _sut.Assess(MakeProduct(additiveTags: ["en:e420"], ingredients: "water, sorbitol"));
+        result.Triggers.Count(t => t.Name.StartsWith("Sorbitol", StringComparison.Ordinal)).Should().Be(1);
+    }
+
+    [Fact]
+    public void CherrySingularAndPlural_ProduceOneRow()
+    {
+        var result = _sut.Assess(MakeProduct("Cherry Pie", "cherries, sugar, pastry"));
+        result.Triggers.Count(t => t.Name == "Cherry (Fructose + Sorbitol)").Should().Be(1);
+    }
+
+    // ─── Free-text confidence grading (W15) ─────────────────────────────
+
+    [Theory]
+    [InlineData("pizza", "Low")]
+    [InlineData("rice bowl", "Low")]
+    [InlineData("grilled chicken with rice", "Medium")]
+    [InlineData("big bowl of pasta with tomato sauce and basil", "Medium")]
+    public void AssessText_ConfidenceGradesByDescriptionSpecificity(string description, string expectedConfidence)
+    {
+        var result = _sut.AssessText(description);
+        result.Confidence.Should().Be(expectedConfidence);
+    }
+
+    [Fact]
+    public void AssessText_VagueDescription_StillRunsTheScreen()
+    {
+        // Lowered confidence must not be confused with "nothing to screen" — a one-word
+        // description still runs; it just cannot claim Medium evidence quality.
+        var result = _sut.AssessText("pizza");
+        result.Status.Should().NotBe(nameof(FodmapAssessmentStatus.InsufficientInformation));
+    }
+
+    // ─── Whole-food plural tolerance (hardening #2) ─────────────────────
+
+    [Theory]
+    [InlineData("Roasted Pistachios", "Pistachio")]
+    [InlineData("Portobellos with herbs", "Portobello")]
+    [InlineData("Barley grains", "Barley")]
+    public void PluralProductNames_MatchSingularWholeFoodEntries(string productName, string expectedNamePart)
+    {
+        var result = _sut.Assess(MakeProduct(productName));
+        result.Triggers.Should().Contain(t => t.Name.Contains(expectedNamePart, StringComparison.OrdinalIgnoreCase),
+            $"'{productName}' must match the singular-authored whole-food entry");
+    }
+
+    [Fact]
+    public void Pepitas_StillDoNotMatchPita_AfterPluralTolerance()
+    {
+        var result = _sut.Assess(MakeProduct("Seed Mix", "pepitas, sunflower seeds"));
+        result.Triggers.Should().NotContain(t => t.Name.Contains("Pita"));
+    }
+    // ─── Chemistry-family breadth parsing (hardening #5) ────────────────
+
+    [Fact]
+    public void DualClassFood_CountsBothChemistries_TowardStacking()
+    {
+        // garlic Fructan(High ×0.40) + cream Lactose(Moderate ×0.85)
+        // + apple {Excess Fructose + Sorbitol} = two more families.
+        // Families: Fructan, Lactose, Excess Fructose, Polyol = 4 → ×0.92^(4-2)
+        // 100 × 0.40 × 0.85 × 0.40 × 0.8464 = 11.51 → 12
+        // (Pre-fix first-token parsing counted only 3 families → 13.)
+        var result = _sut.Assess(MakeProduct(ingredients: "garlic, cream, apple"));
+        result.IngredientScreeningScore.Should().Be(12);
+    }
+
+    [Fact]
+    public void DualClassFood_Alone_NoStackingPenalty()
+    {
+        // A lone dual-class food has breadth 2 (< 3) — no penalty either way.
+        var result = _sut.Assess(MakeProduct(ingredients: "apple"));
+        result.IngredientScreeningScore.Should().Be(40);
     }
 }

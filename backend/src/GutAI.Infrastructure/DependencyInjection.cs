@@ -7,6 +7,7 @@ using Azure.Data.Tables;
 using Azure.Identity;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
+using GutAI.Application.Common.Services;
 using GutAI.Infrastructure.Caching;
 using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.ExternalApis;
@@ -23,7 +24,7 @@ namespace GutAI.Infrastructure;
 
 public static class DependencyInjection
 {
-    // Coach system instructions moved verbatim to Services/CoachPrompts.cs during the
+    // Coach developer instructions moved verbatim to Services/CoachPrompts.cs during the
     // P0b Assistants-API sunset migration.
 
     private static Azure.Core.TokenCredential CreateCredential(IConfiguration configuration)
@@ -72,6 +73,9 @@ public static class DependencyInjection
         // JWT
         services.AddSingleton<IJwtService, JwtService>();
 
+        // AI-consumer linking (pairing codes → personal access tokens for MCP)
+        services.AddScoped<IPairingService, PairingService>();
+
         // In-memory caches
         services.AddMemoryCache();
         services.AddDistributedMemoryCache();
@@ -97,9 +101,16 @@ public static class DependencyInjection
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(20);
         });
 
+        // USDA FoodData Central — 8s timeout, base address configured for relative endpoint calls
+        services.AddHttpClient<UsdaFoodDataClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.nal.usda.gov/");
+            client.Timeout = TimeSpan.FromSeconds(8);
+            client.DefaultRequestHeaders.Add("User-Agent", "GutAI/1.0 (contact@gutai.app)");
+        });
+
         // Register leaf data providers as concrete types for explicit composition
         services.AddScoped<OpenFoodFactsClient>();
-        services.AddScoped<UsdaFoodDataClient>();
         services.AddScoped<WholeFoodApiService>();
         services.AddScoped<AustralianFoodApiService>();
         services.AddScoped<BrandedFoodApiService>();
@@ -152,12 +163,11 @@ public static class DependencyInjection
         services.AddScoped<IContentUnderstandingService>(sp =>
         {
             var client = sp.GetRequiredService<ContentUnderstandingClient>();
-            var openAiClient = sp.GetService<AzureOpenAIClient>();
             var config = sp.GetService<IConfiguration>();
             var logger = sp.GetService<ILogger<ContentUnderstandingService>>();
             var projectClient = sp.GetService<AIProjectClient>();
             var chatClient = sp.GetService<IChatClient>();
-            return new ContentUnderstandingService(client, openAiClient, config, logger, projectClient, chatClient);
+            return new ContentUnderstandingService(client, config, logger, projectClient, chatClient);
         });
 
         // Coach chat (Microsoft.Extensions.AI over Azure OpenAI)
@@ -178,22 +188,24 @@ public static class DependencyInjection
 
         if (!string.IsNullOrEmpty(aiEndpoint))
         {
-            var azureClient = new AzureOpenAIClient(new Uri(aiEndpoint), CreateCredential(configuration));
-            services.AddSingleton(azureClient);
+            var networkTimeoutSeconds = configuration.GetValue("AzureOpenAI:NetworkTimeoutSeconds", 300);
+            var clientOptions = new AzureOpenAIClientOptions
+            {
+                NetworkTimeout = TimeSpan.FromSeconds(Math.Clamp(networkTimeoutSeconds, 30, 600)),
+            };
+            var azureClient = new AzureOpenAIClient(
+                new Uri(aiEndpoint),
+                CreateCredential(configuration),
+                clientOptions);
 
-            // Coach model transport: Microsoft.Extensions.AI IChatClient over Azure OpenAI
-            // Responses API. UseFunctionInvocation middleware executes the coach tools and
-            // feeds results back to the model automatically (replaces the former hand-rolled
-            // Assistants run/tool-output loop). The AsIChatClient adapter carries experimental
-            // metadata upstream — it is deliberately referenced ONLY here.
+            // All model inference uses the Azure OpenAI Responses transport. Responses
+            // preserves reasoning context and is the supported tool-calling surface for
+            // GPT-5.6 reasoning deployments.
             services.AddSingleton<IChatClient>(sp =>
             {
                 var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
 #pragma warning disable OPENAI001 // experimental Responses surface
-                var transport = configuration["AzureOpenAI:Transport"] ?? "responses";
-                var inner = transport.Equals("responses", StringComparison.OrdinalIgnoreCase)
-                    ? azureClient.GetResponsesClient().AsIChatClient(aiDeployment)
-                    : azureClient.GetChatClient(aiDeployment).AsIChatClient();
+                var inner = azureClient.GetResponsesClient().AsIChatClient(aiDeployment);
 #pragma warning restore OPENAI001
                 return new ChatClientBuilder(inner)
                     .UseFunctionInvocation(loggerFactory)
@@ -213,7 +225,9 @@ public static class DependencyInjection
                     sp.GetRequiredService<GutRiskService>(),
                     sp.GetRequiredService<PersonalizedScoringService>(),
                     sp.GetRequiredService<ILogger<CoachChatService>>(),
-                    sp.GetService<IWebNutritionLookup>()
+                    sp.GetService<IWebNutritionLookup>(),
+                    sp.GetService<IOfflineFoodDatabase>(),
+                    sp.GetService<IExternalFoodAggregator>()
                 );
             });
 

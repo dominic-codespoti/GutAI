@@ -53,6 +53,9 @@ export interface MealItem {
   servings: number;
   servingUnit: string;
   servingWeightG?: number;
+  servingHintUnit?: string | null;
+  servingHintUnitPlural?: string | null;
+  servingHintUnitGrams?: number | null;
   foodProductId?: string;
   safetyRating?: string | null;
   calories: number;
@@ -84,6 +87,9 @@ export interface CreateMealItemRequest {
   servings: number;
   servingUnit: string;
   servingWeightG?: number;
+  servingHintUnit?: string | null;
+  servingHintUnitPlural?: string | null;
+  servingHintUnitGrams?: number | null;
   calories: number;
   proteinG: number;
   carbsG: number;
@@ -241,6 +247,11 @@ export interface Correlation {
   limitations: string[];
 }
 
+export type ToolResultSummary =
+  | { type: "meal_logged"; mealType?: string | null; calories: number; items: string[] }
+  | { type: "meals_today"; count: number; calories: number }
+  | { type: "triggers"; count: number; top?: string | null };
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -253,6 +264,9 @@ export interface ChatStreamEvent {
   tool_call?: string;
   status?: string;
   error?: string;
+  thread_id?: string;
+  tool_result?: string;
+  summary?: ToolResultSummary | null;
 }
 
 export interface NutritionTrend {
@@ -562,10 +576,21 @@ export interface GroundingCandidate {
   food_product_id?: string | null;
   source: string;
   match_confidence: number;
+  brand?: string | null;
+  external_id?: string | null;
+  source_url?: string | null;
+  calories_100g?: number | null;
+  protein_100g?: number | null;
+  carbs_100g?: number | null;
+  fat_100g?: number | null;
+  fiber_100g?: number | null;
+  sugar_100g?: number | null;
+  sodium_mg_100g?: number | null;
 }
 
 export interface GroundingAttempt {
   query: string;
+  queries?: string[];
   resolution_status: string;
   auto_selected: boolean;
   selected_food_product_id?: string | null;
@@ -583,6 +608,14 @@ export interface MealScanItem {
   source: string;
   sourceUrl?: string | null;
   grams: number;
+  portionLowGrams?: number | null;
+  portionHighGrams?: number | null;
+  servingHintUnit?: string | null;
+  servingHintUnitPlural?: string | null;
+  servingHintUnitGrams?: number | null;
+  portionMethod?: string | null;
+  portionConfidence?: number | null;
+  isGarnish?: boolean;
   calories?: number | null;
   proteinG?: number | null;
   carbsG?: number | null;
@@ -629,5 +662,47 @@ export interface MealScanConfirmRequest {
   mealType?: string;
   loggedAt?: string;
   items: MealScanConfirmItem[];
+}
+
+export interface PairingCodeResponse {
+  code: string;
+  expiresAt: string;
+}
+
+export interface LinkedAccessToken {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface ImportMealsItem {
+  loggedAt: string;
+  mealType?: "Breakfast" | "Lunch" | "Dinner" | "Snack";
+  externalId?: string;
+  name?: string;
+  servings?: number;
+  notes?: string;
+  calories?: number;
+  proteinG?: number;
+  carbsG?: number;
+  fatG?: number;
+  fiberG?: number;
+  sugarG?: number;
+  sodiumMg?: number;
+}
+
+export interface ImportMealsRequest {
+  source: "health-connect" | "healthkit" | string;
+  items: ImportMealsItem[];
+}
+
+export interface ImportMealsResult {
+  imported: number;
+  skippedDuplicates: number;
+  failed: number;
+  errors: string[];
 }
 

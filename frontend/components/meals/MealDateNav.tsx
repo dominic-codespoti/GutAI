@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors, useThemeShadow } from "../../src/stores/theme";
+import * as haptics from "../../src/utils/haptics";
 import {
   shiftDate,
   formatDateLabel,
@@ -31,7 +32,10 @@ export function MealDateNav() {
       }}
     >
       <TouchableOpacity
-        onPress={() => setDate(shiftDate(selectedDate, -1))}
+        onPress={() => {
+          haptics.selection();
+          setDate(shiftDate(selectedDate, -1));
+        }}
         style={{ padding: 8 }}
         accessibilityRole="button"
         accessibilityLabel="Previous day"
@@ -41,7 +45,10 @@ export function MealDateNav() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => setDate(todayStr)}
+        onPress={() => {
+          haptics.selection();
+          setDate(todayStr);
+        }}
         accessibilityRole="button"
         accessibilityLabel={`Current date: ${formatDateLabel(selectedDate)}. Tap to go to today.`}
       >
@@ -84,7 +91,12 @@ export function MealDateNav() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => !isToday && setDate(shiftDate(selectedDate, 1))}
+        onPress={() => {
+          if (!isToday) {
+            haptics.selection();
+            setDate(shiftDate(selectedDate, 1));
+          }
+        }}
         style={{ padding: 8, opacity: isToday ? 0.3 : 1 }}
         accessibilityRole="button"
         accessibilityLabel="Next day"

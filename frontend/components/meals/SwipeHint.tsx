@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   Animated,
+  Platform,
   View,
   Text,
   TouchableOpacity,
@@ -40,7 +41,7 @@ export function SwipeHint() {
           toValue: 1,
           duration: 400,
           delay: 800,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }).start();
       }
     });
@@ -50,7 +51,7 @@ export function SwipeHint() {
     Animated.timing(opacity, {
       toValue: 0,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start(() => {
       setShow(false);
       setItem(HINT_KEY, "1");
@@ -69,9 +70,14 @@ export function SwipeHint() {
           style={{ marginRight: 6 }}
         />
         <Text style={styles.text}>
-          Swipe left to delete, right to swap a food item
+          Swipe right to swap, left to delete a food item
         </Text>
-        <TouchableOpacity onPress={dismiss} hitSlop={8}>
+        <TouchableOpacity
+          onPress={dismiss}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss swipe hint"
+        >
           <Ionicons name="close" size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>

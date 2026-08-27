@@ -25,12 +25,24 @@ public sealed class GateThresholds
     /// <summary>Maximum allowed median gram error over matched components.</summary>
     [JsonPropertyName("max_median_gram_error_percent")]
     public double MaxMedianGramErrorPercent { get; set; } = 35.0;
+
+    /// <summary>Minimum fraction of expected components with a real nutrition-backed product.</summary>
+    [JsonPropertyName("min_nutrition_backed_rate")]
+    public double MinNutritionBackedRate { get; set; } = 0.70;
+
+    /// <summary>Maximum fraction of scanned items that are unmatched extras.</summary>
+    [JsonPropertyName("max_false_positive_rate")]
+    public double MaxFalsePositiveRate { get; set; } = 0.35;
 }
 
 public sealed class GoldenCase
 {
     [JsonPropertyName("image")]
     public string Image { get; set; } = ""; // file name relative to the images directory
+
+    /// <summary>"composite" expects one unified dish; "components" expects separate visible items.</summary>
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "components";
 
     [JsonPropertyName("expected")]
     public List<GoldenExpected> Expected { get; set; } = [];

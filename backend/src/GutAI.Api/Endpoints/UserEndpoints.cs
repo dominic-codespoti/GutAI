@@ -13,6 +13,9 @@ public static class UserEndpoints
         group.MapGet("/alerts", GetFoodAlerts);
         group.MapPost("/alerts", AddFoodAlert);
         group.MapDelete("/alerts/{additiveId:int}", DeleteFoodAlert);
+        group.MapPost("/pairing-codes", CreatePairingCode);
+        group.MapGet("/tokens", ListTokens);
+        group.MapDelete("/tokens/{id:guid}", RevokeToken);
         group.MapDelete("/account", DeleteAccount);
         return group;
     }
@@ -58,22 +61,22 @@ public static class UserEndpoints
         if (request.TimezoneId is not null && request.TimezoneId.Length > 100)
             return Results.BadRequest(new { error = "Timezone ID must not exceed 100 characters" });
 
-        if (request.Allergies.Length > 50)
+        if (request.Allergies is { Length: > 50 })
             return Results.BadRequest(new { error = "Cannot have more than 50 allergies" });
 
-        if (request.Allergies.Any(a => a.Length > 100))
+        if (request.Allergies?.Any(a => a.Length > 100) == true)
             return Results.BadRequest(new { error = "Each allergy must not exceed 100 characters" });
 
-        if (request.DietaryPreferences.Length > 50)
+        if (request.DietaryPreferences is { Length: > 50 })
             return Results.BadRequest(new { error = "Cannot have more than 50 dietary preferences" });
 
-        if (request.DietaryPreferences.Any(d => d.Length > 100))
+        if (request.DietaryPreferences?.Any(d => d.Length > 100) == true)
             return Results.BadRequest(new { error = "Each dietary preference must not exceed 100 characters" });
 
-        if (request.GutConditions.Length > 20)
+        if (request.GutConditions is { Length: > 20 })
             return Results.BadRequest(new { error = "Cannot have more than 20 gut conditions" });
 
-        if (request.GutConditions.Any(c => c.Length > 100))
+        if (request.GutConditions?.Any(c => c.Length > 100) == true)
             return Results.BadRequest(new { error = "Each gut condition must not exceed 100 characters" });
 
         user.DisplayName = request.DisplayName ?? user.DisplayName;
@@ -188,7 +191,44 @@ public static class UserEndpoints
         var userId = GetUserId(principal);
         var alert = await store.GetUserFoodAlertAsync(userId, additiveId);
         if (alert is null) return Results.NotFound();
+
         await store.DeleteUserFoodAlertAsync(userId, additiveId);
+        return Results.NoContent();
+    }
+    static async Task<IResult> CreatePairingCode(ClaimsPrincipal principal, IPairingService pairing)
+    {
+        var userId = GetUserId(principal);
+        var issued = await pairing.CreatePairingCodeAsync(userId);
+        return Results.Ok(new { code = issued.Code, expiresAt = issued.ExpiresAt });
+    }
+
+    static async Task<IResult> ListTokens(ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = GetUserId(principal);
+        var tokens = await store.GetActivePersonalAccessTokensAsync(userId);
+        return Results.Ok(tokens
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new
+            {
+                id = t.Id,
+                name = t.Name,
+                prefix = t.TokenPrefix,
+                scopes = t.Scopes,
+                createdAt = t.CreatedAt,
+                lastUsedAt = t.LastUsedAt,
+            }));
+    }
+
+    static async Task<IResult> RevokeToken(Guid id, ClaimsPrincipal principal, ITableStore store)
+    {
+        var userId = GetUserId(principal);
+        var tokens = await store.GetActivePersonalAccessTokensAsync(userId);
+        var token = tokens.FirstOrDefault(t => t.Id == id);
+        if (token is null)
+            return Results.NotFound(new { error = "Connected assistant not found." });
+
+        token.RevokedAt = DateTime.UtcNow;
+        await store.UpsertPersonalAccessTokenAsync(token);
         return Results.NoContent();
     }
 
@@ -196,6 +236,8 @@ public static class UserEndpoints
     {
         var userId = GetUserId(principal);
         await store.DeleteRefreshTokensForUserAsync(userId);
+        await store.DeletePersonalAccessTokensForUserAsync(userId);
+        await store.DeletePairingCodesForUserAsync(userId);
         var alerts = await store.GetUserFoodAlertsAsync(userId);
         foreach (var alert in alerts)
             await store.DeleteUserFoodAlertAsync(userId, alert.FoodAdditiveId);

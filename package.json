@@ -9,7 +9,7 @@
     "e2e:ui": "playwright test --ui"
   },
   "name": "gut-ai",
-  "version": "1.0.0",
+  "version": "1.0.10",
   "description": "> Meal logging · Calorie tracking · Gut health symptom correlation · Food safety insights",
   "main": "index.js",
   "directories": {

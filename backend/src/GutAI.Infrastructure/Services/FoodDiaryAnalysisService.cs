@@ -1,6 +1,8 @@
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Enums;
+
 
 namespace GutAI.Infrastructure.Services;
 
@@ -12,9 +14,9 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
     // symptom, or double-count one symptom event as full-strength evidence across every
     // candidate meal in its onset window.
 
-    public async Task<FoodDiaryAnalysisDto> AnalyzeAsync(Guid userId, DateOnly from, DateOnly to, ITableStore store)
+    public async Task<FoodDiaryAnalysisDto> AnalyzeAsync(Guid userId, DateOnly from, DateOnly to, ITableStore store, string? timezoneId = null)
     {
-        var result = await FoodSymptomAssociationService.ComputeAsync(userId, from, to, store, includeAdditives: false);
+        var result = await FoodSymptomAssociationService.ComputeAsync(userId, from, to, store, includeAdditives: false, ct: default, timezoneId: timezoneId);
         var meals = result.Meals;
         var symptoms = result.Symptoms;
 
@@ -64,11 +66,14 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
         return a.Limitations.Count > 0 ? $"{baseText} {string.Join(" ", a.Limitations)}" : baseText;
     }
 
-    public async Task<EliminationDietStatusDto> GetEliminationStatusAsync(Guid userId, ITableStore store)
+    public async Task<EliminationDietStatusDto> GetEliminationStatusAsync(Guid userId, ITableStore store, string? timezoneId = null)
     {
-        var to = DateOnly.FromDateTime(DateTime.UtcNow);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var to = todayLocal;
         var from = to.AddDays(-90);
-        var analysis = await AnalyzeAsync(userId, from, to, store);
+        var analysis = await AnalyzeAsync(userId, from, to, store, timezoneId);
 
         var highConfidence = analysis.Patterns
             .Where(p => p.Confidence == "High")
@@ -88,7 +93,11 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             .Distinct()
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var recentMeals = await store.GetMealLogsByDateRangeAsync(userId, from, to);
+        var (utcStart90, utcEnd90) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, from, to, timezoneId);
+        var coarseFrom90 = DateOnly.FromDateTime(utcStart90);
+        var coarseTo90 = DateOnly.FromDateTime(utcEnd90);
+        var recentMeals = await store.GetMealLogsByDateRangeAsync(userId, coarseFrom90, coarseTo90);
+        recentMeals = recentMeals.Where(m => m.LoggedAt >= utcStart90 && m.LoggedAt <= utcEnd90).ToList();
         foreach (var meal in recentMeals)
             meal.Items = await store.GetMealItemsAsync(userId, meal.Id);
 
@@ -103,19 +112,24 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
             .OrderByDescending(f => foodFrequency[f])
             .ToList();
 
-        var fourteenDaysAgo = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-14));
+        var fourteenDaysAgo = todayLocal.AddDays(-14);
+        var sevenDaysAgo = todayLocal.AddDays(-7);
+        var (utcStart14, utcEnd14) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, fourteenDaysAgo, todayLocal, timezoneId);
+        var (utcStart7, _) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, sevenDaysAgo, todayLocal, timezoneId);
+
         var recentFoods = recentMeals
-            .Where(m => DateOnly.FromDateTime(m.LoggedAt) >= fourteenDaysAgo)
+            .Where(m => m.LoggedAt >= utcStart14)
             .SelectMany(m => m.Items.Select(i => i.FoodName))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var olderMeals = recentMeals
-            .Where(m => DateOnly.FromDateTime(m.LoggedAt) < fourteenDaysAgo);
+            .Where(m => m.LoggedAt < utcStart14);
         var olderFoods = olderMeals
             .SelectMany(m => m.Items.Select(i => i.FoodName))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var recentSymptoms = await store.GetSymptomLogsByDateRangeAsync(userId, fourteenDaysAgo, DateOnly.FromDateTime(DateTime.UtcNow));
+        var recentSymptoms = await store.GetSymptomLogsByDateRangeAsync(userId, DateOnly.FromDateTime(utcStart14), DateOnly.FromDateTime(utcEnd14));
+        recentSymptoms = recentSymptoms.Where(s => s.OccurredAt >= utcStart14 && s.OccurredAt <= utcEnd14).ToList();
         foreach (var s in recentSymptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
 
@@ -123,8 +137,7 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
         foreach (var food in highConfidence)
         {
             var wasEliminated = olderFoods.Contains(food) && !recentMeals
-                .Where(m => DateOnly.FromDateTime(m.LoggedAt) >= fourteenDaysAgo
-                    && DateOnly.FromDateTime(m.LoggedAt) < DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7)))
+                .Where(m => m.LoggedAt >= utcStart14 && m.LoggedAt < utcStart7)
                 .SelectMany(m => m.Items)
                 .Any(i => i.FoodName.Equals(food, StringComparison.OrdinalIgnoreCase));
 
@@ -132,10 +145,9 @@ public class FoodDiaryAnalysisService : IFoodDiaryAnalysisService
                 continue;
 
             var reintroMeals = recentMeals
-                .Where(m => DateOnly.FromDateTime(m.LoggedAt) >= DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7))
+                .Where(m => m.LoggedAt >= utcStart7
                     && m.Items.Any(i => i.FoodName.Equals(food, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
-
             if (reintroMeals.Count == 0)
                 continue;
 

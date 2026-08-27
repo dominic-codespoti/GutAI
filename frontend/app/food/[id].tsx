@@ -12,10 +12,9 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
-import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { foodApi, mealApi, insightApi } from "../../src/api";
+import { foodApi, mealApi, insightApi, userApi } from "../../src/api";
 import { Ionicons } from "@expo/vector-icons";
 import { ErrorState } from "../../components/ErrorState";
 import { MealTypePicker } from "../../components/MealTypePicker";
@@ -30,9 +29,14 @@ import {
 import { toast } from "../../src/stores/toast";
 import type { PersonalizedScore } from "../../src/types";
 import { maybeRequestReview } from "../../src/utils/review";
+import {
+  maybeWriteMealToPlatform,
+  mealWriteFromResponse,
+} from "../../src/services/health";
 import { SafeScreen } from "../../components/SafeScreen";
 import { Linking } from "react-native";
 import { SourceChip } from "../../components/SourceChip";
+import { useShareCard } from "../../components/share/ShareCardPortal";
 import { useThemeColors } from "../../src/stores/theme";
 import type { ThemeColors } from "../../src/utils/theme";
 import {
@@ -41,6 +45,7 @@ import {
 } from "../../components/SkeletonLoader";
 import { useFavorites } from "../../src/hooks/useFavorites";
 import * as haptics from "../../src/utils/haptics";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
 
 const gutScoreColor = (score: number, c: ThemeColors) => {
   if (score >= 80) return c.primaryLight;
@@ -104,7 +109,9 @@ export default function FoodDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const timezoneId = getDeviceTimezoneId();
   const { isFavorite, toggleFavorite } = useFavorites();
+  const shareCard = useShareCard();
   const [showAddToMeal, setShowAddToMeal] = useState(false);
   const [addToMealType, setAddToMealType] = useState<string>("Lunch");
   const [servingSize, setServingSize] = useState(100);
@@ -134,18 +141,125 @@ export default function FoodDetailScreen() {
   });
 
   const { data: personalScore } = useQuery({
-    queryKey: ["personalized-score", id],
+    queryKey: ["personalized-score", id, timezoneId],
     queryFn: () => foodApi.personalizedScore(id!).then((r) => r.data),
     enabled: !!id,
   });
 
   const { data: userProfile } = useQuery({
     queryKey: ["user-profile"],
-    queryFn: async () => {
-      const { userApi } = await import("../../src/api");
-      return userApi.getProfile().then((r) => r.data);
+    queryFn: () => userApi.getProfile().then((r) => r.data),
+  });
+
+  const { data: alerts } = useQuery({
+    queryKey: ["alerts"],
+    queryFn: () => userApi.getAlerts().then((r) => r.data),
+  });
+
+  const alertIds = new Set((alerts ?? []).map((a) => a.additiveId));
+
+  const addAlertMutation = useMutation({
+    mutationFn: (additive: { id: number; name: string; cspiRating?: string }) =>
+      userApi.addAlert(additive.id),
+    onMutate: async (additive) => {
+      await queryClient.cancelQueries({ queryKey: ["alerts"] });
+      const previousAlerts = queryClient.getQueryData<any[]>(["alerts"]);
+      queryClient.setQueryData<any[]>(["alerts"], (old) => [
+        ...(old ?? []),
+        {
+          additiveId: additive.id,
+          name: additive.name,
+          cspiRating: additive.cspiRating ?? "Caution",
+          alertEnabled: true,
+        },
+      ]);
+      return { previousAlerts };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousAlerts) {
+        queryClient.setQueryData(["alerts"], context.previousAlerts);
+      }
+      toast.error("Failed to add alert");
+    },
+    onSuccess: (_data, additive) => {
+      toast.success(`Watching ${additive.name}`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
   });
+
+  const removeAlertMutation = useMutation({
+    mutationFn: (additive: { id: number; name: string }) =>
+      userApi.removeAlert(additive.id),
+    onMutate: async (additive) => {
+      await queryClient.cancelQueries({ queryKey: ["alerts"] });
+      const previousAlerts = queryClient.getQueryData<any[]>(["alerts"]);
+      queryClient.setQueryData<any[]>(["alerts"], (old) =>
+        (old ?? []).filter((a) => a.additiveId !== additive.id),
+      );
+      return { previousAlerts };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousAlerts) {
+        queryClient.setQueryData(["alerts"], context.previousAlerts);
+      }
+      toast.error("Failed to remove alert");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    },
+  });
+
+  const handleToggleAlert = (add: { id: number; name: string; cspiRating?: string }) => {
+    haptics.selection();
+    if (alertIds.has(add.id)) {
+      removeAlertMutation.mutate({ id: add.id, name: add.name });
+    } else {
+      addAlertMutation.mutate({ id: add.id, name: add.name, cspiRating: add.cspiRating });
+    }
+  };
+
+  const handleShareReport = () => {
+    if (!product || loadingReport) return;
+
+    const flagged = (report?.additives ?? []).filter(
+      (a) =>
+        ["Caution", "Avoid", "Cut Back"].includes(a.cspiRating) ||
+        a.healthConcerns ||
+        a.bannedInCountries.length > 0,
+    );
+    const additiveSource =
+      flagged.length > 0 ? flagged : (report?.additives ?? []);
+
+    shareCard({
+      template: "safetyReport",
+      data: {
+        name: product.name,
+        brand: product.brand,
+        score:
+          personalScore?.compositeScore != null
+            ? personalScore.compositeScore
+            : (report?.safetyScore ?? null),
+        scoreLabel:
+          personalScore?.compositeScore != null
+            ? "Your Gut Score"
+            : "Safety Score",
+        gutRating: report?.gutRisk?.gutRating ?? null,
+        fodmapStatus: report?.fodmap
+          ? fodmapStatusLabel(report.fodmap.status)
+          : null,
+        giText: report?.glycemic
+          ? report.glycemic.estimatedGI != null
+            ? `GI ${report.glycemic.estimatedGI} (${report.glycemic.giCategory})`
+            : report.glycemic.giCategory
+          : null,
+        flaggedAdditives: additiveSource.map(
+          (a) => `${a.name} (${a.cspiRating})`,
+        ),
+      },
+    });
+  };
 
   const conditions = userProfile?.gutConditions ?? [];
   const hasConditions = conditions.length > 0;
@@ -158,7 +272,7 @@ export default function FoodDetailScreen() {
   const glycemicRelevant = conditions.some((c) => c === "GERD");
 
   const { data: triggerFoods } = useQuery({
-    queryKey: ["trigger-foods"],
+    queryKey: ["trigger-foods", timezoneId],
     queryFn: () => insightApi.triggerFoods(90).then((r) => r.data),
   });
 
@@ -232,6 +346,21 @@ export default function FoodDetailScreen() {
       dietWarnings.push("Not Low-FODMAP friendly");
   }
 
+  const hasExcessFructoseOrPolyolTrigger =
+    (report?.fodmap?.categories.some((cat) =>
+      /Monosaccharide|Fructose|Polyol/i.test(cat),
+    ) ?? false) ||
+    (report?.fodmap?.triggers.some(
+      (t) =>
+        /Monosaccharide|Fructose|Polyol/i.test(t.category) ||
+        /Monosaccharide|Fructose|Polyol/i.test(t.subCategory),
+    ) ?? false);
+  const hasLowOrMedGi =
+    report?.glycemic?.giCategory === "Low" ||
+    report?.glycemic?.giCategory === "Medium";
+  const showGiFodmapNote =
+    hasExcessFructoseOrPolyolTrigger && hasLowOrMedGi;
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -261,23 +390,27 @@ export default function FoodDetailScreen() {
         ],
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["meals"] });
       queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
       queryClient.invalidateQueries({ queryKey: ["recent-foods"] });
       queryClient.invalidateQueries({ queryKey: ["streak"] });
       queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["diary-analysis"] });
-      queryClient.invalidateQueries({ queryKey: ["additive-exposure"] });
+      queryClient.invalidateQueries({ queryKey: ["trigger-foods"] });
+      queryClient.invalidateQueries({ queryKey: ["food-diary-analysis"] });
       queryClient.invalidateQueries({ queryKey: ["nutrition-trends"] });
       setShowAddToMeal(false);
       toast.success("Added to meal!");
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      haptics.success();
       maybeRequestReview();
+      if (res?.data) {
+        maybeWriteMealToPlatform(mealWriteFromResponse(res.data));
+      }
     },
-    onError: () => toast.error("Failed to add to meal"),
+    onError: () => {
+      toast.error("Failed to add to meal");
+      haptics.error();
+    },
   });
 
   useEffect(() => {
@@ -378,29 +511,49 @@ export default function FoodDetailScreen() {
                 >
                   {product.name}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.selection();
-                    toggleFavorite(product.id);
-                  }}
-                  style={{ padding: 6, marginLeft: 8 }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    isFavorite(product.id)
-                      ? "Remove from favorites"
-                      : "Add to favorites"
-                  }
-                  accessibilityState={{ selected: isFavorite(product.id) }}
-                >
-                  <Ionicons
-                    name={isFavorite(product.id) ? "heart" : "heart-outline"}
-                    size={24}
-                    color={
-                      isFavorite(product.id) ? colors.danger : colors.textMuted
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <TouchableOpacity
+                    onPress={handleShareReport}
+                    disabled={loadingReport}
+                    style={{
+                      padding: 6,
+                      opacity: loadingReport ? 0.4 : 1,
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Share safety report"
+                    accessibilityState={{ disabled: loadingReport }}
+                  >
+                    <Ionicons
+                      name="share-outline"
+                      size={22}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.selection();
+                      toggleFavorite(product.id);
+                    }}
+                    style={{ padding: 6, marginLeft: 4 }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isFavorite(product.id)
+                        ? "Remove from favorites"
+                        : "Add to favorites"
                     }
-                  />
-                </TouchableOpacity>
+                    accessibilityState={{ selected: isFavorite(product.id) }}
+                  >
+                    <Ionicons
+                      name={isFavorite(product.id) ? "heart" : "heart-outline"}
+                      size={24}
+                      color={
+                        isFavorite(product.id) ? colors.danger : colors.textMuted
+                      }
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
               {product.brand && (
                 <Text
@@ -1370,6 +1523,18 @@ export default function FoodDetailScreen() {
                     ))}
                   </View>
                 )}
+                {showGiFodmapNote && (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.textMuted,
+                      marginTop: 8,
+                      lineHeight: 16,
+                    }}
+                  >
+                    Note: a low glycemic index does not mean low FODMAP — fructose- and polyol-rich foods score low on GI but can still trigger gut symptoms.
+                  </Text>
+                )}
                 <Text
                   style={{
                     fontSize: 10,
@@ -2019,6 +2184,32 @@ export default function FoodDetailScreen() {
                           {cspiEmoji(add.cspiRating)} {add.cspiRating}
                         </Text>
                       </View>
+                      <TouchableOpacity
+                        onPress={() => handleToggleAlert(add)}
+                        style={{ padding: 4, marginLeft: 2 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          alertIds.has(add.id)
+                            ? `Remove alert for ${add.name}`
+                            : `Watch ${add.name}`
+                        }
+                        accessibilityState={{ selected: alertIds.has(add.id) }}
+                      >
+                        <Ionicons
+                          name={
+                            alertIds.has(add.id)
+                              ? "notifications"
+                              : "notifications-outline"
+                          }
+                          size={18}
+                          color={
+                            alertIds.has(add.id)
+                              ? colors.warning
+                              : colors.textMuted
+                          }
+                        />
+                      </TouchableOpacity>
                     </View>
                     {add.healthConcerns && (
                       <Text

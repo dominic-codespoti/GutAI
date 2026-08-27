@@ -5,7 +5,6 @@ using GutAI.Api.Mcp;
 using GutAI.Domain.Entities;
 using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -23,14 +22,8 @@ namespace GutAI.IntegrationTests;
 [Collection("Azurite")]
 public class McpProjectionParityTests(AzuriteFixture fx)
 {
-    private static HttpContext MakeHttpContext(Guid userId)
-    {
-        var context = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", userId.ToString())]))
-        };
-        return context;
-    }
+    private static ClaimsPrincipal MakeUser(Guid userId) =>
+        new(new ClaimsIdentity([new Claim("sub", userId.ToString())], "TestAuth"));
 
     [Fact]
     public async Task GetTriggerFoods_AgreesWithDirectCorrelationEngineCall()
@@ -71,7 +64,7 @@ public class McpProjectionParityTests(AzuriteFixture fx)
             .First(c => c.FoodOrAdditive == "Garlic Bread");
 
         var tools = new MealSymptomTools(fx.Store, null!, engine, new FoodDiaryAnalysisService(), NullLogger<MealSymptomTools>.Instance);
-        var json = await tools.GetTriggerFoods(MakeHttpContext(userId), days: 61, CancellationToken.None);
+        var json = await tools.GetTriggerFoods(MakeUser(userId), days: 61, CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         var mcpEntry = doc.RootElement.EnumerateArray().First(e => e.GetProperty("food").GetString() == "Garlic Bread");
@@ -112,7 +105,7 @@ public class McpProjectionParityTests(AzuriteFixture fx)
         var groundTruth = await diaryService.GetEliminationStatusAsync(userId, fx.Store);
 
         var tools = new MealSymptomTools(fx.Store, null!, new CorrelationEngine(fx.Store), diaryService, NullLogger<MealSymptomTools>.Instance);
-        var json = await tools.GetEliminationDietStatus(MakeHttpContext(userId), CancellationToken.None);
+        var json = await tools.GetEliminationDietStatus(MakeUser(userId), CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("phase").GetString().Should().Be(groundTruth.Phase);

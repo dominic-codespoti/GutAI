@@ -32,6 +32,9 @@ public record MealItemDto
     public decimal SugarG { get; init; }
     public decimal SodiumMg { get; init; }
     public decimal? ServingWeightG { get; init; }
+    public string? ServingHintUnit { get; init; }
+    public string? ServingHintUnitPlural { get; init; }
+    public decimal? ServingHintUnitGrams { get; init; }
     public Guid? FoodProductId { get; init; }
     public decimal CholesterolMg { get; init; }
     public decimal SaturatedFatG { get; init; }
@@ -60,6 +63,9 @@ public record CreateMealItemRequest
     public decimal Servings { get; init; } = 1.0m;
     public string ServingUnit { get; init; } = "serving";
     public decimal? ServingWeightG { get; init; }
+    public string? ServingHintUnit { get; init; }
+    public string? ServingHintUnitPlural { get; init; }
+    public decimal? ServingHintUnitGrams { get; init; }
     public decimal Calories { get; init; }
     public decimal ProteinG { get; init; }
     public decimal CarbsG { get; init; }
@@ -75,6 +81,44 @@ public record CreateMealItemRequest
     /// selection, or barcode scan — those already have a deterministic identity.</summary>
     public decimal? MatchConfidence { get; init; }
     public string? NutritionProvenance { get; init; }
+}
+
+/// <summary>Bulk import of externally tracked meals (health platforms, CSV sources).
+/// One item becomes one GutAI meal with a single name-only item; nutrition arrives
+/// pre-computed by the source app and is stored with Estimated provenance.</summary>
+public record ImportMealsRequest
+{
+    /// <summary>Lowercase source slug: "health-connect", "healthkit", "myfitnesspal", …</summary>
+    public string Source { get; init; } = default!;
+    public List<ImportMealRequest> Items { get; init; } = [];
+}
+
+public record ImportMealRequest
+{
+    /// <summary>UTC or offset-aware timestamp supplied by the health platform.</summary>
+    public DateTime LoggedAt { get; init; }
+    /// <summary>Breakfast/Lunch/Dinner/Snack; derived from the timestamp in the user's timezone when omitted.</summary>
+    public string? MealType { get; init; }
+    /// <summary>Stable id in the source system; enables idempotent re-imports.</summary>
+    public string? ExternalId { get; init; }
+    public string? Name { get; init; }
+    public decimal Servings { get; init; } = 1.0m;
+    public string? Notes { get; init; }
+    public decimal Calories { get; init; }
+    public decimal ProteinG { get; init; }
+    public decimal CarbsG { get; init; }
+    public decimal FatG { get; init; }
+    public decimal FiberG { get; init; }
+    public decimal SugarG { get; init; }
+    public decimal SodiumMg { get; init; }
+}
+
+public record ImportMealsResult
+{
+    public int Imported { get; init; }
+    public int SkippedDuplicates { get; init; }
+    public int Failed { get; init; }
+    public List<string> Errors { get; init; } = [];
 }
 
 public record NaturalLanguageMealRequest

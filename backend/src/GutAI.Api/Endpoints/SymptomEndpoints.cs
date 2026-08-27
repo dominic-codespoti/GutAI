@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 
@@ -44,7 +45,9 @@ public static class SymptomEndpoints
             UserId = userId,
             SymptomTypeId = request.SymptomTypeId,
             Severity = request.Severity,
-            OccurredAt = request.OccurredAt ?? DateTime.UtcNow,
+            OccurredAt = request.OccurredAt.HasValue
+                ? TimeZoneHelper.NormalizeUtc(request.OccurredAt.Value)
+                : DateTime.UtcNow,
             Notes = request.Notes,
             RelatedMealLogId = request.RelatedMealLogId,
             Duration = request.Duration
@@ -55,45 +58,52 @@ public static class SymptomEndpoints
         return Results.Created($"/api/symptoms/{symptom.Id}", MapToDto(symptom));
     }
 
-    static async Task<IResult> GetSymptomsByDate(DateOnly? date, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetSymptomsByDate(
+        DateOnly? date,
+        int? tzOffsetMinutes,
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store)
     {
         var userId = GetUserId(principal);
-        var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var user = await store.GetUserAsync(userId);
+        var hasTimezone = !string.IsNullOrWhiteSpace(timezoneId)
+            || !string.IsNullOrWhiteSpace(user?.TimezoneId);
+        var timezone = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var targetDate = date
+            ?? (hasTimezone
+                ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone))
+                : tzOffsetMinutes.HasValue
+                    ? DateOnly.FromDateTime(DateTime.UtcNow.Add(TimeSpan.FromMinutes(-tzOffsetMinutes.Value)))
+                    : DateOnly.FromDateTime(DateTime.UtcNow));
+        var (utcStart, utcEnd) = hasTimezone
+            ? TimeZoneHelper.GetUtcRangeForLocalDate(user, targetDate, timezoneId)
+            : tzOffsetMinutes.HasValue
+                ? TimeZoneHelper.GetUtcRangeForFixedOffset(targetDate, tzOffsetMinutes.Value)
+                : TimeZoneHelper.GetUtcRangeForLocalDate(user, targetDate);
 
-        // When a timezone offset is provided, shift the UTC boundaries so
-        // "2026-03-07" means midnight-to-midnight in the user's local time.
-        // JS getTimezoneOffset() returns minutes *behind* UTC (e.g. UTC+10 → -600).
-        if (tzOffsetMinutes.HasValue)
-        {
-            var offset = TimeSpan.FromMinutes(-tzOffsetMinutes.Value);
-            var localStart = targetDate.ToDateTime(TimeOnly.MinValue);
-            var localEnd = targetDate.ToDateTime(TimeOnly.MaxValue);
-            var utcStart = localStart - offset;
-            var utcEnd = localEnd - offset;
-            var symptoms = await store.GetSymptomLogsByDateRangeAsync(
-                userId,
-                DateOnly.FromDateTime(utcStart),
-                DateOnly.FromDateTime(utcEnd),
-                default);
-            // Further filter to exact UTC boundaries
-            symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
-            foreach (var s in symptoms)
-                s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
-            return Results.Ok(symptoms.OrderBy(s => s.OccurredAt).Select(MapToDto));
-        }
-
-        var targetSymptoms = await store.GetSymptomLogsByDateAsync(userId, targetDate);
-        foreach (var s in targetSymptoms)
+        var symptoms = await store.GetSymptomLogsByDateRangeAsync(
+            userId,
+            DateOnly.FromDateTime(utcStart),
+            DateOnly.FromDateTime(utcEnd));
+        symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
+        foreach (var s in symptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
-        return Results.Ok(targetSymptoms.OrderBy(s => s.OccurredAt).Select(MapToDto));
+        return Results.Ok(symptoms.OrderBy(s => s.OccurredAt).Select(MapToDto));
     }
 
-    static async Task<IResult> GetSymptomHistory(DateOnly? from, DateOnly? to, int? typeId, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetSymptomHistory(DateOnly? from, DateOnly? to, int? typeId, string? timezoneId, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, fromDate, toDate, timezoneId);
+        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, DateOnly.FromDateTime(utcStart), DateOnly.FromDateTime(utcEnd));
+        symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
         if (typeId.HasValue)
             symptoms = symptoms.Where(s => s.SymptomTypeId == typeId.Value).ToList();
         foreach (var s in symptoms)
@@ -149,7 +159,7 @@ public static class SymptomEndpoints
         symptom.RelatedMealLogId = request.RelatedMealLogId;
         symptom.Duration = request.Duration;
         if (request.OccurredAt.HasValue)
-            symptom.OccurredAt = request.OccurredAt.Value;
+            symptom.OccurredAt = TimeZoneHelper.NormalizeUtc(request.OccurredAt.Value);
         await store.UpsertSymptomLogAsync(symptom);
         symptom.SymptomType = await store.GetSymptomTypeAsync(symptom.SymptomTypeId);
         return Results.Ok(MapToDto(symptom));

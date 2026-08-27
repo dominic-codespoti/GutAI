@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 
@@ -19,28 +20,60 @@ public static class InsightEndpoints
 
     static Guid GetUserId(ClaimsPrincipal p) => Guid.Parse(p.FindFirstValue("sub")!);
 
-    static async Task<IResult> GetCorrelations(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store, ICorrelationEngine correlationEngine)
+    static async Task<IResult> GetCorrelations(DateOnly? from, DateOnly? to, string? timezoneId, ClaimsPrincipal principal, ITableStore store, ICorrelationEngine correlationEngine)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var result = await correlationEngine.ComputeCorrelationsAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+        var result = await correlationEngine.ComputeCorrelationsAsync(userId, fromDate, toDate, default, timezoneId);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetNutritionTrends(DateOnly? from, DateOnly? to, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetNutritionTrends(
+        DateOnly? from,
+        DateOnly? to,
+        int? tzOffsetMinutes,
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var hasTimezone = !string.IsNullOrWhiteSpace(timezoneId)
+            || !string.IsNullOrWhiteSpace(user?.TimezoneId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        if (!hasTimezone && tzOffsetMinutes.HasValue)
+        {
+            tz = TimeZoneInfo.CreateCustomTimeZone(
+                "request-offset",
+                TimeSpan.FromMinutes(-tzOffsetMinutes.Value),
+                "request-offset",
+                "request-offset");
+        }
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+
+        var (utcStart, utcEnd) = hasTimezone
+            ? TimeZoneHelper.GetUtcRangeForLocalDateRange(user, fromDate, toDate, timezoneId)
+            : tzOffsetMinutes.HasValue
+                ? TimeZoneHelper.GetUtcRangeForFixedOffset(fromDate, toDate, tzOffsetMinutes.Value)
+                : TimeZoneHelper.GetUtcRangeForLocalDateRange(user, fromDate, toDate);
+        var meals = await store.GetMealLogsByDateRangeAsync(
+            userId,
+            DateOnly.FromDateTime(utcStart),
+            DateOnly.FromDateTime(utcEnd));
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
         foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
-        var offset = tzOffsetMinutes.HasValue ? TimeSpan.FromMinutes(-tzOffsetMinutes.Value) : TimeSpan.Zero;
-        var grouped = meals.GroupBy(m => (m.LoggedAt + offset).Date)
+
+        var grouped = meals.GroupBy(m => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(m.LoggedAt, tz)))
             .Select(g => new
             {
-                date = DateOnly.FromDateTime(g.Key),
+                date = g.Key,
                 calories = g.Sum(m => m.TotalCalories),
                 protein = g.Sum(m => m.TotalProteinG),
                 carbs = g.Sum(m => m.TotalCarbsG),
@@ -53,12 +86,18 @@ public static class InsightEndpoints
         return Results.Ok(grouped.OrderBy(x => x.date));
     }
 
-    static async Task<IResult> GetNutritionByMealType(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetNutritionByMealType(DateOnly? from, DateOnly? to, string? timezoneId, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, fromDate, toDate, timezoneId);
+        var meals = await store.GetMealLogsByDateRangeAsync(userId, DateOnly.FromDateTime(utcStart), DateOnly.FromDateTime(utcEnd));
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
         var grouped = meals.GroupBy(m => m.MealType)
             .Select(g => new
             {
@@ -80,14 +119,21 @@ public static class InsightEndpoints
         return Results.Ok(grouped);
     }
 
-    static async Task<IResult> GetAdditiveExposure(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetAdditiveExposure(DateOnly? from, DateOnly? to, string? timezoneId, ClaimsPrincipal principal, ITableStore store)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, fromDate, toDate, timezoneId);
+        var meals = await store.GetMealLogsByDateRangeAsync(userId, DateOnly.FromDateTime(utcStart), DateOnly.FromDateTime(utcEnd));
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
         var allAdditives = await store.GetAllFoodAdditivesAsync();
         var exposure = new Dictionary<int, int>();
+
         foreach (var m in meals)
         {
             var items = await store.GetMealItemsAsync(userId, m.Id);
@@ -117,12 +163,15 @@ public static class InsightEndpoints
         return Results.Ok(result.OrderByDescending(x => x.count));
     }
 
-    static async Task<IResult> GetTriggerFoods(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store, ICorrelationEngine correlationEngine)
+    static async Task<IResult> GetTriggerFoods(DateOnly? from, DateOnly? to, string? timezoneId, ClaimsPrincipal principal, ITableStore store, ICorrelationEngine correlationEngine)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var correlations = await correlationEngine.ComputeCorrelationsAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+        var correlations = await correlationEngine.ComputeCorrelationsAsync(userId, fromDate, toDate, default, timezoneId);
         var triggers = correlations
             .Where(c => c.Occurrences >= 2 && c.AverageSeverity >= 4)
             .GroupBy(c => c.FoodOrAdditive)
@@ -149,19 +198,22 @@ public static class InsightEndpoints
         _ => 0
     };
 
-    static async Task<IResult> GetFoodDiaryAnalysis(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store, IFoodDiaryAnalysisService analysisService)
+    static async Task<IResult> GetFoodDiaryAnalysis(DateOnly? from, DateOnly? to, string? timezoneId, ClaimsPrincipal principal, ITableStore store, IFoodDiaryAnalysisService analysisService)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var result = await analysisService.AnalyzeAsync(userId, fromDate, toDate, store);
+        var user = await store.GetUserAsync(userId);
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+        var fromDate = from ?? todayLocal.AddDays(-30);
+        var toDate = to ?? todayLocal;
+        var result = await analysisService.AnalyzeAsync(userId, fromDate, toDate, store, timezoneId);
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetEliminationDietStatus(ClaimsPrincipal principal, ITableStore store, IFoodDiaryAnalysisService analysisService)
+    static async Task<IResult> GetEliminationDietStatus(string? timezoneId, ClaimsPrincipal principal, ITableStore store, IFoodDiaryAnalysisService analysisService)
     {
         var userId = GetUserId(principal);
-        var result = await analysisService.GetEliminationStatusAsync(userId, store);
+        var result = await analysisService.GetEliminationStatusAsync(userId, store, timezoneId);
         return Results.Ok(result);
     }
 }

@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useThemeColors } from "../src/stores/theme";
+import * as haptics from "../src/utils/haptics";
 
 export function ErrorState({
   message = "Something went wrong",
@@ -25,7 +26,10 @@ export function ErrorState({
       </Text>
       {onRetry && (
         <TouchableOpacity
-          onPress={onRetry}
+          onPress={() => {
+            haptics.light();
+            onRetry();
+          }}
           style={{
             marginTop: 12,
             backgroundColor: colors.primary,

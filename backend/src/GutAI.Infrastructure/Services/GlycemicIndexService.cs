@@ -32,8 +32,9 @@ public class GlycemicIndexService : IGlycemicIndexService
         var name = (product.Name ?? "").ToLowerInvariant();
         var hasIngredients = !string.IsNullOrWhiteSpace(product.Ingredients) && product.Ingredients.Contains(',');
         var matchedPatterns = new List<string>();
+        var hasEstimatedMatch = false;
 
-        MatchPatterns(hasIngredients ? lower : name, name, hasIngredients, matches, matchedPatterns);
+        MatchPatterns(hasIngredients ? lower : name, name, hasIngredients, matches, matchedPatterns, ref hasEstimatedMatch);
 
 
         if (matches.Count == 0)
@@ -62,7 +63,7 @@ public class GlycemicIndexService : IGlycemicIndexService
         var glCategory = gl.HasValue ? ClassifyGL(gl.Value) : "Unknown";
         // Database entries describe tested reference foods, not necessarily this exact
         // branded formulation. Ingredient-list composition is a weaker match than a name.
-        var confidence = matches.Any(m => m.Source == "Estimated")
+        var confidence = hasEstimatedMatch
             ? "Low"
             : hasIngredients ? "Low" : "Medium";
 
@@ -87,8 +88,9 @@ public class GlycemicIndexService : IGlycemicIndexService
         var lower = text.ToLowerInvariant();
         var matches = new List<GlycemicMatchDto>();
         var matchedPatterns = new List<string>();
+        var hasEstimatedMatch = false;
 
-        MatchPatterns(lower, lower, false, matches, matchedPatterns);
+        MatchPatterns(lower, lower, false, matches, matchedPatterns, ref hasEstimatedMatch);
 
         if (matches.Count == 0)
         {
@@ -128,7 +130,7 @@ public class GlycemicIndexService : IGlycemicIndexService
     // ─── Shared matching logic ──────────────────────────────────────────
 
     static void MatchPatterns(string searchText, string nameText, bool hasIngredients,
-        List<GlycemicMatchDto> matches, List<string> matchedPatterns)
+        List<GlycemicMatchDto> matches, List<string> matchedPatterns, ref bool hasEstimatedMatch)
     {
         foreach (var entry in GlycemicData.GiDatabase)
         {
@@ -160,6 +162,8 @@ public class GlycemicIndexService : IGlycemicIndexService
                 continue;
 
             matchedPatterns.Add(entry.Pattern);
+            if (entry.IsEstimated)
+                hasEstimatedMatch = true;
             matches.Add(new GlycemicMatchDto
             {
                 Food = entry.Pattern,

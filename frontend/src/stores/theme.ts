@@ -78,6 +78,11 @@ export function useThemeColors(): ThemeColors {
   return resolved === "dark" ? darkColors : lightColors;
 }
 
+/** Hook — returns the resolved active color scheme ('light' | 'dark'). */
+export function useColorScheme(): "light" | "dark" {
+  return useThemeStore((s) => s.resolved);
+}
+
 /** Hook — returns themed font styles (text color adapts to scheme). */
 export function useThemeFonts() {
   const c = useThemeColors();

@@ -1,6 +1,6 @@
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
-
 namespace GutAI.Infrastructure.Services;
 
 public class PersonalizedScoringService
@@ -17,38 +17,95 @@ public class PersonalizedScoringService
         _fodmap = fodmap;
     }
 
-    public async Task<PersonalizedScoreDto> ScoreAsync(FoodProductDto product, Guid userId, ITableStore store)
+    private static readonly (string Term, System.Text.RegularExpressions.Regex Regex)[] GlutenIngredientPatterns =
+    [
+        ("wheat", MatchUtils.WordBoundary("wheat")),
+        ("barley", MatchUtils.WordBoundary("barley")),
+        ("rye", MatchUtils.WordBoundary("rye")),
+        ("spelt", MatchUtils.WordBoundary("spelt")),
+        ("triticale", MatchUtils.WordBoundary("triticale")),
+        ("malt", MatchUtils.WordBoundary("malt")),
+    ];
+
+    public async Task<PersonalizedScoreDto> ScoreAsync(
+        FoodProductDto product,
+        Guid userId,
+        ITableStore store,
+        string? timezoneId = null)
     {
         var explanations = new List<ScoreExplanationDto>();
         var warnings = new List<string>();
 
-        // FODMAP screening component (35%)
+        var user = await store.GetUserAsync(userId);
+        var userConditions = user?.GutConditions ?? [];
+        var userPreferences = user?.DietaryPreferences ?? [];
+        var userAllergies = user?.Allergies ?? [];
+
+        // Profile sensitivity detection:
+        // - fodmapSensitive: conditions matching ibs, irritable bowel, sibo, fructose, bloating OR dietary preference "low-fodmap"
+        // - glutenSensitive: conditions matching celiac, gluten
+        var fodmapSensitive = userConditions.Any(c =>
+            c.Contains("ibs", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("irritable bowel", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("sibo", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("fructose", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("bloating", StringComparison.OrdinalIgnoreCase))
+            || userPreferences.Any(p => p.Contains("low-fodmap", StringComparison.OrdinalIgnoreCase));
+
+        var glutenSensitive = userConditions.Any(c =>
+            c.Contains("celiac", StringComparison.OrdinalIgnoreCase)
+            || c.Contains("gluten", StringComparison.OrdinalIgnoreCase));
+
+        // Composite component weights rationale:
+        // - FODMAP: 35% (primary gut signal for fermentation/distension risk; shifts to 45% when fodmapSensitive)
+        // - Additive-only: 20% (GutRisk filtered to TriggerType=="Additive" to avoid double-counting FODMAP/NOVA)
+        // - NOVA: 15% (processing level; shifts to 10% when fodmapSensitive)
+        // - Fiber: 15% (prebiotic content; shifts to 10% when fodmapSensitive)
+        // - Allergen: 15% (allergen profile match; always 15%)
+        // Total weights sum to 100%.
+        // Diagnostic 0-weight component: Sugar Alcohols (polyol count diagnostics).
+        // Personal trigger penalty: -5 per associated symptom event capped at 25.
+        // Allergen match floors the composite score at 19 (capping within the "Avoid" band).
+        var fodmapWeight = fodmapSensitive ? 45 : 35;
+        var additiveWeight = 20;
+        var novaWeight = fodmapSensitive ? 10 : 15;
+        var fiberWeight = fodmapSensitive ? 10 : 15;
+        var allergenWeight = 15;
+
+        // 1. FODMAP screening component
         var fodmapAssessment = _fodmap.Assess(product);
-        // Additive-only component (20%). GutRisk also contains FODMAP, nutrient, and NOVA
+        // 2. Additive-only component. GutRisk also contains FODMAP, nutrient, and NOVA
         // signals; using its composite score here would count those dimensions twice.
         var gutRiskAssessment = _gutRisk.Assess(product);
-
 
         // Insufficient evidence must not score like a confirmed-clean result — treat it as
         // neutral rather than letting "we don't know" masquerade as "screened, nothing found".
         var fodmapScore = fodmapAssessment.Status == nameof(FodmapAssessmentStatus.InsufficientInformation)
             ? 50
             : fodmapAssessment.IngredientScreeningScore;
+
+        var fodmapExplanation = fodmapAssessment.Status == nameof(FodmapAssessmentStatus.InsufficientInformation)
+            ? "Not enough ingredient or product data to screen for FODMAP sources — this component is neutral, not a confirmed low-FODMAP result."
+            : fodmapScore >= 80
+                ? "No or few configured FODMAP source names detected; actual load depends on portion."
+                : fodmapScore >= 60
+                    ? "Some potential FODMAP sources detected; portion and individual tolerance matter."
+                    : fodmapScore >= 40
+                        ? "Several potential FODMAP sources detected."
+                        : "Multiple higher-concern FODMAP sources detected; this remains an ingredient screen, not a measured serving classification.";
+
+        if (fodmapSensitive)
+        {
+            fodmapExplanation += " Weight increased because your profile indicates FODMAP sensitivity.";
+        }
+
         explanations.Add(new ScoreExplanationDto
         {
             Component = "FODMAP Risk",
-            Weight = 35,
+            Weight = fodmapWeight,
             RawScore = fodmapScore,
-            WeightedContribution = (int)(fodmapScore * 0.35),
-            Explanation = fodmapAssessment.Status == nameof(FodmapAssessmentStatus.InsufficientInformation)
-                ? "Not enough ingredient or product data to screen for FODMAP sources — this component is neutral, not a confirmed low-FODMAP result."
-                : fodmapScore >= 80
-                    ? "No or few configured FODMAP source names detected; actual load depends on portion."
-                    : fodmapScore >= 60
-                        ? "Some potential FODMAP sources detected; portion and individual tolerance matter."
-                        : fodmapScore >= 40
-                            ? "Several potential FODMAP sources detected."
-                            : "Multiple higher-concern FODMAP sources detected; this remains an ingredient screen, not a measured serving classification.",
+            WeightedContribution = (int)(fodmapScore * (fodmapWeight / 100.0)),
+            Explanation = fodmapExplanation,
         });
 
         var additiveFlags = gutRiskAssessment.Flags
@@ -64,15 +121,15 @@ public class PersonalizedScoringService
         explanations.Add(new ScoreExplanationDto
         {
             Component = "Additive Risk",
-            Weight = 20,
+            Weight = additiveWeight,
             RawScore = additiveScore,
-            WeightedContribution = (int)(additiveScore * 0.20),
+            WeightedContribution = (int)(additiveScore * (additiveWeight / 100.0)),
             Explanation = additiveFlags.Count == 0
                 ? "No configured additive concern signals detected in the available data."
                 : $"Detected {additiveFlags.Count} configured additive concern signal(s); effects depend on dose and individual response.",
         });
 
-        // 3. NOVA Processing component (15%)
+        // 3. NOVA Processing component
         var novaScore = product.NovaGroup switch
         {
             1 => 100,
@@ -84,9 +141,9 @@ public class PersonalizedScoringService
         explanations.Add(new ScoreExplanationDto
         {
             Component = "NOVA Processing",
-            Weight = 15,
+            Weight = novaWeight,
             RawScore = novaScore,
-            WeightedContribution = (int)(novaScore * 0.15),
+            WeightedContribution = (int)(novaScore * (novaWeight / 100.0)),
             Explanation = product.NovaGroup switch
             {
                 1 => "Unprocessed or minimally processed food.",
@@ -97,7 +154,7 @@ public class PersonalizedScoringService
             },
         });
 
-        // 4. Fiber Content component (15%)
+        // 4. Fiber Content component
         var fiberScore = product.Fiber100g switch
         {
             >= 6m => 100,
@@ -109,9 +166,9 @@ public class PersonalizedScoringService
         explanations.Add(new ScoreExplanationDto
         {
             Component = "Fiber Content",
-            Weight = 15,
+            Weight = fiberWeight,
             RawScore = fiberScore,
-            WeightedContribution = (int)(fiberScore * 0.15),
+            WeightedContribution = (int)(fiberScore * (fiberWeight / 100.0)),
             Explanation = product.Fiber100g switch
             {
                 >= 6m => $"High fiber ({product.Fiber100g:F1}g/100g) — supports healthy gut motility and microbiome diversity.",
@@ -122,12 +179,11 @@ public class PersonalizedScoringService
             },
         });
 
-        // 5. Allergen Match component (15%)
-        var user = await store.GetUserAsync(userId);
-        var userAllergies = user?.Allergies ?? [];
+        // 5. Allergen Match component
         var allergenScore = 100;
         var allergenDataAvailable = product.AllergensTags.Length > 0;
         var hasAllergenMatch = false;
+        var ingredientScanGlutenMatch = false;
 
         if (userAllergies.Length > 0 && allergenDataAvailable)
         {
@@ -159,19 +215,49 @@ public class PersonalizedScoringService
             warnings.Add("Allergen data is unavailable for this product; absence of a warning does not establish safety.");
         }
 
+        // If user is glutenSensitive AND product has allergen tags WITHOUT a gluten/wheat tag:
+        // additionally scan product.Ingredients for gluten grain words.
+        if (glutenSensitive && allergenDataAvailable && !hasAllergenMatch)
+        {
+            var hasGlutenOrWheatTag = product.AllergensTags.Any(tag =>
+            {
+                var norm = tag.Replace("en:", "").Trim();
+                return norm.Contains("gluten", StringComparison.OrdinalIgnoreCase)
+                    || norm.Contains("wheat", StringComparison.OrdinalIgnoreCase);
+            });
+
+            if (!hasGlutenOrWheatTag && !string.IsNullOrWhiteSpace(product.Ingredients))
+            {
+                var ingredientsText = product.Ingredients;
+                var matchedGlutenIngredient = GlutenIngredientPatterns.Any(p =>
+                    MatchUtils.WordMatch(ingredientsText, p.Term, p.Regex));
+
+                if (matchedGlutenIngredient)
+                {
+                    allergenScore = 0;
+                    hasAllergenMatch = true;
+                    ingredientScanGlutenMatch = true;
+                    warnings.Add("Gluten source detected in ingredients (profile indicates gluten sensitivity).");
+                }
+            }
+        }
+
+        var allergenExplanation = userAllergies.Length > 0 && !allergenDataAvailable
+            ? "Allergen data unavailable — this component is neutral and cannot establish safety."
+            : ingredientScanGlutenMatch
+                ? "Gluten source detected from ingredient text scan (profile indicates gluten sensitivity; not from official allergen tags)."
+                : hasAllergenMatch
+                    ? "This product matches an allergen in your profile."
+                    : "No profile allergen match was detected in the available allergen data.";
+
         explanations.Add(new ScoreExplanationDto
         {
             Component = "Allergen Match",
-            Weight = 15,
+            Weight = allergenWeight,
             RawScore = allergenScore,
-            WeightedContribution = (int)(allergenScore * 0.15),
-            Explanation = userAllergies.Length > 0 && !allergenDataAvailable
-                ? "Allergen data unavailable — this component is neutral and cannot establish safety."
-                : hasAllergenMatch
-                    ? "This product matches an allergen in your profile."
-                    : "No profile allergen match was detected in the available allergen data.",
+            WeightedContribution = (int)(allergenScore * (allergenWeight / 100.0)),
+            Explanation = allergenExplanation,
         });
-
         // 6. Sugar Alcohols component (10%)
         var lowerIngredients = (product.Ingredients ?? "").ToLowerInvariant();
         var polyolCount = PolyolKeywords.Count(p => lowerIngredients.Contains(p));
@@ -199,11 +285,16 @@ public class PersonalizedScoringService
 
         // 7. Personal Trigger Penalty
         var personalPenalty = 0;
-        var cutoff = DateTime.UtcNow.AddDays(-90);
-        var cutoffFrom = DateOnly.FromDateTime(cutoff);
-        var cutoffTo = DateOnly.FromDateTime(DateTime.UtcNow);
+        var timezone = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone));
+        var from = today.AddDays(-90);
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(
+            user, from, today, timezoneId);
+        var coarseFrom = DateOnly.FromDateTime(utcStart);
+        var coarseTo = DateOnly.FromDateTime(utcEnd);
 
-        var allSymptoms = await store.GetSymptomLogsByDateRangeAsync(userId, cutoffFrom, cutoffTo);
+        var allSymptoms = await store.GetSymptomLogsByDateRangeAsync(userId, coarseFrom, coarseTo);
+        allSymptoms = allSymptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
         var symptomLogs = allSymptoms
             .Where(s => s.Severity >= 4)
             .Select(s => new { s.OccurredAt, s.RelatedMealLogId })
@@ -221,9 +312,8 @@ public class PersonalizedScoringService
             var symptomTimes = symptomLogs.Select(s => s.OccurredAt).ToList();
             var earliest = symptomTimes.Min().AddHours(-FoodSymptomMatching.MaxOnsetHours);
 
-            var allMeals = await store.GetMealLogsByDateRangeAsync(userId, cutoffFrom, cutoffTo);
-            foreach (var meal in allMeals)
-                meal.Items = await store.GetMealItemsAsync(userId, meal.Id);
+            var allMeals = await store.GetMealLogsByDateRangeAsync(userId, coarseFrom, coarseTo);
+            allMeals = allMeals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
 
             var candidateMeals = allMeals
                 .Where(m => m.LoggedAt >= earliest)
@@ -277,12 +367,11 @@ public class PersonalizedScoringService
 
         // 8. Composite Score
         var rawComposite =
-            (int)(fodmapScore * 0.35
-                  + additiveScore * 0.20
-                  + novaScore * 0.15
-                  + fiberScore * 0.15
-                  + allergenScore * 0.15);
-
+            (int)(fodmapScore * (fodmapWeight / 100.0)
+                  + additiveScore * (additiveWeight / 100.0)
+                  + novaScore * (novaWeight / 100.0)
+                  + fiberScore * (fiberWeight / 100.0)
+                  + allergenScore * (allergenWeight / 100.0));
         var composite = Math.Clamp(rawComposite - personalPenalty, 0, 100);
         if (hasAllergenMatch)
             composite = Math.Min(composite, 19);

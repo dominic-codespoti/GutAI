@@ -1,22 +1,41 @@
 import { useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  AppState,
+  Platform,
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useAuthStore } from "../src/stores/auth";
+import { useMealSheetStore } from "../src/stores/mealSheet";
 import { useThemeStore, useThemeColors } from "../src/stores/theme";
 import ToastContainer from "../components/Toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Ionicons } from "@expo/vector-icons";
 import { queryClient } from "../src/queryClient";
 import { api } from "../src/api/client";
-import * as haptics from "../src/utils/haptics";
+import {
+  loadReminderPrefs,
+  syncStreakNudge,
+} from "../src/utils/notifications";
+import { toLocalDateStr } from "../src/utils/date";
+import { getDeviceTimezoneId } from "../src/utils/timezone";
 import {
   useSubscriptionStore,
   configurePurchases,
 } from "../src/stores/subscription";
+import * as haptics from "../src/utils/haptics";
+
+// Hold the native splash visible until AuthGate hides it post-hydration.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function AuthGate() {
   const { isAuthenticated, isLoading, isReconnecting, hydrate, connect, user } = useAuthStore();
@@ -33,11 +52,106 @@ function AuthGate() {
       router.replace("/(tabs)");
     }
   };
-
   useEffect(() => {
     hydrate();
     api.get("/health").catch(() => {});
   }, []);
+
+  // Hold the native splash until auth hydration resolves — no white flash,
+  // no content flash behind the splash graphic.
+  const splashHidden = useRef(false);
+  useEffect(() => {
+    if (isLoading || splashHidden.current) return;
+    splashHidden.current = true;
+    SplashScreen.hideAsync().catch(() => {});
+  }, [isLoading]);
+
+  // Local reminder housekeeping and day/timezone refresh: re-sync the streak nudge
+  // and refresh date-sensitive queries whenever the app comes to foreground or day boundaries cross.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let nudgeSub: Notifications.Subscription | undefined;
+    let responseSub: Notifications.Subscription | undefined;
+    let dayTimer: NodeJS.Timeout | undefined;
+    let lastActiveDate = toLocalDateStr();
+    let lastActiveTz = getDeviceTimezoneId();
+
+    const resync = () => {
+      void (async () => {
+        const prefs = await loadReminderPrefs();
+        const tz = getDeviceTimezoneId();
+        const cached = queryClient.getQueryData<{ length: number }>([
+          "meals",
+          toLocalDateStr(),
+          tz,
+        ]);
+        await syncStreakNudge(prefs, (cached?.length ?? 0) > 0);
+      })();
+    };
+
+    const refreshDateContext = () => {
+      const currentDate = toLocalDateStr();
+      const currentTz = getDeviceTimezoneId();
+      if (currentDate === lastActiveDate && currentTz === lastActiveTz) return;
+      const previousDate = lastActiveDate;
+
+      lastActiveDate = currentDate;
+      const mealSheet = useMealSheetStore.getState();
+      if (mealSheet.selectedDate === previousDate) {
+        mealSheet.setDate(currentDate);
+      }
+      lastActiveTz = currentTz;
+      for (const queryKey of [
+        ["meals"],
+        ["daily-summary"],
+        ["symptoms-today"],
+        ["symptom-history"],
+        ["symptom-range-history"],
+        ["nutrition-trends"],
+        ["nutrition-by-meal-type"],
+        ["additive-exposure"],
+        ["correlations"],
+        ["trigger-foods"],
+        ["trigger-foods-dashboard"],
+        ["food-diary-analysis"],
+        ["elimination-diet-status"],
+        ["streak"],
+      ]) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    };
+
+    const scheduleDayBoundary = () => {
+      const now = new Date();
+      const nextDay = new Date(now);
+      nextDay.setHours(24, 0, 0, 0);
+      dayTimer = setTimeout(() => {
+        refreshDateContext();
+        resync();
+        scheduleDayBoundary();
+      }, Math.max(nextDay.getTime() - now.getTime(), 1000));
+    };
+
+    resync();
+    scheduleDayBoundary();
+
+    const appState = AppState.addEventListener("change", (s) => {
+      if (s === "active") {
+        refreshDateContext();
+        resync();
+      }
+    });
+    responseSub = Notifications.addNotificationResponseReceivedListener(() => {
+      router.push("/(tabs)/meals");
+    });
+    return () => {
+      clearTimeout(dayTimer);
+      dayTimer = undefined;
+      appState.remove();
+      nudgeSub?.remove();
+      responseSub?.remove();
+    };
+  }, [isAuthenticated]);
 
   // Initialize RevenueCat when user is authenticated
   useEffect(() => {
@@ -236,7 +350,7 @@ function AuthGate() {
           accessibilityRole="button"
           accessibilityLabel="Retry connection"
         >
-          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
+          <Text style={{ color: c.textOnPrimary, fontWeight: "600", fontSize: 15 }}>
             Retry
           </Text>
         </TouchableOpacity>
@@ -249,6 +363,12 @@ function AuthGate() {
 export default function RootLayout() {
   const resolved = useThemeStore((s) => s.resolved);
   const c = useThemeColors();
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    document.documentElement.style.backgroundColor = c.bg;
+    document.body.style.backgroundColor = c.bg;
+  }, [c.bg]);
 
   return (
     <ErrorBoundary>

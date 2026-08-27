@@ -21,6 +21,14 @@ public class MealLog
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public bool IsDeleted { get; set; }
 
+    /// <summary>
+    /// Origin of externally imported meals ("health-connect", "healthkit", "myfitnesspal", …).
+    /// Null for meals logged natively in GutAI. Pair with ExternalId it enables idempotent
+    /// re-imports; health-platform sync filters its own writes by this field.
+    /// </summary>
+    public string? ExternalSource { get; set; }
+    public string? ExternalId { get; set; }
+
     public User User { get; set; } = default!;
     public ICollection<MealItem> Items { get; set; } = [];
     public ICollection<SymptomLog> AssociatedSymptoms { get; set; } = [];

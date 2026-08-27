@@ -25,6 +25,14 @@ public class WebNutritionCascade : IWebNutritionLookup
     private static readonly string[] PreferredDomains =
         ["fdc.nal.usda.gov", "www.nutritionvalue.org", "openfoodfacts.org"];
 
+    /// <summary>
+    /// Structured extraction options for the configured reasoning deployment.
+    /// Temperature remains null so reasoning models omit the unsupported field.
+    /// </summary>
+    private static readonly ChatOptions ExtractionOptions = new();
+
+    private static readonly ChatRole DeveloperRole = new("developer");
+
     private readonly IChatClient _chatClient;
     private readonly ITableStore _store;
     private readonly HttpClient _searchHttp;
@@ -190,7 +198,7 @@ public class WebNutritionCascade : IWebNutritionLookup
         {
             var messages = new List<ChatMessage>
             {
-                new(ChatRole.System,
+                new(DeveloperRole,
                     """
                     You extract nutrition facts from web pages. Given page content, find the
                     nutritional composition PER 100 g for the requested food. Prefer USDA /
@@ -203,7 +211,7 @@ public class WebNutritionCascade : IWebNutritionLookup
             };
 
             var response = await _chatClient.GetResponseAsync<WebNutritionExtraction>(
-                messages, options: null, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+                messages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
             return response.Result;
         }
         catch (Exception ex)

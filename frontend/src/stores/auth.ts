@@ -2,21 +2,29 @@ import { create } from "zustand";
 import { getItem, setItem, deleteItem } from "../utils/storage";
 import type { UserProfile } from "../types";
 import { authApi } from "../api";
-import { getCalendars } from "expo-localization";
+import { getDeviceTimezoneId } from "../utils/timezone";
 import { queryClient } from "../queryClient";
 import Purchases from "react-native-purchases";
 
-async function syncTimezone() {
+async function syncTimezone(currentUser?: UserProfile | null): Promise<UserProfile | null> {
   try {
-    const calendars = getCalendars();
-    const tz = calendars[0]?.timeZone;
-    if (!tz) return;
+    const tz = getDeviceTimezoneId();
+    if (!tz) return currentUser ?? null;
     const { userApi } = await import("../api");
-    const { data: profile } = await userApi.getProfile();
-    if (profile.timezoneId !== tz) {
-      await userApi.updateProfile({ timezoneId: tz });
+    // If currentUser is provided and timezone already matches, no need to update
+    if (currentUser && currentUser.timezoneId === tz) {
+      return currentUser;
     }
-  } catch {}
+    const profile = currentUser ?? (await userApi.getProfile()).data;
+    if (profile.timezoneId !== tz) {
+      const { data: updated } = await userApi.updateProfile({ timezoneId: tz });
+      return updated;
+    }
+    return profile;
+  } catch {
+    // Soft-fail: do not throw or turn sync failure into auth failure
+    return currentUser ?? null;
+  }
 }
 
 function isTokenExpired(token: string): boolean {
@@ -68,7 +76,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await setItem("refreshToken", data.refreshToken);
     _retryCount = 0;
     set({ user: data.user, isAuthenticated: true });
-    syncTimezone();
+    const updated = await syncTimezone(data.user);
+    if (updated) {
+      set({ user: updated });
+    }
   },
 
   register: async (email, password, displayName) => {
@@ -77,7 +88,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await setItem("refreshToken", data.refreshToken);
     _retryCount = 0;
     set({ user: data.user, isAuthenticated: true });
-    syncTimezone();
+    const updated = await syncTimezone(data.user);
+    if (updated) {
+      set({ user: updated });
+    }
   },
 
   logout: async () => {
@@ -129,7 +143,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data } = await userApi.getProfile();
       _retryCount = 0;
       set({ user: data, isAuthenticated: true, isLoading: false, isReconnecting: false });
-      syncTimezone();
+      const updated = await syncTimezone(data);
+      if (updated) {
+        set({ user: updated });
+      }
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 401 || status === 403) {
@@ -171,7 +188,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data } = await userApi.getProfile();
       _retryCount = 0;
       set({ user: data, isAuthenticated: true, isLoading: false, isReconnecting: false });
-      syncTimezone();
+      const updated = await syncTimezone(data);
+      if (updated) {
+        set({ user: updated });
+      }
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 401 || status === 403) {

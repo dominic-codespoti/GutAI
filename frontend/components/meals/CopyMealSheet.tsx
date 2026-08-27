@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "../BottomSheet";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
-import { shiftDate, formatDateLabel, today } from "../../src/utils/date";
+import { shiftDate, formatDateLabel, today, toLocalDateStr } from "../../src/utils/date";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import { useThemeColors, useThemeFonts } from "../../src/stores/theme";
 
@@ -69,7 +69,7 @@ export function CopyMealSheet() {
               marginBottom: 2,
             }}
           >
-            {formatDateLabel(copyingMeal.loggedAt.split("T")[0])}
+            {formatDateLabel(toLocalDateStr(new Date(copyingMeal.loggedAt)))}
           </Text>
           {copyingMeal.items.map((item, idx) => (
             <Text

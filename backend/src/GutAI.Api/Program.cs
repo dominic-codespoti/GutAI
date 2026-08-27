@@ -38,7 +38,21 @@ if (string.IsNullOrWhiteSpace(jwtSettings.Secret) || jwtSettings.Secret.Length <
 
 // Auth
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(options =>
+{
+    // App JWTs and AI-consumer personal access tokens share one auth surface; the
+    // policy scheme routes each Authorization header to its validating scheme.
+    options.DefaultAuthenticateScheme = "MultiAuth";
+    options.DefaultChallengeScheme = "MultiAuth";
+})
+.AddPolicyScheme("MultiAuth", "MultiAuth", multiOptions =>
+{
+    multiOptions.ForwardDefaultSelector = ctx =>
+        ctx.Request.Headers.Authorization.ToString()
+           .Contains(GutAI.Api.Auth.PatAuthenticationHandler.TokenPrefix, StringComparison.Ordinal)
+            ? GutAI.Api.Auth.PatAuthenticationHandler.SchemeName
+            : JwtBearerDefaults.AuthenticationScheme;
+})
     .AddJwtBearer(options =>
     {
         options.MapInboundClaims = false;
@@ -53,7 +67,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
-    });
+    })
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, GutAI.Api.Auth.PatAuthenticationHandler>(
+        GutAI.Api.Auth.PatAuthenticationHandler.SchemeName, _ => { });
+
 builder.Services.AddAuthorization();
 
 // CORS — mobile apps don't send Origin headers so CORS is a no-op there.
@@ -82,7 +99,8 @@ builder.Services.AddMcpServer()
     .AddAuthorizationFilters()
     .WithTools<GutAI.Api.Mcp.FoodTools>()
     .WithTools<GutAI.Api.Mcp.MealSymptomTools>()
-    .WithTools<GutAI.Api.Mcp.ProfileTools>();
+    .WithTools<GutAI.Api.Mcp.ProfileTools>()
+    .WithTools<GutAI.Api.Mcp.LinkTools>();
 
 // Health checks
 builder.Services.AddHealthChecks();
@@ -156,8 +174,10 @@ app.MapGroup("/api/insights").MapInsightEndpoints().RequireAuthorization().Requi
 app.MapGroup("/api/user").MapUserEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
 app.MapGroup("/api/chat").MapChatEndpoints().RequireAuthorization().RequireRateLimiting("chat");
 
-// MCP endpoint for external AI apps
-app.MapMcp().RequireAuthorization().RequireRateLimiting("authenticated");
+// MCP endpoint for external AI apps. Authorization is per-TOOL, not per-route:
+// AddAuthorizationFilters enforces [Authorize] on every data tool while the anonymous
+// gutai_link_account pairing tool stays reachable before any token exists.
+app.MapMcp("/mcp").RequireRateLimiting("mcp");
 
 // ── CLI commands ──────────────────────────────────────────────────────────────
 if (args.Contains("--import-off"))

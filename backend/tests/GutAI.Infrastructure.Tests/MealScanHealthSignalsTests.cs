@@ -180,5 +180,13 @@ public class MealScanHealthSignalsTests
         public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<GutAI.Domain.Entities.PairingCode?> GetPairingCodeByHashAsync(string codeHash, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertPairingCodeAsync(GutAI.Domain.Entities.PairingCode code, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeletePairingCodesForUserAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<GutAI.Domain.Entities.PersonalAccessToken?> GetPersonalAccessTokenByHashAsync(string tokenHash, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<List<GutAI.Domain.Entities.PersonalAccessToken>> GetActivePersonalAccessTokensAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertPersonalAccessTokenAsync(GutAI.Domain.Entities.PersonalAccessToken token, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeletePersonalAccessTokensForUserAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MealLog?> GetMealLogByExternalRefAsync(Guid userId, string source, string externalId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

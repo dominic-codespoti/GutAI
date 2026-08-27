@@ -2,6 +2,8 @@
 """
 Generate BrandedFoodsDatabase.cs from USDA FoodData Central Branded Foods CSV bulk download.
 
+Note: Records generated before this change may encode missing optional nutrients as 0; regenerate to correct.
+
 Data source:
   - Branded Foods (2025-12-18): ~400k+ branded/packaged food products
 
@@ -229,7 +231,9 @@ def escape_cs_string(s):
 
 
 def format_decimal(val):
-    """Format a float as a C# decimal literal."""
+    """Format a float as a C# decimal literal, or null if None."""
+    if val is None:
+        return "null"
     if val == 0:
         return "0m"
     s = f"{val:.4f}".rstrip("0").rstrip(".")
@@ -286,11 +290,10 @@ def process_branded(data_dir):
         protein = food_nuts[NID_PROTEIN]
         fat = food_nuts[NID_FAT]
         carbs = food_nuts[NID_CARBS]
-        fiber = food_nuts.get(NID_FIBER, 0.0)
-        sugar = food_nuts.get(NID_SUGAR, 0.0)
-        sodium_mg = food_nuts.get(NID_SODIUM, 0.0)
-        sodium_g = sodium_mg / 1000.0
-
+        fiber = food_nuts.get(NID_FIBER)
+        sugar = food_nuts.get(NID_SUGAR)
+        sodium_mg = food_nuts.get(NID_SODIUM)
+        sodium_g = (sodium_mg / 1000.0) if sodium_mg is not None else None
         # Sanity check: macro calories should be roughly close to reported energy
         if energy > 0:
             macro_kcal = (protein * 4) + (carbs * 4) + (fat * 9)
@@ -312,9 +315,9 @@ def process_branded(data_dir):
             "protein": round(protein, 2),
             "carbs": round(carbs, 2),
             "fat": round(fat, 2),
-            "fiber": round(fiber, 2),
-            "sugar": round(sugar, 2),
-            "sodium_g": round(sodium_g, 4),
+            "fiber": round(fiber, 2) if fiber is not None else None,
+            "sugar": round(sugar, 2) if sugar is not None else None,
+            "sodium_g": round(sodium_g, 4) if sodium_g is not None else None,
             "category": bdata.get("branded_food_category", ""),
         })
 
@@ -368,6 +371,7 @@ def generate_cs(foods):
     lines.append(f"// Source: Branded Foods (2025-12-18)")
     lines.append(f"// Total foods: {len(foods_sorted)}")
     lines.append("//")
+    lines.append("// Note: Records generated before this change may encode missing optional nutrients as 0; regenerate to correct.")
     lines.append("// Nutrient values are per 100g. Sodium is in GRAMS (not mg) to match OpenFoodFacts convention.")
     lines.append("// Do not edit manually — re-run tools/UsdaBrandedFoodGenerator/generate.py to regenerate.")
     lines.append("// </auto-generated>")
@@ -421,7 +425,8 @@ def generate_cs(foods):
     lines.append("        return _index.Value.Search(query, maxResults);")
     lines.append("    }")
     lines.append("")
-    lines.append('    private static FoodProductDto F(string name, string brand, string ingredients, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium) =>')
+    lines.append('    // Note: Records generated before this change may encode missing optional nutrients as 0; regenerate to correct.')
+    lines.append('    private static FoodProductDto F(string name, string brand, string ingredients, int cal, decimal protein, decimal carbs, decimal fat, decimal? fiber, decimal? sugar, decimal? sodium) =>')
     lines.append("        new()")
     lines.append("        {")
     lines.append("            Name = name,")
@@ -433,11 +438,10 @@ def generate_cs(foods):
     lines.append("            Fat100g = fat,")
     lines.append("            Fiber100g = fiber,")
     lines.append("            Sugar100g = sugar,")
-    lines.append("            Sodium100g = sodium,")
+    lines.append("            SodiumMg100g = sodium.HasValue ? sodium.Value * 1000m : null,")
     lines.append('            DataSource = "USDA",')
     lines.append("            FoodKind = FoodKind.Branded,")
     lines.append("        };")
-    lines.append("}")
     lines.append("")
 
     return "\n".join(lines)

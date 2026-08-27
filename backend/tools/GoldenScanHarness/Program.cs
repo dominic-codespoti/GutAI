@@ -26,8 +26,8 @@ namespace GoldenScanHarness;
 ///
 /// Requires Azure OpenAI config via environment or appsettings:
 ///   AzureOpenAI__Endpoint, AzureOpenAI__VisionDeployment (or DeploymentName)
-/// Results are cached per (image hash + prompt version) in golden-images/.cache/
-/// so re-runs only bill for new or changed images/prompts.
+/// Results are cached per (image hash + prompt version + deployment + reasoning effort)
+/// in golden-images/.cache/ so each model configuration is benchmarked independently.
 /// </summary>
 public static class Program
 {
@@ -42,6 +42,9 @@ public static class Program
         string? imagesDir = null;
         var gate = false;
         var refresh = false;
+        var e2e = false;
+        var confirm = false;
+        var repeat = 1;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -49,6 +52,9 @@ public static class Program
                 case "--images": imagesDir = args[++i]; break;
                 case "--gate": gate = true; break;
                 case "--refresh": refresh = true; break;
+                case "--e2e": e2e = true; break;
+                case "--confirm": confirm = true; break;
+                case "--repeat": repeat = Math.Max(1, int.Parse(args[++i])); break;
             }
         }
 
@@ -72,6 +78,14 @@ public static class Program
             return 2;
         }
 
+        if (e2e)
+            return await ProductionGoldenE2e.RunAsync(
+                imagesDir,
+                manifest,
+                confirm,
+                Math.Max(1, repeat),
+                Environment.GetEnvironmentVariable("GUTAI_GOLDEN_API_URL") ?? "http://localhost:5000");
+
         // ── Build the production Stage-A pipeline ──
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.harness.json"), optional: true)
@@ -85,14 +99,21 @@ public static class Program
             Console.Error.WriteLine("Set AzureOpenAI__Endpoint and AzureOpenAI__VisionDeployment (env or appsettings.harness.json).");
             return 2;
         }
+        var reasoningEffort = configuration["AzureOpenAI:VisionReasoningEffort"] ?? "default";
 
         using ILoggerFactory loggerFactory = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
-        var azureClient = new Azure.AI.OpenAI.AzureOpenAIClient(new Uri(endpoint),
-            new Azure.Identity.AzureCliCredential());
+        // High and xhigh reasoning can legitimately exceed the SDK's default
+        // per-operation timeout; the harness must measure the model, not timeout policy.
+        var clientOptions = new Azure.AI.OpenAI.AzureOpenAIClientOptions
+        {
+            NetworkTimeout = TimeSpan.FromMinutes(10),
+        };
+        var azureClient = new Azure.AI.OpenAI.AzureOpenAIClient(
+            new Uri(endpoint),
+            new Azure.Identity.AzureCliCredential(),
+            clientOptions);
 #pragma warning disable OPENAI001 // experimental Responses surface
-        var innerClient = configuration["AzureOpenAI:Transport"] == "chat"
-            ? azureClient.GetChatClient(deployment).AsIChatClient()
-            : azureClient.GetResponsesClient().AsIChatClient(deployment);
+        var innerClient = azureClient.GetResponsesClient().AsIChatClient(deployment);
 #pragma warning restore OPENAI001
         IChatClient chatClient = new ChatClientBuilder(innerClient)
             .UseLogging(loggerFactory)
@@ -124,7 +145,7 @@ public static class Program
             }
 
             var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(imagePath)));
-            var cacheKey = $"{hash[..24]}|{MealScanService.VisionPromptVersion}";
+            var cacheKey = $"{hash[..24]}|{MealScanService.VisionPromptVersion}|{deployment}|{reasoningEffort}";
 
             VisionDecomposition decomp;
             if (!refresh && cache.TryGetValue(cacheKey, out var cached) && cached.FailedReason is null)
@@ -177,7 +198,7 @@ public static class Program
         Console.WriteLine($" Cases scored:        {scores.Count}");
         Console.WriteLine($" Mean component recall:   {recall:P1}");
         Console.WriteLine($" Median gram error:       {(double.IsNaN(medianError) ? "n/a" : $"{medianError:F1}%")}");
-        Console.WriteLine($" Prompt version:      {MealScanService.VisionPromptVersion}");
+        Console.WriteLine($" Reasoning effort:      {reasoningEffort}");
         Console.WriteLine("════════════════════════════════════════════");
 
         foreach (var s in scores)
@@ -192,7 +213,8 @@ public static class Program
         var reportPath = Path.Combine(cacheDir, "last-report.json");
         var report = JsonSerializer.Serialize(new
         {
-            prompt_version = MealScanService.VisionPromptVersion,
+            deployment,
+            reasoning_effort = reasoningEffort,
             generated_at = DateTimeOffset.UtcNow,
             recall,
             median_gram_error_percent = double.IsNaN(medianError) ? (double?)null : medianError,
@@ -387,6 +409,22 @@ public static class Program
     public Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct ) => throw new NotSupportedException();
 
     public Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct ) => throw new NotSupportedException();
+
+    public Task<GutAI.Domain.Entities.PairingCode?> GetPairingCodeByHashAsync(string codeHash, CancellationToken ct ) => Task.FromResult<GutAI.Domain.Entities.PairingCode?>(null);
+
+    public Task UpsertPairingCodeAsync(GutAI.Domain.Entities.PairingCode code, CancellationToken ct ) => throw new NotSupportedException();
+
+    public Task DeletePairingCodesForUserAsync(Guid userId, CancellationToken ct ) => throw new NotSupportedException();
+
+    public Task<GutAI.Domain.Entities.PersonalAccessToken?> GetPersonalAccessTokenByHashAsync(string tokenHash, CancellationToken ct ) => Task.FromResult<GutAI.Domain.Entities.PersonalAccessToken?>(null);
+
+    public Task<List<GutAI.Domain.Entities.PersonalAccessToken>> GetActivePersonalAccessTokensAsync(Guid userId, CancellationToken ct ) => throw new NotSupportedException();
+
+    public Task UpsertPersonalAccessTokenAsync(GutAI.Domain.Entities.PersonalAccessToken token, CancellationToken ct ) => throw new NotSupportedException();
+
+    public Task DeletePersonalAccessTokensForUserAsync(Guid userId, CancellationToken ct ) => throw new NotSupportedException();
+
+    public Task<MealLog?> GetMealLogByExternalRefAsync(Guid userId, string source, string externalId, CancellationToken ct ) => Task.FromResult<MealLog?>(null);
 
     }
 }

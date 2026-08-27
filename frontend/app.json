@@ -3,37 +3,40 @@
     "name": "GutAI",
     "slug": "gut-ai",
     "scheme": "gutai",
-    "version": "1.0.8",
+    "version": "1.0.10",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F8F8FA"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "gut.ai",
-      "buildNumber": "25",
       "infoPlist": {
         "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "GutAI reads dietary nutrition data to sync your meal history and correlate food intake with gut health symptoms.",
+        "NSHealthUpdateUsageDescription": "GutAI saves logged meals and nutrition data to Apple Health."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "monochromeImage": "./assets/monochrome.png",
+        "backgroundColor": "#16A34A"
       },
       "package": "com.djapplications.gutai",
-      "versionCode": 28,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.health.READ_NUTRITION",
+        "android.permission.health.WRITE_NUTRITION"
       ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -46,8 +49,25 @@
       "expo-secure-store",
       "expo-font",
       "expo-localization",
-      "expo-image"
+      "expo-image",
+      "react-native-health-connect",
+      "expo-notifications",
+      "./plugins/with-health-connect-queries.js",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
+          }
+        }
+      ],
+      "expo-sharing"
     ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
     "extra": {
       "eas": {
         "projectId": "18ddbacc-5aee-4310-afba-96d053017225"

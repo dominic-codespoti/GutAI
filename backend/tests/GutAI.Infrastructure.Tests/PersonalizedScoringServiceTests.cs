@@ -446,4 +446,155 @@ public class PersonalizedScoringServiceTests
         fiberExplanation.Explanation.Should().Contain("no fiber bonus applied");
         fiberExplanation.Explanation.Should().NotContain("assuming moderate");
     }
+
+    // ─── Profile conditions & dynamic weighting ─────────────────────────
+
+    [Fact]
+    public async Task DefaultProfile_ReproducesBaselineComposite()
+    {
+        // Fixture product: "Garlic Bread" with wheat/garlic/butter/onion, novaGroup 3, fiber 2g, no allergens.
+        // FodmapScore: Garlic, onion, wheat detected -> score is 1 (multiple high FODMAP triggers)
+        // AdditiveScore: 100 (no additive flags)
+        // NovaScore: 50 (NovaGroup 3)
+        // FiberScore: 50 (Fiber 2g >= 1m)
+        // AllergenScore: 100 (no user allergies)
+        // Default weights: FODMAP 35%, Additive 20%, NOVA 15%, Fiber 15%, Allergen 15%
+        // Composite = (int)(1 * 0.35 + 100 * 0.20 + 50 * 0.15 + 50 * 0.15 + 100 * 0.15)
+        //           = (int)(0.35 + 20 + 7.5 + 7.5 + 15) = (int)(50.35) = 50.
+        var product = MakeProduct("Garlic Bread", "wheat flour, garlic, butter, onion", novaGroup: 3, fiber: 2m);
+        var defaultUserId = Guid.NewGuid();
+        var store = MockTableStoreFactory.Create(users: [new() { Id = defaultUserId, Email = "default@test.com", GutConditions = [], DietaryPreferences = [], Allergies = [] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, defaultUserId, store);
+
+        result.FodmapComponent.Should().Be(1);
+        result.AdditiveRiskComponent.Should().Be(100);
+        result.NovaComponent.Should().Be(50);
+        result.FiberComponent.Should().Be(50);
+        result.AllergenComponent.Should().Be(100);
+        result.CompositeScore.Should().Be(50);
+
+        var fodmapExpl = result.Explanations.Single(e => e.Component == "FODMAP Risk");
+        fodmapExpl.Weight.Should().Be(35);
+        fodmapExpl.WeightedContribution.Should().Be(0); // (int)(1 * 0.35) = 0
+        fodmapExpl.Explanation.Should().NotContain("Weight increased");
+
+        result.Explanations.Single(e => e.Component == "NOVA Processing").Weight.Should().Be(15);
+        result.Explanations.Single(e => e.Component == "Fiber Content").Weight.Should().Be(15);
+        result.Explanations.Single(e => e.Component == "Additive Risk").Weight.Should().Be(20);
+        result.Explanations.Single(e => e.Component == "Allergen Match").Weight.Should().Be(15);
+    }
+
+    [Theory]
+    [InlineData("IBS")]
+    [InlineData("irritable bowel syndrome")]
+    [InlineData("SIBO")]
+    [InlineData("fructose malabsorption")]
+    [InlineData("bloating and gas")]
+    public async Task IbsCondition_ShiftsWeightsAndRecomputesComposite(string condition)
+    {
+        // Same fixture product: "Garlic Bread" with scores 1, 100, 50, 50, 100.
+        // With fodmapSensitive condition: FODMAP weight shifts 35->45, NOVA 15->10, Fiber 15->10.
+        // Composite = (int)(1 * 0.45 + 100 * 0.20 + 50 * 0.10 + 50 * 0.10 + 100 * 0.15)
+        //           = (int)(0.45 + 20 + 5 + 5 + 15) = (int)(45.45) = 45.
+        // Baseline was 50, shifted is 45.
+        var product = MakeProduct("Garlic Bread", "wheat flour, garlic, butter, onion", novaGroup: 3, fiber: 2m);
+        var userId = Guid.NewGuid();
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "ibs@test.com", GutConditions = [condition] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.CompositeScore.Should().Be(45);
+        var fodmapExpl = result.Explanations.Single(e => e.Component == "FODMAP Risk");
+        fodmapExpl.Weight.Should().Be(45);
+        fodmapExpl.WeightedContribution.Should().Be(0); // (int)(1 * 0.45) = 0
+        fodmapExpl.Explanation.Should().Contain("Weight increased because your profile indicates FODMAP sensitivity.");
+
+        var novaExpl = result.Explanations.Single(e => e.Component == "NOVA Processing");
+        novaExpl.Weight.Should().Be(10);
+        novaExpl.WeightedContribution.Should().Be(5); // (int)(50 * 0.10) = 5
+
+        var fiberExpl = result.Explanations.Single(e => e.Component == "Fiber Content");
+        fiberExpl.Weight.Should().Be(10);
+        fiberExpl.WeightedContribution.Should().Be(5); // (int)(50 * 0.10) = 5
+
+        var totalWeight = result.Explanations.Sum(e => e.Weight);
+        totalWeight.Should().Be(100);
+    }
+
+    [Fact]
+    public async Task LowFodmapDietaryPreference_ShiftsWeights()
+    {
+        var product = MakeProduct("Garlic Bread", "wheat flour, garlic, butter, onion", novaGroup: 3, fiber: 2m);
+        var userId = Guid.NewGuid();
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "lowfod@test.com", DietaryPreferences = ["low-fodmap"] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.CompositeScore.Should().Be(45);
+        result.Explanations.Single(e => e.Component == "FODMAP Risk").Weight.Should().Be(45);
+        result.Explanations.Single(e => e.Component == "NOVA Processing").Weight.Should().Be(10);
+        result.Explanations.Single(e => e.Component == "Fiber Content").Weight.Should().Be(10);
+    }
+
+    [Fact]
+    public async Task CeliacProfile_WithWheatIngredientAndNoGlutenTag_YieldsAllergenZeroAndWarning()
+    {
+        // Product has allergen tags (e.g. "en:milk") but no "en:gluten" or "en:wheat" tag.
+        // Ingredients contain "wheat flour". User profile has "celiac".
+        var product = MakeProduct("Baked Biscuit", "wheat flour, sugar, butter", novaGroup: 3, fiber: 1m,
+            allergensTags: ["en:milk"]);
+        var userId = Guid.NewGuid();
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "celiac@test.com", GutConditions = ["celiac disease"] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.AllergenComponent.Should().Be(0);
+        result.PersonalWarnings.Should().Contain("Gluten source detected in ingredients (profile indicates gluten sensitivity).");
+        result.CompositeScore.Should().BeLessOrEqualTo(19);
+        result.Rating.Should().Be("Avoid");
+
+        var allergenExpl = result.Explanations.Single(e => e.Component == "Allergen Match");
+        allergenExpl.RawScore.Should().Be(0);
+        allergenExpl.WeightedContribution.Should().Be(0);
+        allergenExpl.Explanation.Should().Contain("ingredient text scan");
+    }
+
+    [Fact]
+    public async Task CeliacProfile_WithCleanIngredients_LeavesAllergenNeutral()
+    {
+        // Product has allergen tags ("en:milk") and clean ingredients without wheat/barley/rye/spelt/triticale/malt.
+        var product = MakeProduct("Rice Milk", "water, rice, sunflower oil, salt", novaGroup: 1, fiber: 1m,
+            allergensTags: ["en:soybeans"]);
+        var userId = Guid.NewGuid();
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "celiac@test.com", GutConditions = ["celiac disease"] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.AllergenComponent.Should().Be(100);
+        result.PersonalWarnings.Should().NotContain(w => w.Contains("Gluten source detected"));
+
+        var allergenExpl = result.Explanations.Single(e => e.Component == "Allergen Match");
+        allergenExpl.RawScore.Should().Be(100);
+        allergenExpl.Explanation.Should().Be("No profile allergen match was detected in the available allergen data.");
+    }
+
+    [Theory]
+    [InlineData("barley malt extract")]
+    [InlineData("organic rye flour")]
+    [InlineData("spelt flakes")]
+    [InlineData("triticale meal")]
+    [InlineData("malt syrup")]
+    public async Task CeliacProfile_DetectsAllGlutenGrains(string ingredientSnippet)
+    {
+        var product = MakeProduct("Grain Cereal", $"corn, {ingredientSnippet}, sugar", novaGroup: 2,
+            allergensTags: ["en:nuts"]);
+        var userId = Guid.NewGuid();
+        var store = MockTableStoreFactory.Create(users: [new() { Id = userId, Email = "gluten@test.com", GutConditions = ["gluten intolerance"] }]).Object;
+
+        var result = await _sut.ScoreAsync(product, userId, store);
+
+        result.AllergenComponent.Should().Be(0);
+        result.PersonalWarnings.Should().Contain("Gluten source detected in ingredients (profile indicates gluten sensitivity).");
+    }
 }

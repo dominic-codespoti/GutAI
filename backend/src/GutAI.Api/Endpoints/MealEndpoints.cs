@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using GutAI.Domain.Enums;
@@ -10,6 +11,7 @@ public static class MealEndpoints
     {
         group.MapPost("/", CreateMeal);
         group.MapPost("/log-natural", LogNatural);
+        group.MapPost("/import", ImportMeals);
         group.MapGet("/", GetMealsByDate);
         group.MapGet("/recent-foods", GetRecentFoods);
         group.MapGet("/streak", GetStreak);
@@ -58,7 +60,9 @@ public static class MealEndpoints
             Id = Guid.NewGuid(),
             UserId = userId,
             MealType = mealType,
-            LoggedAt = request.LoggedAt ?? DateTime.UtcNow,
+            LoggedAt = request.LoggedAt.HasValue
+                ? TimeZoneHelper.NormalizeUtc(request.LoggedAt.Value)
+                : DateTime.UtcNow,
             Notes = request.Notes,
             OriginalText = request.OriginalText,
             IsDeleted = false
@@ -74,6 +78,9 @@ public static class MealEndpoints
             Servings = i.Servings,
             ServingUnit = i.ServingUnit,
             ServingWeightG = i.ServingWeightG,
+            ServingHintUnit = i.ServingHintUnit,
+            ServingHintUnitPlural = i.ServingHintUnitPlural,
+            ServingHintUnitGrams = i.ServingHintUnitGrams,
             Calories = i.Calories,
             ProteinG = i.ProteinG,
             CarbsG = i.CarbsG,
@@ -96,7 +103,7 @@ public static class MealEndpoints
         await store.UpsertMealLogAsync(meal);
         await store.UpsertMealItemsAsync(userId, meal.Id, items);
 
-        await InvalidateUserInsightCaches(userId, cache);
+        await InvalidateUserInsightCaches(userId, store, cache);
 
         meal.Items = items;
         var createSafetyRatings = await LoadSafetyRatingsAsync(items, store);
@@ -123,32 +130,39 @@ public static class MealEndpoints
         });
     }
 
-    static async Task<IResult> GetMealsByDate(DateOnly? date, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetMealsByDate(
+        DateOnly? date,
+        int? tzOffsetMinutes,
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store)
     {
         var userId = GetUserId(principal);
-        var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var user = await store.GetUserAsync(userId);
+        var hasTimezone = !string.IsNullOrWhiteSpace(timezoneId)
+            || !string.IsNullOrWhiteSpace(user?.TimezoneId);
+        var timezone = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var targetDate = date
+            ?? (hasTimezone
+                ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone))
+                : tzOffsetMinutes.HasValue
+                    ? DateOnly.FromDateTime(DateTime.UtcNow.Add(TimeSpan.FromMinutes(-tzOffsetMinutes.Value)))
+                    : DateOnly.FromDateTime(DateTime.UtcNow));
+        var (utcStart, utcEnd) = hasTimezone
+            ? TimeZoneHelper.GetUtcRangeForLocalDate(user, targetDate, timezoneId)
+            : tzOffsetMinutes.HasValue
+                ? TimeZoneHelper.GetUtcRangeForFixedOffset(targetDate, tzOffsetMinutes.Value)
+                : TimeZoneHelper.GetUtcRangeForLocalDate(user, targetDate);
 
-        if (tzOffsetMinutes.HasValue)
-        {
-            var offset = TimeSpan.FromMinutes(-tzOffsetMinutes.Value);
-            var utcStart = targetDate.ToDateTime(TimeOnly.MinValue) - offset;
-            var utcEnd = targetDate.ToDateTime(TimeOnly.MaxValue) - offset;
-            var meals = await store.GetMealLogsByDateRangeAsync(
-                userId,
-                DateOnly.FromDateTime(utcStart),
-                DateOnly.FromDateTime(utcEnd));
-            meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
-            foreach (var m in meals)
-                m.Items = await store.GetMealItemsAsync(userId, m.Id);
-            var tzSafetyRatings = await LoadSafetyRatingsAsync(meals.SelectMany(m => m.Items ?? []).ToList(), store);
-            return Results.Ok(meals.OrderBy(m => m.LoggedAt).Select(m => MapToDto(m, tzSafetyRatings)));
-        }
-
-        var allMeals = await store.GetMealLogsByDateAsync(userId, targetDate);
-        foreach (var m in allMeals)
+        var meals = await store.GetMealLogsByDateRangeAsync(
+            userId,
+            DateOnly.FromDateTime(utcStart),
+            DateOnly.FromDateTime(utcEnd));
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
+        foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
-        var safetyRatings = await LoadSafetyRatingsAsync(allMeals.SelectMany(m => m.Items ?? []).ToList(), store);
-        return Results.Ok(allMeals.OrderBy(m => m.LoggedAt).Select(m => MapToDto(m, safetyRatings)));
+        var safetyRatings = await LoadSafetyRatingsAsync(meals.SelectMany(m => m.Items ?? []).ToList(), store);
+        return Results.Ok(meals.OrderBy(m => m.LoggedAt).Select(m => MapToDto(m, safetyRatings)));
     }
 
     static async Task<IResult> GetMeal(Guid id, ClaimsPrincipal principal, ITableStore store)
@@ -196,7 +210,7 @@ public static class MealEndpoints
         meal.CorrectionCount++;
         meal.LastCorrectedAt = DateTime.UtcNow;
         if (request.LoggedAt.HasValue)
-            meal.LoggedAt = request.LoggedAt.Value;
+            meal.LoggedAt = TimeZoneHelper.NormalizeUtc(request.LoggedAt.Value);
 
         await store.DeleteMealItemsAsync(userId, id);
 
@@ -210,6 +224,9 @@ public static class MealEndpoints
             Servings = i.Servings,
             ServingUnit = i.ServingUnit,
             ServingWeightG = i.ServingWeightG,
+            ServingHintUnit = i.ServingHintUnit,
+            ServingHintUnitPlural = i.ServingHintUnitPlural,
+            ServingHintUnitGrams = i.ServingHintUnitGrams,
             Calories = i.Calories,
             ProteinG = i.ProteinG,
             CarbsG = i.CarbsG,
@@ -232,7 +249,7 @@ public static class MealEndpoints
         await store.UpsertMealLogAsync(meal);
         await store.UpsertMealItemsAsync(userId, id, newItems);
 
-        await InvalidateUserInsightCaches(userId, cache);
+        await InvalidateUserInsightCaches(userId, store, cache);
 
         meal.Items = newItems;
         var updateSafetyRatings = await LoadSafetyRatingsAsync(newItems, store);
@@ -248,32 +265,33 @@ public static class MealEndpoints
         meal.IsDeleted = true;
         await store.UpsertMealLogAsync(meal);
 
-        await InvalidateUserInsightCaches(userId, cache);
+        await InvalidateUserInsightCaches(userId, store, cache);
 
         return Results.NoContent();
     }
 
-    static async Task<IResult> GetDailySummary(DateOnly date, int? tzOffsetMinutes, ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetDailySummary(
+        DateOnly date,
+        int? tzOffsetMinutes,
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store)
     {
         var userId = GetUserId(principal);
         var user = await store.GetUserAsync(userId);
+        var hasTimezone = !string.IsNullOrWhiteSpace(timezoneId)
+            || !string.IsNullOrWhiteSpace(user?.TimezoneId);
+        var (utcStart, utcEnd) = hasTimezone
+            ? TimeZoneHelper.GetUtcRangeForLocalDate(user, date, timezoneId)
+            : tzOffsetMinutes.HasValue
+                ? TimeZoneHelper.GetUtcRangeForFixedOffset(date, tzOffsetMinutes.Value)
+                : TimeZoneHelper.GetUtcRangeForLocalDate(user, date);
 
-        List<MealLog> meals;
-        if (tzOffsetMinutes.HasValue)
-        {
-            var offset = TimeSpan.FromMinutes(-tzOffsetMinutes.Value);
-            var utcStart = date.ToDateTime(TimeOnly.MinValue) - offset;
-            var utcEnd = date.ToDateTime(TimeOnly.MaxValue) - offset;
-            meals = await store.GetMealLogsByDateRangeAsync(
-                userId,
-                DateOnly.FromDateTime(utcStart),
-                DateOnly.FromDateTime(utcEnd));
-            meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
-        }
-        else
-        {
-            meals = await store.GetMealLogsByDateAsync(userId, date);
-        }
+        var meals = await store.GetMealLogsByDateRangeAsync(
+            userId,
+            DateOnly.FromDateTime(utcStart),
+            DateOnly.FromDateTime(utcEnd));
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
         foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
 
@@ -292,17 +310,167 @@ public static class MealEndpoints
         });
     }
 
-    static async Task<IResult> ExportData(DateOnly? from, DateOnly? to, ClaimsPrincipal principal, ITableStore store)
+
+    static async Task<IResult> ImportMeals(
+        ImportMealsRequest request,
+        ClaimsPrincipal principal,
+        ITableStore store,
+        string? timezoneId)
     {
         var userId = GetUserId(principal);
-        var fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-90));
-        var toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (timezoneId is { Length: > 100 })
+            return Results.BadRequest(new { error = "Timezone ID must not exceed 100 characters" });
 
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, fromDate, toDate);
+        var user = await store.GetUserAsync(userId);
+        var timezone = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+
+        if (string.IsNullOrWhiteSpace(request.Source) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(request.Source, "^[a-z0-9-]{1,32}$"))
+            return Results.BadRequest(new { error = "source must be 1-32 chars of a-z, 0-9, or '-'." });
+        if (request.Items.Count == 0 || request.Items.Count > 2000)
+            return Results.BadRequest(new { error = "items must contain between 1 and 2000 entries." });
+
+        int imported = 0, skipped = 0, failed = 0;
+        var errors = new List<string>();
+
+        foreach (var item in request.Items)
+        {
+            if (item.LoggedAt == default || item.LoggedAt.Kind == DateTimeKind.Unspecified)
+            {
+                failed++;
+                errors.Add($"invalid loggedAt '{item.LoggedAt:O}': timestamp must include UTC or an offset.");
+                continue;
+            }
+
+            var loggedAtUtc = TimeZoneHelper.NormalizeUtc(item.LoggedAt);
+            if (loggedAtUtc > DateTime.UtcNow.AddDays(1))
+            {
+                failed++;
+                errors.Add($"invalid loggedAt '{item.LoggedAt:O}'.");
+                continue;
+            }
+
+            try
+            {
+                // Idempotency: a known (source, externalId) pair is a re-import of the
+                // same record — skip instead of duplicating.
+                if (!string.IsNullOrEmpty(item.ExternalId) &&
+                    await store.GetMealLogByExternalRefAsync(userId, request.Source, item.ExternalId) is not null)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var name = string.IsNullOrWhiteSpace(item.Name) ? "Imported meal" : item.Name.Trim();
+                if (name.Length > 300) name = name[..300];
+
+                var meal = new MealLog
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    MealType = ResolveMealType(item, loggedAtUtc, timezone),
+                    LoggedAt = loggedAtUtc,
+                    Notes = item.Notes is { Length: > MealValidation.MaxNotesLength } ? item.Notes[..MealValidation.MaxNotesLength] : item.Notes,
+                    TotalCalories = MealValidation.ClampNutrient(item.Calories * item.Servings, MealValidation.MaxCalories),
+                    TotalProteinG = MealValidation.ClampNutrient(item.ProteinG * item.Servings, MealValidation.MaxMacroG),
+                    TotalCarbsG = MealValidation.ClampNutrient(item.CarbsG * item.Servings, MealValidation.MaxMacroG),
+                    TotalFatG = MealValidation.ClampNutrient(item.FatG * item.Servings, MealValidation.MaxMacroG),
+                    OriginalText = $"{request.Source} import",
+                    ExternalSource = request.Source,
+                    ExternalId = string.IsNullOrEmpty(item.ExternalId) ? null : item.ExternalId[..Math.Min(item.ExternalId.Length, 128)],
+                };
+
+                var mealItem = new MealItem
+                {
+                    Id = Guid.NewGuid(),
+                    MealLogId = meal.Id,
+                    FoodName = name,
+                    Servings = MealValidation.ClampServings(item.Servings),
+                    ServingUnit = "serving",
+                    Calories = meal.TotalCalories,
+                    ProteinG = meal.TotalProteinG,
+                    CarbsG = meal.TotalCarbsG,
+                    FatG = meal.TotalFatG,
+                    FiberG = MealValidation.ClampNutrient(item.FiberG * item.Servings, MealValidation.MaxMacroG),
+                    SugarG = MealValidation.ClampNutrient(item.SugarG * item.Servings, MealValidation.MaxMacroG),
+                    SodiumMg = MealValidation.ClampNutrient(item.SodiumMg * item.Servings, MealValidation.MaxMacroG),
+                    NutritionProvenance = "Estimated",
+                };
+
+                await store.UpsertMealLogAsync(meal);
+                await store.UpsertMealItemsAsync(userId, meal.Id, [mealItem]);
+                imported++;
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                errors.Add($"item at '{item.LoggedAt:O}' failed: {ex.Message}");
+                if (errors.Count >= 25) break;
+            }
+        }
+
+        return Results.Ok(new ImportMealsResult
+        {
+            Imported = imported,
+            SkippedDuplicates = skipped,
+            Failed = failed,
+            Errors = errors,
+        });
+    }
+
+    static MealType ResolveMealType(
+        ImportMealRequest item,
+        DateTime loggedAtUtc,
+        TimeZoneInfo timezone)
+    {
+        if (!string.IsNullOrEmpty(item.MealType) &&
+            Enum.TryParse<MealType>(item.MealType, true, out var parsed))
+            return parsed;
+
+        // Local-hour heuristic for sources that don't carry a meal type.
+        return TimeZoneInfo.ConvertTimeFromUtc(loggedAtUtc, timezone).Hour switch
+        {
+            >= 6 and < 11 => MealType.Breakfast,
+            >= 11 and < 15 => MealType.Lunch,
+            >= 18 and < 22 => MealType.Dinner,
+            _ => MealType.Snack,
+        };
+    }
+    /// <summary>
+    /// Exports the user's selected local calendar range. The payload timestamps remain
+    /// UTC instants so the export is portable across devices.
+    /// </summary>
+    static async Task<IResult> ExportData(
+        DateOnly? from,
+        DateOnly? to,
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store)
+    {
+        var userId = GetUserId(principal);
+        if (timezoneId is { Length: > 100 })
+            return Results.BadRequest(new { error = "Timezone ID must not exceed 100 characters" });
+
+        var user = await store.GetUserAsync(userId);
+        var timezone = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone));
+        var fromDate = from ?? today.AddDays(-90);
+        var toDate = to ?? today;
+        if (fromDate > toDate)
+            return Results.BadRequest(new { error = "from must not be after to" });
+
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(
+            user, fromDate, toDate, timezoneId);
+        var coarseFrom = DateOnly.FromDateTime(utcStart);
+        var coarseTo = DateOnly.FromDateTime(utcEnd);
+
+        var meals = await store.GetMealLogsByDateRangeAsync(userId, coarseFrom, coarseTo);
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
         foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
 
-        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, fromDate, toDate);
+        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, coarseFrom, coarseTo);
+        symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
         foreach (var s in symptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId);
 
@@ -350,6 +518,9 @@ public static class MealEndpoints
             Servings = i.Servings,
             ServingUnit = i.ServingUnit,
             ServingWeightG = i.ServingWeightG,
+            ServingHintUnit = i.ServingHintUnit,
+            ServingHintUnitPlural = i.ServingHintUnitPlural,
+            ServingHintUnitGrams = i.ServingHintUnitGrams,
             FoodProductId = i.FoodProductId,
             Calories = i.Calories,
             ProteinG = i.ProteinG,
@@ -380,9 +551,11 @@ public static class MealEndpoints
             : await store.GetFoodProductSafetyRatingsAsync(ids);
     }
 
-    static async Task InvalidateUserInsightCaches(Guid userId, ICacheService cache)
+    static async Task InvalidateUserInsightCaches(Guid userId, ITableStore store, ICacheService cache)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var user = await store.GetUserAsync(userId);
+        var timezone = TimeZoneHelper.ResolveTimeZone(user, null);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone));
         var ranges = new[] { 7, 14, 30, 90 };
         foreach (var days in ranges)
         {
@@ -430,20 +603,23 @@ public static class MealEndpoints
         return Results.Ok(recentFoods);
     }
 
-    static async Task<IResult> GetStreak(ClaimsPrincipal principal, ITableStore store)
+    static async Task<IResult> GetStreak(
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store)
     {
         var userId = GetUserId(principal);
         var user = await store.GetUserAsync(userId);
-        var tz = TimeZoneInfo.Utc;
-        if (user?.TimezoneId is not null)
-        {
-            try { tz = TimeZoneInfo.FindSystemTimeZoneById(user.TimezoneId); }
-            catch { /* fall back to UTC */ }
-        }
-
+        var tz = TimeZoneHelper.ResolveTimeZone(user, timezoneId);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
         var from = today.AddDays(-90);
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, from, today);
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(
+            user, from, today, timezoneId);
+        var meals = await store.GetMealLogsByDateRangeAsync(
+            userId,
+            DateOnly.FromDateTime(utcStart),
+            DateOnly.FromDateTime(utcEnd));
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
 
         var daysWithMeals = meals
             .Select(m => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(m.LoggedAt, tz)))

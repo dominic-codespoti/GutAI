@@ -42,13 +42,36 @@ public sealed class ScannedComponent
     [JsonPropertyName("estimated_grams_high")]
     public decimal EstimatedGramsHigh { get; set; }
 
-    /// <summary>0..1 — reflects BOTH identity certainty AND portion certainty.</summary>
+    /// <summary>0..1 — confidence in the component's visual identity.</summary>
     [JsonPropertyName("confidence")]
     public decimal Confidence { get; set; }
+
+    /// <summary>0..1 — confidence in the estimated portion range.</summary>
+    [JsonPropertyName("portion_confidence")]
+    public decimal PortionConfidence { get; set; } = 0.5m;
+
+    /// <summary>True when the item is a low-mass garnish or seasoning (e.g. sprinkled pepper, herbs).</summary>
+    [JsonPropertyName("is_garnish")]
+    public bool IsGarnish { get; set; }
 
     /// <summary>Cooking-method note ("appears fried", "sauce visible").</summary>
     [JsonPropertyName("preparation_note")]
     public string PreparationNote { get; set; } = "";
+
+    /// <summary>One familiar household unit for the estimated portion (singular).</summary>
+    [JsonPropertyName("serving_hint_unit")]
+    public string ServingHintUnit { get; set; } = "";
+
+    [JsonPropertyName("serving_hint_unit_plural")]
+    public string ServingHintUnitPlural { get; set; } = "";
+
+    /// <summary>Approximate grams for ONE serving_hint_unit, supplied by the model.</summary>
+    [JsonPropertyName("serving_hint_unit_grams")]
+    public decimal ServingHintUnitGrams { get; set; }
+
+    /// <summary>Up to three generic retrieval hints; never authoritative identity.</summary>
+    [JsonPropertyName("search_queries")]
+    public List<string> SearchQueries { get; set; } = [];
 }
 
 /// <summary>One resolved line item in the draft returned to the client.</summary>
@@ -70,8 +93,28 @@ public sealed record MealScanItemDto
     /// <summary>Citation URL when Source == "web".</summary>
     public string? SourceUrl { get; init; }
 
-    /// <summary>Editable portion estimate (grams) — always the STAGE-A estimate, never a catalogue serving size.</summary>
+    /// <summary>Editable portion midpoint in grams — always the Stage-A estimate.</summary>
     public required decimal Grams { get; set; }
+
+    /// <summary>Lower bound of the Stage-A portion range, in grams.</summary>
+    public decimal? PortionLowGrams { get; init; }
+
+    /// <summary>Upper bound of the Stage-A portion range, in grams.</summary>
+    public decimal? PortionHighGrams { get; init; }
+
+    /// <summary>How the portion was estimated (e.g. "vision_estimate").</summary>
+    public string PortionMethod { get; init; } = "vision_estimate";
+
+    /// <summary>Model-supplied household unit used only for display guidance.</summary>
+    public string? ServingHintUnit { get; init; }
+    public string? ServingHintUnitPlural { get; init; }
+    public decimal? ServingHintUnitGrams { get; init; }
+
+    /// <summary>Stage-A confidence in the portion range.</summary>
+    public decimal PortionConfidence { get; init; }
+
+    /// <summary>True when tagged as a low-mass garnish/seasoning.</summary>
+    public bool IsGarnish { get; init; }
 
     // Computed deterministically from DB per-100g × grams (null while Source == "ai").
     public decimal? Calories { get; set; }
@@ -82,7 +125,7 @@ public sealed record MealScanItemDto
     public decimal? SugarG { get; set; }
     public decimal? SodiumMg { get; set; }
 
-    /// <summary>Stage-B database resolution confidence (1 when Source == "ai").</summary>
+    /// <summary>Stage-B database resolution confidence (0 for an AI estimate).</summary>
     public required decimal MatchConfidence { get; init; }
 
     /// <summary>Stage-A vision confidence carried through.</summary>
@@ -119,13 +162,39 @@ public sealed record GroundingCandidateDto(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("food_product_id")] Guid? FoodProductId,
     [property: JsonPropertyName("source")] string Source,
-    [property: JsonPropertyName("match_confidence")] decimal MatchConfidence);
+    [property: JsonPropertyName("match_confidence")] decimal MatchConfidence,
+    [property: JsonPropertyName("brand")] string? Brand = null,
+    [property: JsonPropertyName("external_id")] string? ExternalId = null,
+    [property: JsonPropertyName("source_url")] string? SourceUrl = null,
+    [property: JsonPropertyName("calories_100g")] decimal? Calories100g = null,
+    [property: JsonPropertyName("protein_100g")] decimal? Protein100g = null,
+    [property: JsonPropertyName("carbs_100g")] decimal? Carbs100g = null,
+    [property: JsonPropertyName("fat_100g")] decimal? Fat100g = null,
+    [property: JsonPropertyName("fiber_100g")] decimal? Fiber100g = null,
+    [property: JsonPropertyName("sugar_100g")] decimal? Sugar100g = null,
+    [property: JsonPropertyName("sodium_mg_100g")] decimal? SodiumMg100g = null);
+
+/// <summary>Constrained Stage-B2 choice: the model may select one supplied candidate or abstain.</summary>
+public sealed class MealScanCandidateChoice
+{
+    [JsonPropertyName("candidate_index")]
+    public int? CandidateIndex { get; set; }
+
+    [JsonPropertyName("confidence")]
+    public decimal Confidence { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = "";
+}
 
 public sealed record GroundingAttemptDto
 {
-    /// <summary>Query sent to the resolver (the Stage-A component name, sanitized).</summary>
+    /// <summary>Primary raw query sent to the resolver.</summary>
     [JsonPropertyName("query")]
     public required string Query { get; init; }
+
+    [JsonPropertyName("queries")]
+    public IReadOnlyList<string> Queries { get; init; } = [];
 
     /// <summary>"exact" | "probable" | "ambiguous" | "unresolved" — resolver's own decision.</summary>
     [JsonPropertyName("resolution_status")]

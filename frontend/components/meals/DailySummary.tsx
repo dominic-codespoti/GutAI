@@ -5,8 +5,8 @@ import {
   useThemeFonts,
   useThemeShadow,
 } from "../../src/stores/theme";
+import { CountUpText } from "../CountUpText";
 import type { DailyNutritionSummary as Summary } from "../../src/types";
-
 interface Props {
   summary: Summary;
 }
@@ -30,11 +30,10 @@ export function DailySummary({ summary }: Props) {
       </Text>
       <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
         <View style={{ alignItems: "center" }}>
-          <Text
+          <CountUpText
+            value={summary.totalCalories}
             style={{ fontSize: 20, fontWeight: "700", color: colors.primary }}
-          >
-            {Math.round(summary.totalCalories)}
-          </Text>
+          />
           <Text style={fonts.small}>/ {summary.calorieGoal} cal</Text>
         </View>
         <View style={{ alignItems: "center" }}>
@@ -60,6 +59,32 @@ export function DailySummary({ summary }: Props) {
           <Text style={fonts.small}>fat</Text>
         </View>
       </View>
+      {summary.calorieGoal > 0 && (
+        <View
+          style={{
+            marginTop: spacing.md,
+            height: 5,
+            backgroundColor: colors.borderLight,
+            borderRadius: radius.full,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              height: 5,
+              borderRadius: radius.full,
+              width: `${Math.min(
+                Math.max((summary.totalCalories / summary.calorieGoal) * 100, 0),
+                100,
+              )}%`,
+              backgroundColor:
+                summary.totalCalories > summary.calorieGoal
+                  ? colors.danger
+                  : colors.primary,
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }

@@ -201,7 +201,7 @@ export function BottomSheet({
           toValue: 1,
           duration: OPEN_DURATION_MS,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.spring(translateY, {
           toValue: 0,
@@ -209,7 +209,7 @@ export function BottomSheet({
           stiffness: 320,
           mass: 0.9,
           overshootClamping: true,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]).start();
     } else if (isMounted) {
@@ -220,19 +220,19 @@ export function BottomSheet({
           toValue: 0,
           duration: CLOSE_DURATION_MS,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(translateY, {
           toValue: windowHeight,
           duration: CLOSE_DURATION_MS,
           easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(keyboardOffset, {
           toValue: 0,
           duration: CLOSE_DURATION_MS,
           easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]).start(() => {
         if (!cancelled) {
@@ -275,7 +275,7 @@ export function BottomSheet({
         toValue: nextKeyboardOffset,
         duration: Platform.OS === "ios" ? event.duration || 250 : 180,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }).start();
     });
 
@@ -284,7 +284,7 @@ export function BottomSheet({
         toValue: 0,
         duration: Platform.OS === "ios" ? event.duration || 250 : 180,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }).start();
     });
 
@@ -347,9 +347,9 @@ export function BottomSheet({
         styles.root,
         {
           paddingTop: topInset,
+          pointerEvents: "box-none",
         },
       ]}
-      pointerEvents="box-none"
       accessibilityViewIsModal
       testID={testID}
     >

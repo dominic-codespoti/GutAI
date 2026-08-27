@@ -55,6 +55,15 @@ public class TableStorageStore : ITableStore
     private async Task UpsertAsync(TableEntity entity, CancellationToken ct)
     {
         await EnsureTableAsync();
+        // Azure Tables requires UTC-kind DateTimes. Clients sending offset-form
+        // ISO timestamps deserialize to Kind=Local — coerce instead of 500-ing.
+        foreach (var key in entity.Keys.ToList())
+        {
+            if (entity[key] is DateTime { Kind: DateTimeKind.Local } dt)
+                entity[key] = dt.ToUniversalTime();
+            else if (entity[key] is DateTime { Kind: DateTimeKind.Unspecified } ud)
+                entity[key] = DateTime.SpecifyKind(ud, DateTimeKind.Utc);
+        }
         await _table.UpsertEntityAsync(entity, TableUpdateMode.Replace, ct);
     }
 
@@ -286,9 +295,21 @@ public class TableStorageStore : ITableStore
             { "LastCorrectedAt", meal.LastCorrectedAt },
             { "CreatedAt", meal.CreatedAt },
             { "UpdatedAt", meal.UpdatedAt },
-            { "IsDeleted", meal.IsDeleted }
+            { "IsDeleted", meal.IsDeleted },
+            { "ExternalSource", meal.ExternalSource },
+            { "ExternalId", meal.ExternalId }
         };
         await UpsertAsync(e, ct);
+    }
+
+    public async Task<MealLog?> GetMealLogByExternalRefAsync(Guid userId, string source, string externalId, CancellationToken ct)
+    {
+        // Single-partition query; source/externalId are short bounded strings so no
+        // escaping concerns beyond the standard quote guard used repo-wide.
+        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'MEAL|' and RowKey lt 'MEAL|~' and " +
+                     $"ExternalSource eq '{source.Replace("'", "''")}' and ExternalId eq '{externalId.Replace("'", "''")}'";
+        var entities = await QueryAsync(filter, ct);
+        return entities.Select(MapToMealLog).FirstOrDefault(m => !m.IsDeleted);
     }
 
     private static MealLog MapToMealLog(TableEntity e)
@@ -311,7 +332,9 @@ public class TableStorageStore : ITableStore
             LastCorrectedAt = e.GetDateTimeOffset("LastCorrectedAt")?.UtcDateTime,
             CreatedAt = e.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow,
             UpdatedAt = e.GetDateTimeOffset("UpdatedAt")?.UtcDateTime ?? DateTime.UtcNow,
-            IsDeleted = e.GetBoolean("IsDeleted") ?? false
+            IsDeleted = e.GetBoolean("IsDeleted") ?? false,
+            ExternalSource = e.GetString("ExternalSource"),
+            ExternalId = e.GetString("ExternalId")
         };
     }
 
@@ -361,6 +384,9 @@ public class TableStorageStore : ITableStore
                 { "Servings", Str(item.Servings) },
                 { "ServingUnit", item.ServingUnit },
                 { "ServingWeightG", Str(item.ServingWeightG) },
+                { "ServingHintUnit", item.ServingHintUnit },
+                { "ServingHintUnitPlural", item.ServingHintUnitPlural },
+                { "ServingHintUnitGrams", Str(item.ServingHintUnitGrams) },
                 { "Calories", Str(item.Calories) },
                 { "ProteinG", Str(item.ProteinG) },
                 { "CarbsG", Str(item.CarbsG) },
@@ -402,6 +428,9 @@ public class TableStorageStore : ITableStore
             Servings = Dec(e, "Servings"),
             ServingUnit = e.GetString("ServingUnit") ?? "serving",
             ServingWeightG = DecN(e, "ServingWeightG"),
+            ServingHintUnit = e.GetString("ServingHintUnit"),
+            ServingHintUnitPlural = e.GetString("ServingHintUnitPlural"),
+            ServingHintUnitGrams = DecN(e, "ServingHintUnitGrams"),
             Calories = Dec(e, "Calories"),
             ProteinG = Dec(e, "ProteinG"),
             CarbsG = Dec(e, "CarbsG"),
@@ -871,6 +900,152 @@ public class TableStorageStore : ITableStore
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    //  PairingCodes + PersonalAccessTokens (AI-consumer linking)
+    // ═══════════════════════════════════════════════════════════
+
+    public async Task<PairingCode?> GetPairingCodeByHashAsync(string codeHash, CancellationToken ct)
+    {
+        var lookup = await GetEntityOrNullAsync("PLOOKUP", codeHash, ct);
+        if (lookup == null) return null;
+
+        var userId = lookup.GetString("UserId");
+        var codeId = lookup.GetString("CodeId");
+        if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(codeId)) return null;
+
+        var e = await GetEntityOrNullAsync(userId, $"PCODE|{codeId}", ct);
+        return e == null ? null : MapToPairingCode(e);
+    }
+
+    public async Task UpsertPairingCodeAsync(PairingCode code, CancellationToken ct)
+    {
+        var pk = code.UserId.ToString();
+        await UpsertAsync(new TableEntity(pk, $"PCODE|{code.Id}")
+        {
+            { "CodeHash", code.CodeHash },
+            { "CreatedAt", code.CreatedAt },
+            { "ExpiresAt", code.ExpiresAt },
+            { "FailedAttempts", code.FailedAttempts },
+            { "UsedAt", code.UsedAt },
+        }, ct);
+
+        // PLOOKUP rows are written once and never updated — a redeemed or dead code's
+        // lookup row is harmless because the primary row decides redeemability.
+        await UpsertAsync(new TableEntity("PLOOKUP", code.CodeHash)
+        {
+            { "UserId", pk },
+            { "CodeId", code.Id.ToString() },
+        }, ct);
+    }
+
+    public async Task DeletePairingCodesForUserAsync(Guid userId, CancellationToken ct)
+    {
+        var pk = userId.ToString();
+        var filter = $"PartitionKey eq '{pk}' and RowKey ge 'PCODE|' and RowKey lt 'PCODE|~'";
+        foreach (var e in await QueryAsync(filter, ct))
+        {
+            var hash = e.GetString("CodeHash");
+            if (!string.IsNullOrEmpty(hash))
+                await DeleteAsync("PLOOKUP", hash, ct);
+            await DeleteAsync(pk, e.RowKey, ct);
+        }
+    }
+
+    public async Task<PersonalAccessToken?> GetPersonalAccessTokenByHashAsync(string tokenHash, CancellationToken ct)
+    {
+        var lookup = await GetEntityOrNullAsync("PATLOOKUP", tokenHash, ct);
+        if (lookup == null) return null;
+
+        var userId = lookup.GetString("UserId");
+        var tokenId = lookup.GetString("TokenId");
+        if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(tokenId)) return null;
+
+        var e = await GetEntityOrNullAsync(userId, $"PAT|{tokenId}", ct);
+        return e == null ? null : MapToPersonalAccessToken(e);
+    }
+
+    public async Task<List<PersonalAccessToken>> GetActivePersonalAccessTokensAsync(Guid userId, CancellationToken ct)
+    {
+        var pk = userId.ToString();
+        var filter = $"PartitionKey eq '{pk}' and RowKey ge 'PAT|' and RowKey lt 'PAT|~'";
+        var entities = await QueryAsync(filter, ct);
+        return entities
+            .Select(MapToPersonalAccessToken)
+            .Where(t => t.IsActive)
+            .ToList();
+    }
+
+    public async Task UpsertPersonalAccessTokenAsync(PersonalAccessToken token, CancellationToken ct)
+    {
+        var pk = token.UserId.ToString();
+        var e = new TableEntity(pk, $"PAT|{token.Id}")
+        {
+            { "Name", token.Name },
+            { "Email", token.Email },
+            { "TokenHash", token.TokenHash },
+            { "TokenPrefix", token.TokenPrefix },
+            { "Scopes", StringArrayToJson([.. token.Scopes]) },
+            { "CreatedAt", token.CreatedAt },
+            { "LastUsedAt", token.LastUsedAt },
+            { "RevokedAt", token.RevokedAt },
+            { "ExpiresAt", token.ExpiresAt },
+        };
+        await UpsertAsync(e, ct);
+
+        await UpsertAsync(new TableEntity("PATLOOKUP", token.TokenHash)
+        {
+            { "UserId", pk },
+            { "TokenId", token.Id.ToString() },
+        }, ct);
+    }
+
+    public async Task DeletePersonalAccessTokensForUserAsync(Guid userId, CancellationToken ct)
+    {
+        var pk = userId.ToString();
+        var filter = $"PartitionKey eq '{pk}' and RowKey ge 'PAT|' and RowKey lt 'PAT|~'";
+        foreach (var e in await QueryAsync(filter, ct))
+        {
+            var hash = e.GetString("TokenHash");
+            if (!string.IsNullOrEmpty(hash))
+                await DeleteAsync("PATLOOKUP", hash, ct);
+            await DeleteAsync(pk, e.RowKey, ct);
+        }
+    }
+
+    private static PairingCode MapToPairingCode(TableEntity e)
+    {
+        var codeId = Guid.Parse(e.RowKey.Substring("PCODE|".Length));
+        return new PairingCode
+        {
+            Id = codeId,
+            UserId = Guid.Parse(e.PartitionKey),
+            CodeHash = e.GetString("CodeHash") ?? "",
+            CreatedAt = e.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow,
+            ExpiresAt = e.GetDateTimeOffset("ExpiresAt")?.UtcDateTime ?? DateTime.UtcNow,
+            FailedAttempts = e.GetInt32("FailedAttempts") ?? 0,
+            UsedAt = e.GetDateTimeOffset("UsedAt")?.UtcDateTime,
+        };
+    }
+
+    private static PersonalAccessToken MapToPersonalAccessToken(TableEntity e)
+    {
+        var tokenId = Guid.Parse(e.RowKey.Substring("PAT|".Length));
+        return new PersonalAccessToken
+        {
+            Id = tokenId,
+            UserId = Guid.Parse(e.PartitionKey),
+            Name = e.GetString("Name") ?? "",
+            Email = e.GetString("Email") ?? "",
+            TokenHash = e.GetString("TokenHash") ?? "",
+            TokenPrefix = e.GetString("TokenPrefix") ?? "",
+            Scopes = [.. JsonToStringArray(e.GetString("Scopes"))],
+            CreatedAt = e.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow,
+            LastUsedAt = e.GetDateTimeOffset("LastUsedAt")?.UtcDateTime,
+            RevokedAt = e.GetDateTimeOffset("RevokedAt")?.UtcDateTime,
+            ExpiresAt = e.GetDateTimeOffset("ExpiresAt")?.UtcDateTime,
+        };
+    }
+
     private static RefreshToken MapToRefreshToken(TableEntity e)
     {
         var tokenId = Guid.Parse(e.RowKey.Substring("RTOKEN|".Length));
@@ -1139,16 +1314,18 @@ public class TableStorageStore : ITableStore
 
     public async Task<List<CoachChatMessage>> GetRecentCoachMessagesAsync(Guid userId, int limit, CancellationToken ct = default)
     {
-        // RowKey = inverted ticks so lexicographic order == chronological order.
-        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'COACHMSG|'";
+        // RowKey = inverted ticks so lexicographic ascending order == newest first.
+        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'COACHMSG|' and RowKey lt 'COACHMSG|~'";
         var all = await QueryAsync(filter, ct);
         return all
             .OrderBy(e => e.RowKey, StringComparer.Ordinal)
-            .TakeLast(limit)
+            .Take(limit)
+            .OrderByDescending(e => e.RowKey, StringComparer.Ordinal)
             .Select(e => new CoachChatMessage(
                 e.GetString("Role") ?? "user",
                 e.GetString("Text") ?? "",
-                e.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.UtcNow))
+                e.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.UtcNow,
+                e.RowKey))
             .ToList();
     }
 
@@ -1169,7 +1346,7 @@ public class TableStorageStore : ITableStore
 
     public async Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default)
     {
-        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'COACHMSG|'";
+        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'COACHMSG|' and RowKey lt 'COACHMSG|~'";
         foreach (var entity in await QueryAsync(filter, ct))
             await DeleteAsync(entity.PartitionKey, entity.RowKey, ct);
     }

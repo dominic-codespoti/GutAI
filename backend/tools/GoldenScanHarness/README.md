@@ -67,6 +67,19 @@ dotnet run -- ... --refresh                                                     
 
 Or via make: `make golden-run`, `make golden-gate`.
 
+### Production-like API mode
+
+```bash
+export GUTAI_GOLDEN_API_URL=http://localhost:5000
+dotnet run --project backend/tools/GoldenScanHarness -- \
+  --images golden-images --e2e --confirm --repeat 2
+```
+
+This mode registers an isolated user per case, uploads each image through the
+real API, exercises the configured Table Storage, confirms the meal, reads it
+back, and gates recall, gram error, nutrition-backed match rate, and false-positive
+rate. `--repeat N` reports stochastic variation across repeated runs.
+
 ## 4. When to re-run
 
 | Event | Action |

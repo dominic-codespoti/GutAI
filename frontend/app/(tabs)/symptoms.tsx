@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
 } from "react-native";
-import * as Haptics from "expo-haptics";
+import { useGlobalSearchParams } from "expo-router";
 import * as haptics from "../../src/utils/haptics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { symptomApi, mealApi } from "../../src/api";
@@ -21,6 +21,7 @@ import { toast } from "../../src/stores/toast";
 import { confirm } from "../../src/utils/confirm";
 import { ErrorState } from "../../components/ErrorState";
 import { BottomSheet } from "../../components/BottomSheet";
+import { EmptyState } from "../../components/EmptyState";
 import {
   SymptomSkeleton,
   SymptomTypesSkeleton,
@@ -31,6 +32,7 @@ import {
   toLocalDateStr,
   buildLoggedAt,
 } from "../../src/utils/date";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
 import { severityColor } from "../../src/utils/colors";
 import { radius, spacing, mealTypeEmoji } from "../../src/utils/theme";
 import {
@@ -45,6 +47,7 @@ import type {
   CreateSymptomRequest,
 } from "../../src/types";
 import { SafeScreen } from "../../components/SafeScreen";
+import { SeverityTimeline } from "../../src/components/charts/SeverityTimeline";
 
 function SeverityDot({
   n,
@@ -129,6 +132,19 @@ export default function SymptomsScreen() {
   const colors = useThemeColors();
   const fonts = useThemeFonts();
   const { shadow, shadowMd } = useThemeShadow();
+  const params = useGlobalSearchParams<{ date?: string }>();
+
+  const initialDate = useMemo(() => {
+    if (typeof params.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
+      return params.date;
+    }
+    return toLocalDateStr();
+  }, [params.date]);
+
+  const [viewMode, setViewMode] = useState<"today" | "history">("today");
+  const [historyDays, setHistoryDays] = useState<7 | 30 | 90>(30);
+  const [historyTypeId, setHistoryTypeId] = useState<number | null>(null);
+
   const [selectedType, setSelectedType] = useState<SymptomType | null>(null);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
@@ -140,12 +156,27 @@ export default function SymptomsScreen() {
   const [editLinkedMealId, setEditLinkedMealId] = useState<string | null>(null);
   const [editHour, setEditHour] = useState("12");
   const [editMinute, setEditMinute] = useState("00");
-  const [selectedDate, setSelectedDate] = useState(toLocalDateStr());
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const previousTodayRef = useRef(toLocalDateStr());
   const now = new Date();
   const [symptomHour, setSymptomHour] = useState(String(now.getHours()).padStart(2, "0"));
   const [symptomMinute, setSymptomMinute] = useState(String(now.getMinutes()).padStart(2, "0"));
   const queryClient = useQueryClient();
+  const timezoneId = getDeviceTimezoneId();
   const isToday = selectedDate === toLocalDateStr();
+
+  useEffect(() => {
+    if (typeof params.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
+      setSelectedDate(params.date);
+    }
+  }, [params.date]);
+  useEffect(() => {
+    const currentToday = toLocalDateStr();
+    if (!params.date && selectedDate === previousTodayRef.current && selectedDate !== currentToday) {
+      setSelectedDate(currentToday);
+    }
+    previousTodayRef.current = currentToday;
+  }, [params.date, selectedDate]);
 
   useEffect(() => {
     setLinkedMealId(null);
@@ -162,7 +193,7 @@ export default function SymptomsScreen() {
   });
 
   const { data: todaysMeals } = useQuery({
-    queryKey: ["meals", selectedDate],
+    queryKey: ["meals", selectedDate, timezoneId],
     queryFn: () => mealApi.list(selectedDate).then((r) => r.data),
   });
 
@@ -170,19 +201,57 @@ export default function SymptomsScreen() {
     data: history,
     isLoading: historyLoading,
     isError: historyError,
-    refetch: refetchHistory,
+    refetch: refetchTodaySymptoms,
   } = useQuery({
-    queryKey: ["symptom-history", selectedDate],
+    queryKey: ["symptom-history", selectedDate, timezoneId],
     queryFn: () => symptomApi.list({ date: selectedDate }).then((r) => r.data),
+  });
+
+  const historyFromDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - historyDays);
+    return toLocalDateStr(d);
+  }, [historyDays]);
+
+  const historyToDate = useMemo(() => toLocalDateStr(), []);
+
+  const {
+    data: allHistoryLogs,
+    isLoading: allHistoryLoading,
+    isError: allHistoryError,
+    refetch: refetchHistoryLogs,
+  } = useQuery({
+    queryKey: [
+      "symptom-range-history",
+      historyFromDate,
+      historyToDate,
+      historyTypeId,
+      timezoneId,
+    ],
+    queryFn: () =>
+      symptomApi
+        .history({
+          from: historyFromDate,
+          to: historyToDate,
+          typeId: historyTypeId ?? undefined,
+        })
+        .then((r) => r.data),
+    enabled: viewMode === "history",
   });
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetchHistory();
-    setRefreshing(false);
-  }, [refetchHistory]);
-
+    try {
+      if (viewMode === "history") {
+        await Promise.all([refetchHistoryLogs(), refetchTypes()]);
+      } else {
+        await Promise.all([refetchTodaySymptoms(), refetchTypes()]);
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [viewMode, refetchHistoryLogs, refetchTodaySymptoms, refetchTypes]);
   const logMutation = useMutation({
     mutationFn: () => {
       return symptomApi.create({
@@ -196,10 +265,10 @@ export default function SymptomsScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
+      queryClient.invalidateQueries({ queryKey: ["symptom-range-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
       queryClient.invalidateQueries({ queryKey: ["correlations"] });
       queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
-      setSelectedType(null);
       setSeverity(5);
       setNotes("");
       setDuration("");
@@ -208,11 +277,12 @@ export default function SymptomsScreen() {
       setSymptomHour(String(resetNow.getHours()).padStart(2, "0"));
       setSymptomMinute(String(resetNow.getMinutes()).padStart(2, "0"));
       toast.success("Symptom recorded");
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      haptics.success();
     },
-    onError: () => toast.error("Failed to log symptom"),
+    onError: () => {
+      toast.error("Failed to log symptom");
+      haptics.error();
+    },
   });
 
   const updateMutation = useMutation({
@@ -220,26 +290,34 @@ export default function SymptomsScreen() {
       symptomApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
+      queryClient.invalidateQueries({ queryKey: ["symptom-range-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
       queryClient.invalidateQueries({ queryKey: ["correlations"] });
       queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
-      setEditingSymptom(null);
       toast.success("Symptom updated");
+      haptics.success();
     },
-    onError: () => toast.error("Failed to update symptom"),
+    onError: () => {
+      toast.error("Failed to update symptom");
+      haptics.error();
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => symptomApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["symptom-history"] });
+      queryClient.invalidateQueries({ queryKey: ["symptom-range-history"] });
       queryClient.invalidateQueries({ queryKey: ["symptoms-today"] });
       queryClient.invalidateQueries({ queryKey: ["correlations"] });
       queryClient.invalidateQueries({ queryKey: ["trigger-foods-dashboard"] });
-      toast.success("Symptom deleted");
+      haptics.heavy();
+    },
+    onError: () => {
+      toast.error("Failed to delete symptom");
+      haptics.error();
     },
   });
-
   const categoryOrder = [
     "Digestive",
     "Neurological",
@@ -340,658 +418,1074 @@ export default function SymptomsScreen() {
           }
         >
           <View style={{ padding: spacing.xl }}>
-            {/* Date Navigation */}
+            {/* View Mode Toggle */}
             <View
               style={{
                 flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
                 backgroundColor: colors.card,
                 borderRadius: radius.md,
-                padding: spacing.md,
+                padding: 4,
                 marginBottom: spacing.lg,
+                borderWidth: 1,
+                borderColor: colors.borderLight,
                 ...shadow,
               }}
             >
               <TouchableOpacity
-                onPress={() => setSelectedDate(shiftDate(selectedDate, -1))}
-                style={{ padding: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Previous day"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons
-                  name="chevron-back"
-                  size={22}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setSelectedDate(toLocalDateStr())}
-                accessibilityRole="button"
-                accessibilityLabel="Go to today"
+                onPress={() => {
+                  haptics.selection();
+                  setViewMode("today");
+                }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: viewMode === "today" }}
+                accessibilityLabel="Today view"
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: radius.sm,
+                  backgroundColor:
+                    viewMode === "today" ? colors.primary : "transparent",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
                 <Text
                   style={{
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: "700",
-                    color: colors.text,
-                    textAlign: "center",
+                    color:
+                      viewMode === "today"
+                        ? colors.textOnPrimary
+                        : colors.textSecondary,
                   }}
                 >
-                  {formatDateLabel(selectedDate)}
+                  Today
                 </Text>
-                {!isToday && (
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: colors.textMuted,
-                      textAlign: "center",
-                    }}
-                  >
-                    {selectedDate}
-                  </Text>
-                )}
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() =>
-                  !isToday && setSelectedDate(shiftDate(selectedDate, 1))
-                }
-                style={{ padding: 8, opacity: isToday ? 0.3 : 1 }}
-                accessibilityRole="button"
-                accessibilityLabel="Next day"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => {
+                  haptics.selection();
+                  setViewMode("history");
+                }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: viewMode === "history" }}
+                accessibilityLabel="History view"
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: radius.sm,
+                  backgroundColor:
+                    viewMode === "history" ? colors.primary : "transparent",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
-                <Ionicons
-                  name="chevron-forward"
-                  size={22}
-                  color={colors.textSecondary}
-                />
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "700",
+                    color:
+                      viewMode === "history"
+                        ? colors.textOnPrimary
+                        : colors.textSecondary,
+                  }}
+                >
+                  History
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Log Symptom Section */}
-            <Text
-              style={{ ...fonts.h3, marginBottom: spacing.md }}
-              accessibilityRole="header"
-            >
-              Log Symptom
-            </Text>
-
-            {typesLoading ? (
-              <SymptomTypesSkeleton />
-            ) : typesError ? (
-              <ErrorState
-                message="Failed to load symptom types"
-                onRetry={() => refetchTypes()}
-              />
-            ) : (
-              categories.map((category) => (
-                <View key={category} style={{ marginBottom: spacing.md }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: colors.textMuted,
-                      marginBottom: 6,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    {category}
-                  </Text>
-                  <View
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
-                  >
-                    {types
-                      ?.filter((t) => t.category === category)
-                      .map((type) => {
-                        const active = selectedType?.id === type.id;
-                        return (
-                          <TouchableOpacity
-                            key={type.id}
-                            onPress={() => {
-                              haptics.selection();
-                              setSelectedType(active ? null : type);
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel={type.name}
-                            accessibilityState={{ selected: active }}
-                            style={{
-                              backgroundColor: active
-                                ? colors.primary
-                                : colors.card,
-                              borderRadius: radius.sm,
-                              paddingHorizontal: 14,
-                              paddingVertical: 10,
-                              borderWidth: 1,
-                              borderColor: active
-                                ? colors.primary
-                                : colors.border,
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 6,
-                              ...(active ? shadowMd : shadow),
-                            }}
-                          >
-                            <Text style={{ fontSize: 16 }}>{type.icon}</Text>
-                            <Text
-                              style={{
-                                fontSize: 13,
-                                fontWeight: "600",
-                                color: active
-                                  ? colors.textOnPrimary
-                                  : colors.text,
-                              }}
-                            >
-                              {type.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                  </View>
-                </View>
-              ))
-            )}
-
-            {/* Severity & Details Panel */}
-            {selectedType && (
-              <View
-                style={{
-                  backgroundColor: colors.card,
-                  borderRadius: radius.lg,
-                  padding: spacing.xl,
-                  marginTop: spacing.sm,
-                  marginBottom: spacing.lg,
-                  ...shadowMd,
-                }}
-              >
+            {viewMode === "today" ? (
+              <>
+                {/* Date Navigation */}
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: colors.card,
+                    borderRadius: radius.md,
+                    padding: spacing.md,
                     marginBottom: spacing.lg,
+                    ...shadow,
                   }}
                 >
-                  <Text style={{ fontSize: 24, marginRight: spacing.sm }}>
-                    {selectedType.icon}
-                  </Text>
-                  <Text style={{ ...fonts.h3, flex: 1 }}>
-                    {selectedType.name}
-                  </Text>
-                  <View
-                    style={{
-                      backgroundColor: severityColor(severity) + "20",
-                      borderRadius: radius.sm,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                    }}
+                  <TouchableOpacity
+                    onPress={() => setSelectedDate(shiftDate(selectedDate, -1))}
+                    style={{ padding: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous day"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name="chevron-back"
+                      size={22}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setSelectedDate(toLocalDateStr())}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go to today"
                   >
                     <Text
                       style={{
-                        fontSize: 14,
-                        fontWeight: "800",
-                        color: severityColor(severity),
+                        fontSize: 16,
+                        fontWeight: "700",
+                        color: colors.text,
+                        textAlign: "center",
                       }}
                     >
-                      {severity}/10
+                      {formatDateLabel(selectedDate)}
                     </Text>
-                  </View>
-                </View>
-
-                <Text style={{ ...fonts.h4, marginBottom: spacing.sm }}>
-                  Severity
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                  }}
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                    <SeverityDot
-                      key={n}
-                      n={n}
-                      selected={severity === n}
-                      onPress={() => setSeverity(n)}
+                    {!isToday && (
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textMuted,
+                          textAlign: "center",
+                        }}
+                      >
+                        {selectedDate}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() =>
+                      !isToday && setSelectedDate(shiftDate(selectedDate, 1))
+                    }
+                    style={{ padding: 8, opacity: isToday ? 0.3 : 1 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next day"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name="chevron-forward"
+                      size={22}
+                      color={colors.textSecondary}
                     />
-                  ))}
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginBottom: spacing.lg,
-                  }}
-                >
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                    Mild
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                    Severe
-                  </Text>
+                  </TouchableOpacity>
                 </View>
 
-                <Text style={{ ...fonts.h4, marginBottom: spacing.sm }}>
-                  Time occurred
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                    marginBottom: spacing.lg,
-                  }}
-                >
-                  <TextInput
-                    value={symptomHour}
-                    onChangeText={(t) => {
-                      const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
-                      const num = Number(cleaned);
-                      if (cleaned.length <= 1 || (num >= 0 && num <= 23)) {
-                        setSymptomHour(cleaned);
-                      }
-                    }}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    selectTextOnFocus
-                    style={{
-                      width: 48,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: radius.sm,
-                      padding: spacing.sm,
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: colors.text,
-                      textAlign: "center",
-                      backgroundColor: colors.bg,
-                    }}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 18,
-                      fontWeight: "700",
-                      color: colors.textSecondary,
-                    }}
-                  >
-                    :
-                  </Text>
-                  <TextInput
-                    value={symptomMinute}
-                    onChangeText={(t) => {
-                      const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
-                      const num = Number(cleaned);
-                      if (cleaned.length <= 1 || (num >= 0 && num <= 59)) {
-                        setSymptomMinute(cleaned);
-                      }
-                    }}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    selectTextOnFocus
-                    style={{
-                      width: 48,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: radius.sm,
-                      padding: spacing.sm,
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: colors.text,
-                      textAlign: "center",
-                      backgroundColor: colors.bg,
-                    }}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: colors.textMuted,
-                      marginLeft: 4,
-                    }}
-                  >
-                    {Number(symptomHour) >= 12 ? "PM" : "AM"}
-                  </Text>
-                </View>
-
-                <Text style={{ ...fonts.h4, marginBottom: 6 }}>
-                  Notes <Text style={fonts.caption}>(optional)</Text>
-                </Text>
-                <TextInput
-                  placeholder="What were you doing? How does it feel?"
-                  placeholderTextColor={colors.textLight}
-                  value={notes}
-                  onChangeText={setNotes}
-                  multiline
-                  numberOfLines={2}
-                  autoCapitalize="sentences"
-                  maxLength={500}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: radius.sm,
-                    padding: spacing.md,
-                    fontSize: 14,
-                    color: colors.text,
-                    textAlignVertical: "top",
-                    minHeight: 56,
-                    backgroundColor: colors.bg,
-                  }}
-                />
-
+                {/* Log Symptom Section */}
                 <Text
-                  style={{
-                    ...fonts.h4,
-                    marginBottom: 6,
-                    marginTop: spacing.md,
-                  }}
+                  style={{ ...fonts.h3, marginBottom: spacing.md }}
+                  accessibilityRole="header"
                 >
-                  Duration <Text style={fonts.caption}>(optional)</Text>
+                  Log Symptom
                 </Text>
-                <TextInput
-                  placeholder="e.g., 30 minutes, 2 hours"
-                  placeholderTextColor={colors.textLight}
-                  value={duration}
-                  onChangeText={setDuration}
-                  autoCapitalize="none"
-                  maxLength={100}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: radius.sm,
-                    padding: spacing.md,
-                    fontSize: 14,
-                    color: colors.text,
-                    backgroundColor: colors.bg,
-                  }}
-                />
 
-                {todaysMeals && todaysMeals.length > 0 && (
-                  <View style={{ marginTop: spacing.lg }}>
-                    <Text style={{ ...fonts.h4, marginBottom: 6 }}>
-                      Link to a meal{" "}
-                      <Text style={fonts.caption}>(optional)</Text>
+                {typesLoading ? (
+                  <SymptomTypesSkeleton />
+                ) : typesError ? (
+                  <ErrorState
+                    message="Failed to load symptom types"
+                    onRetry={() => refetchTypes()}
+                  />
+                ) : (
+                  categories.map((category) => (
+                    <View key={category} style={{ marginBottom: spacing.md }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "600",
+                          color: colors.textMuted,
+                          marginBottom: 6,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {category}
+                      </Text>
+                      <View
+                        style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                      >
+                        {types
+                          ?.filter((t) => t.category === category)
+                          .map((type) => {
+                            const active = selectedType?.id === type.id;
+                            return (
+                              <TouchableOpacity
+                                key={type.id}
+                                onPress={() => {
+                                  haptics.selection();
+                                  setSelectedType(active ? null : type);
+                                }}
+                                accessibilityRole="button"
+                                accessibilityLabel={type.name}
+                                accessibilityState={{ selected: active }}
+                                style={{
+                                  backgroundColor: active
+                                    ? colors.primary
+                                    : colors.card,
+                                  borderRadius: radius.sm,
+                                  paddingHorizontal: 14,
+                                  paddingVertical: 10,
+                                  borderWidth: 1,
+                                  borderColor: active
+                                    ? colors.primary
+                                    : colors.border,
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  ...(active ? shadowMd : shadow),
+                                }}
+                              >
+                                <Text style={{ fontSize: 16 }}>{type.icon}</Text>
+                                <Text
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: "600",
+                                    color: active
+                                      ? colors.textOnPrimary
+                                      : colors.text,
+                                  }}
+                                >
+                                  {type.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                      </View>
+                    </View>
+                  ))
+                )}
+
+                {/* Severity & Details Panel */}
+                {selectedType && (
+                  <View
+                    style={{
+                      backgroundColor: colors.card,
+                      borderRadius: radius.lg,
+                      padding: spacing.xl,
+                      marginTop: spacing.sm,
+                      marginBottom: spacing.lg,
+                      ...shadowMd,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        marginBottom: spacing.lg,
+                      }}
+                    >
+                      <Text style={{ fontSize: 24, marginRight: spacing.sm }}>
+                        {selectedType.icon}
+                      </Text>
+                      <Text style={{ ...fonts.h3, flex: 1 }}>
+                        {selectedType.name}
+                      </Text>
+                      <View
+                        style={{
+                          backgroundColor: severityColor(severity) + "20",
+                          borderRadius: radius.sm,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 14,
+                            fontWeight: "800",
+                            color: severityColor(severity),
+                          }}
+                        >
+                          {severity}/10
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={{ ...fonts.h4, marginBottom: spacing.sm }}>
+                      Severity
                     </Text>
                     <View
                       style={{
                         flexDirection: "row",
-                        flexWrap: "wrap",
-                        gap: 6,
+                        justifyContent: "space-between",
+                        marginBottom: 4,
                       }}
                     >
-                      {todaysMeals.map((meal) => {
-                        const active = linkedMealId === meal.id;
-                        return (
-                          <TouchableOpacity
-                            key={meal.id}
-                            onPress={() =>
-                              setLinkedMealId(active ? null : meal.id)
-                            }
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: active }}
-                            style={{
-                              backgroundColor: active
-                                ? colors.secondary
-                                : colors.bg,
-                              borderRadius: radius.sm,
-                              paddingHorizontal: 12,
-                              paddingVertical: 8,
-                              borderWidth: 1,
-                              borderColor: active
-                                ? colors.secondary
-                                : colors.border,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                color: active
-                                  ? colors.textOnPrimary
-                                  : colors.textSecondary,
-                              }}
-                              numberOfLines={1}
-                            >
-                              {mealTypeEmoji[meal.mealType] ?? "🍽️"}{" "}
-                              {getMealLabel(meal)}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <SeverityDot
+                          key={n}
+                          n={n}
+                          selected={severity === n}
+                          onPress={() => setSeverity(n)}
+                        />
+                      ))}
                     </View>
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  onPress={() => logMutation.mutate()}
-                  disabled={logMutation.isPending}
-                  accessibilityRole="button"
-                  accessibilityLabel="Log symptom"
-                  style={{
-                    backgroundColor: colors.primary,
-                    borderRadius: radius.md,
-                    padding: 14,
-                    alignItems: "center",
-                    marginTop: spacing.xl,
-                    ...shadowMd,
-                  }}
-                >
-                  {logMutation.isPending ? (
-                    <ActivityIndicator
-                      color={colors.textOnPrimary}
-                      size="small"
-                    />
-                  ) : (
-                    <Text
+                    <View
                       style={{
-                        color: colors.textOnPrimary,
-                        fontWeight: "700",
-                        fontSize: 15,
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        marginBottom: spacing.lg,
                       }}
                     >
-                      Log Symptom
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                        Mild
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                        Severe
+                      </Text>
+                    </View>
 
-            {/* History */}
-            <Text
-              style={{
-                ...fonts.h3,
-                marginBottom: spacing.md,
-                marginTop: spacing.sm,
-              }}
-              accessibilityRole="header"
-            >
-              {isToday
-                ? "Today's Symptoms"
-                : `Symptoms for ${formatDateLabel(selectedDate)}`}
-            </Text>
-
-            {typesLoading ? (
-              <SymptomSkeleton />
-            ) : typesError ? (
-              <ErrorState
-                message="Failed to load symptom types"
-                onRetry={refetchTypes}
-              />
-            ) : historyLoading ? (
-              <SymptomSkeleton />
-            ) : historyError ? (
-              <ErrorState
-                message="Failed to load symptoms"
-                onRetry={refetchHistory}
-              />
-            ) : history && history.length > 0 ? (
-              history.map((log) => (
-                <View
-                  key={log.id}
-                  style={{
-                    backgroundColor: colors.card,
-                    borderRadius: radius.md,
-                    padding: spacing.lg,
-                    marginBottom: spacing.sm,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    ...shadow,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: radius.sm,
-                      backgroundColor: severityColor(log.severity) + "15",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: spacing.md,
-                    }}
-                  >
-                    <Text style={{ fontSize: 20 }}>{log.icon}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontWeight: "600",
-                        color: colors.text,
-                        fontSize: 15,
-                      }}
-                    >
-                      {log.symptomName}
+                    <Text style={{ ...fonts.h4, marginBottom: spacing.sm }}>
+                      Time occurred
                     </Text>
                     <View
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        marginTop: 3,
-                        gap: 8,
+                        gap: 4,
+                        marginBottom: spacing.lg,
+                      }}
+                    >
+                      <TextInput
+                        value={symptomHour}
+                        onChangeText={(t) => {
+                          const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                          const num = Number(cleaned);
+                          if (cleaned.length <= 1 || (num >= 0 && num <= 23)) {
+                            setSymptomHour(cleaned);
+                          }
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                        selectTextOnFocus
+                        style={{
+                          width: 48,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: radius.sm,
+                          padding: spacing.sm,
+                          fontSize: 16,
+                          fontWeight: "700",
+                          color: colors.text,
+                          textAlign: "center",
+                          backgroundColor: colors.bg,
+                        }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 18,
+                          fontWeight: "700",
+                          color: colors.textSecondary,
+                        }}
+                      >
+                        :
+                      </Text>
+                      <TextInput
+                        value={symptomMinute}
+                        onChangeText={(t) => {
+                          const cleaned = t.replace(/[^0-9]/g, "").slice(0, 2);
+                          const num = Number(cleaned);
+                          if (cleaned.length <= 1 || (num >= 0 && num <= 59)) {
+                            setSymptomMinute(cleaned);
+                          }
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                        selectTextOnFocus
+                        style={{
+                          width: 48,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: radius.sm,
+                          padding: spacing.sm,
+                          fontSize: 16,
+                          fontWeight: "700",
+                          color: colors.text,
+                          textAlign: "center",
+                          backgroundColor: colors.bg,
+                        }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: colors.textMuted,
+                          marginLeft: 4,
+                        }}
+                      >
+                        {Number(symptomHour) >= 12 ? "PM" : "AM"}
+                      </Text>
+                    </View>
+
+                    <Text style={{ ...fonts.h4, marginBottom: 6 }}>Notes</Text>
+                    <TextInput
+                      placeholder="How does it feel? What might have triggered it?"
+                      placeholderTextColor={colors.textLight}
+                      value={notes}
+                      onChangeText={setNotes}
+                      multiline
+                      autoCapitalize="sentences"
+                      maxLength={500}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: radius.sm,
+                        padding: spacing.md,
+                        fontSize: 14,
+                        color: colors.text,
+                        backgroundColor: colors.bg,
+                        textAlignVertical: "top",
+                        minHeight: 56,
+                        marginBottom: spacing.md,
+                      }}
+                    />
+
+                    <Text style={{ ...fonts.h4, marginBottom: 6 }}>
+                      Duration (optional)
+                    </Text>
+                    <TextInput
+                      placeholder="e.g., 30m, 1h, 45 minutes, 01:30"
+                      placeholderTextColor={colors.textLight}
+                      value={duration}
+                      onChangeText={setDuration}
+                      autoCapitalize="none"
+                      maxLength={100}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: radius.sm,
+                        padding: spacing.md,
+                        fontSize: 14,
+                        color: colors.text,
+                        backgroundColor: colors.bg,
+                      }}
+                    />
+
+                    {todaysMeals && todaysMeals.length > 0 && (
+                      <View style={{ marginTop: spacing.lg }}>
+                        <Text style={{ ...fonts.h4, marginBottom: 6 }}>
+                          Link to a meal{" "}
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                            (optional)
+                          </Text>
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            flexWrap: "wrap",
+                            gap: 6,
+                          }}
+                        >
+                          {todaysMeals.map((meal) => {
+                            const active = linkedMealId === meal.id;
+                            return (
+                              <TouchableOpacity
+                                key={meal.id}
+                                onPress={() =>
+                                  setLinkedMealId(active ? null : meal.id)
+                                }
+                                accessibilityRole="button"
+                                accessibilityState={{ selected: active }}
+                                style={{
+                                  backgroundColor: active
+                                    ? colors.secondary
+                                    : colors.bg,
+                                  borderRadius: radius.sm,
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 8,
+                                  borderWidth: 1,
+                                  borderColor: active
+                                    ? colors.secondary
+                                    : colors.border,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: "600",
+                                    color: active
+                                      ? colors.textOnPrimary
+                                      : colors.textSecondary,
+                                  }}
+                                  numberOfLines={1}
+                                >
+                                  {getMealLabel(meal)}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      onPress={() => logMutation.mutate()}
+                      disabled={logMutation.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save symptom"
+                      style={{
+                        backgroundColor: colors.primary,
+                        borderRadius: radius.md,
+                        padding: 14,
+                        alignItems: "center",
+                        marginTop: spacing.xl,
+                        ...shadow,
+                      }}
+                    >
+                      {logMutation.isPending ? (
+                        <ActivityIndicator
+                          color={colors.textOnPrimary}
+                          size="small"
+                        />
+                      ) : (
+                        <Text
+                          style={{
+                            color: colors.textOnPrimary,
+                            fontWeight: "700",
+                            fontSize: 15,
+                          }}
+                        >
+                          Record Symptom
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Today's History Section */}
+                <Text
+                  style={{
+                    ...fonts.h3,
+                    marginBottom: spacing.md,
+                    marginTop: spacing.sm,
+                  }}
+                  accessibilityRole="header"
+                >
+                  {isToday
+                    ? "Today's Symptoms"
+                    : `Symptoms for ${formatDateLabel(selectedDate)}`}
+                </Text>
+
+                {typesLoading ? (
+                  <SymptomSkeleton />
+                ) : typesError ? (
+                  <ErrorState
+                    message="Failed to load symptom types"
+                    onRetry={refetchTypes}
+                  />
+                ) : historyLoading ? (
+                  <SymptomSkeleton />
+                ) : historyError ? (
+                  <ErrorState
+                    message="Failed to load symptoms"
+                    onRetry={refetchTodaySymptoms}
+                  />
+                ) : history && history.length > 0 ? (
+                  history.map((log) => (
+                    <View
+                      key={log.id}
+                      style={{
+                        backgroundColor: colors.card,
+                        borderRadius: radius.md,
+                        padding: spacing.lg,
+                        marginBottom: spacing.sm,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        ...shadow,
                       }}
                     >
                       <View
                         style={{
-                          backgroundColor: severityColor(log.severity) + "20",
-                          borderRadius: 4,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
+                          width: 42,
+                          height: 42,
+                          borderRadius: radius.sm,
+                          backgroundColor: severityColor(log.severity) + "15",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: spacing.md,
                         }}
                       >
+                        <Text style={{ fontSize: 20 }}>{log.icon}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 11,
-                            fontWeight: "700",
-                            color: severityColor(log.severity),
+                            fontWeight: "600",
+                            color: colors.text,
+                            fontSize: 15,
                           }}
                         >
-                          {log.severity}/10
+                          {log.symptomName}
                         </Text>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            marginTop: 3,
+                            gap: 8,
+                          }}
+                        >
+                          <View
+                            style={{
+                              backgroundColor: severityColor(log.severity) + "20",
+                              borderRadius: 4,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontWeight: "700",
+                                color: severityColor(log.severity),
+                              }}
+                            >
+                              {log.severity}/10
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                            {new Date(log.occurredAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </Text>
+                        </View>
+                        {log.relatedMealLogId && (
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginTop: 4,
+                            }}
+                          >
+                            <Ionicons
+                              name="link-outline"
+                              size={12}
+                              color={colors.secondary}
+                            />
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: colors.secondary,
+                                marginLeft: 4,
+                              }}
+                            >
+                              {getMealLabelById(log.relatedMealLogId)}
+                            </Text>
+                          </View>
+                        )}
+                        {log.notes && (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.textSecondary,
+                              marginTop: 4,
+                              fontStyle: "italic",
+                            }}
+                          >
+                            "{log.notes}"
+                          </Text>
+                        )}
                       </View>
-                      <Text style={{ fontSize: 12, color: colors.textMuted }}>
-                        {new Date(log.occurredAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </Text>
-                    </View>
-                    {log.relatedMealLogId && (
                       <View
                         style={{
                           flexDirection: "row",
+                          gap: 8,
                           alignItems: "center",
-                          marginTop: 4,
                         }}
                       >
-                        <Ionicons
-                          name="link-outline"
-                          size={12}
-                          color={colors.secondary}
-                        />
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: colors.secondary,
-                            marginLeft: 4,
-                          }}
+                        <TouchableOpacity
+                          onPress={() => openEdit(log)}
+                          style={{ padding: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Edit symptom"
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                         >
-                          {getMealLabelById(log.relatedMealLogId)}
-                        </Text>
+                          <Ionicons
+                            name="pencil-outline"
+                            size={18}
+                            color={colors.secondary}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            confirm("Delete", "Remove this symptom log?", () =>
+                              deleteMutation.mutate(log.id),
+                            )
+                          }
+                          style={{ padding: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Delete symptom"
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <Ionicons
+                            name="close-circle-outline"
+                            size={20}
+                            color={colors.danger}
+                          />
+                        </TouchableOpacity>
                       </View>
-                    )}
-                    {log.notes && (
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: colors.textSecondary,
-                          marginTop: 4,
-                          fontStyle: "italic",
-                        }}
-                      >
-                        "{log.notes}"
-                      </Text>
-                    )}
-                  </View>
+                    </View>
+                  ))
+                ) : (
                   <View
                     style={{
-                      flexDirection: "row",
-                      gap: 8,
+                      backgroundColor: colors.card,
+                      borderRadius: radius.md,
+                      padding: spacing.xxxl,
                       alignItems: "center",
+                      ...shadow,
                     }}
                   >
-                    <TouchableOpacity
-                      onPress={() => openEdit(log)}
-                      style={{ padding: 8 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Edit symptom"
-                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                    <Text style={{ fontSize: 32 }}>😊</Text>
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        marginTop: spacing.sm,
+                        fontWeight: "600",
+                        fontSize: 14,
+                      }}
                     >
-                      <Ionicons
-                        name="pencil-outline"
-                        size={18}
-                        color={colors.secondary}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        confirm("Delete", "Remove this symptom log?", () =>
-                          deleteMutation.mutate(log.id),
-                        )
-                      }
-                      style={{ padding: 8 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Delete symptom"
-                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                    >
-                      <Ionicons
-                        name="close-circle-outline"
-                        size={20}
-                        color={colors.danger}
-                      />
-                    </TouchableOpacity>
+                      No symptoms logged — great!
+                    </Text>
                   </View>
-                </View>
-              ))
+                )}
+              </>
             ) : (
-              <View
-                style={{
-                  backgroundColor: colors.card,
-                  borderRadius: radius.md,
-                  padding: spacing.xxxl,
-                  alignItems: "center",
-                  ...shadow,
-                }}
-              >
-                <Text style={{ fontSize: 32 }}>😊</Text>
+              <>
+                {/* History Mode: Period Selector */}
                 <Text
+                  style={{ ...fonts.h4, marginBottom: spacing.xs }}
+                  accessibilityRole="header"
+                >
+                  Time Range
+                </Text>
+                <View
                   style={{
-                    color: colors.primary,
-                    marginTop: spacing.sm,
-                    fontWeight: "600",
-                    fontSize: 14,
+                    flexDirection: "row",
+                    gap: 8,
+                    marginBottom: spacing.lg,
                   }}
                 >
-                  No symptoms logged — great!
+                  {([7, 30, 90] as const).map((days) => {
+                    const active = historyDays === days;
+                    return (
+                      <TouchableOpacity
+                        key={days}
+                        onPress={() => {
+                          haptics.selection();
+                          setHistoryDays(days);
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`Past ${days} days`}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: radius.md,
+                          backgroundColor: active
+                            ? colors.primary
+                            : colors.card,
+                          alignItems: "center",
+                          borderWidth: active ? 0 : 1,
+                          borderColor: colors.borderLight,
+                          ...shadow,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: active
+                              ? colors.textOnPrimary
+                              : colors.textSecondary,
+                          }}
+                        >
+                          {days} Days
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* History Mode: Type Filter */}
+                <Text
+                  style={{ ...fonts.h4, marginBottom: spacing.xs }}
+                  accessibilityRole="header"
+                >
+                  Filter by Symptom
                 </Text>
-              </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    gap: 6,
+                    paddingBottom: spacing.lg,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.selection();
+                      setHistoryTypeId(null);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="All types"
+                    accessibilityState={{ selected: historyTypeId === null }}
+                    style={{
+                      backgroundColor:
+                        historyTypeId === null
+                          ? colors.primary
+                          : colors.card,
+                      borderRadius: radius.full,
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderWidth: 1,
+                      borderColor:
+                        historyTypeId === null
+                          ? colors.primary
+                          : colors.border,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      ...(historyTypeId === null ? shadowMd : shadow),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "600",
+                        color:
+                          historyTypeId === null
+                            ? colors.textOnPrimary
+                            : colors.text,
+                      }}
+                    >
+                      All Types
+                    </Text>
+                  </TouchableOpacity>
+                  {types?.map((t) => {
+                    const active = historyTypeId === t.id;
+                    return (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => {
+                          haptics.selection();
+                          setHistoryTypeId(active ? null : t.id);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.name}
+                        accessibilityState={{ selected: active }}
+                        style={{
+                          backgroundColor: active
+                            ? colors.primary
+                            : colors.card,
+                          borderRadius: radius.full,
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderWidth: 1,
+                          borderColor: active
+                            ? colors.primary
+                            : colors.border,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          ...(active ? shadowMd : shadow),
+                        }}
+                      >
+                        <Text style={{ fontSize: 14 }}>{t.icon}</Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "600",
+                            color: active
+                              ? colors.textOnPrimary
+                              : colors.text,
+                          }}
+                        >
+                          {t.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {allHistoryLogs && allHistoryLogs.length >= 3 && (
+                  <View
+                    style={{
+                      backgroundColor: colors.card,
+                      borderRadius: radius.lg,
+                      padding: spacing.lg,
+                      marginBottom: spacing.lg,
+                      ...shadow,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        ...fonts.h4,
+                        marginBottom: spacing.sm,
+                      }}
+                      accessibilityRole="header"
+                    >
+                      Severity over time
+                    </Text>
+                    <SeverityTimeline logs={allHistoryLogs} />
+                  </View>
+                )}
+                {/* History Results List */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: spacing.md,
+                  }}
+                >
+                  <Text
+                    style={{ ...fonts.h3 }}
+                    accessibilityRole="header"
+                  >
+                    Symptom Log History
+                  </Text>
+                  {allHistoryLogs && (
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                      {allHistoryLogs.length} {allHistoryLogs.length === 1 ? "entry" : "entries"}
+                    </Text>
+                  )}
+                </View>
+
+                {allHistoryLoading ? (
+                  <SymptomSkeleton />
+                ) : allHistoryError ? (
+                  <ErrorState
+                    message="Failed to load symptom history"
+                    onRetry={refetchHistoryLogs}
+                  />
+                ) : allHistoryLogs && allHistoryLogs.length > 0 ? (
+                  allHistoryLogs.map((log) => (
+                    <View
+                      key={log.id}
+                      style={{
+                        backgroundColor: colors.card,
+                        borderRadius: radius.md,
+                        padding: spacing.lg,
+                        marginBottom: spacing.sm,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        ...shadow,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: radius.sm,
+                          backgroundColor: severityColor(log.severity) + "15",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: spacing.md,
+                        }}
+                      >
+                        <Text style={{ fontSize: 20 }}>{log.icon}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontWeight: "600",
+                            color: colors.text,
+                            fontSize: 15,
+                          }}
+                        >
+                          {log.symptomName}
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            marginTop: 3,
+                            gap: 8,
+                          }}
+                        >
+                          <View
+                            style={{
+                              backgroundColor: severityColor(log.severity) + "20",
+                              borderRadius: 4,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontWeight: "700",
+                                color: severityColor(log.severity),
+                              }}
+                            >
+                              {log.severity}/10
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: colors.textMuted }}>
+                            {formatDateLabel(toLocalDateStr(new Date(log.occurredAt)))},{" "}
+                            {new Date(log.occurredAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </Text>
+                        </View>
+                        {log.notes && (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.textSecondary,
+                              marginTop: 4,
+                              fontStyle: "italic",
+                            }}
+                          >
+                            "{log.notes}"
+                          </Text>
+                        )}
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          gap: 8,
+                          alignItems: "center",
+                        }}
+                      >
+                        <TouchableOpacity
+                          onPress={() => openEdit(log)}
+                          style={{ padding: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Edit symptom"
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <Ionicons
+                            name="pencil-outline"
+                            size={18}
+                            color={colors.secondary}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            confirm("Delete", "Remove this symptom log?", () =>
+                              deleteMutation.mutate(log.id),
+                            )
+                          }
+                          style={{ padding: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Delete symptom"
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <Ionicons
+                            name="close-circle-outline"
+                            size={20}
+                            color={colors.danger}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <EmptyState
+                    icon="medkit-outline"
+                    title="No symptoms logged in this period"
+                    compact
+                  />
+                )}
+              </>
             )}
           </View>
         </ScrollView>

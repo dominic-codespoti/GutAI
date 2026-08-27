@@ -29,6 +29,13 @@ public static class ChatEndpoints
             return;
         }
 
+        if (request.TimezoneId is { Length: > 100 })
+        {
+            httpContext.Response.StatusCode = 400;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "Timezone ID must not exceed 100 characters" }, ct);
+            return;
+        }
+
         var userId = GetUserId(principal);
 
         httpContext.Response.ContentType = "text/event-stream";
@@ -38,7 +45,7 @@ public static class ChatEndpoints
 
         try
         {
-            await foreach (var evt in chatService.StreamResponseAsync(userId, request.Message, ct))
+            await foreach (var evt in chatService.StreamResponseAsync(userId, request.Message, ct, request.TimezoneId))
             {
                 if (evt.ThreadId is not null)
                 {
@@ -54,6 +61,17 @@ public static class ChatEndpoints
                 else if (evt.ToolCall is not null)
                 {
                     var payload = JsonSerializer.Serialize(new { tool_call = evt.ToolCall, status = evt.Status });
+                    await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
+                }
+                else if (evt.ToolResult is not null)
+                {
+                    var payload = JsonSerializer.Serialize(new
+                    {
+                        tool_result = evt.ToolResult,
+                        summary = evt.SummaryJson is null
+                            ? (JsonElement?)null
+                            : JsonSerializer.Deserialize<JsonElement>(evt.SummaryJson),
+                    });
                     await httpContext.Response.WriteAsync($"data: {payload}\n\n", ct);
                 }
                 else if (evt.Error is not null)
@@ -93,5 +111,5 @@ public static class ChatEndpoints
         return Results.NoContent();
     }
 
-    record ChatRequest(string Message);
+    record ChatRequest(string Message, string? TimezoneId = null);
 }

@@ -78,8 +78,10 @@ public static class FoodEndpoints
         if (cached is not null)
             return Results.Ok(cached);
 
-        var localTask = store.SearchFoodProductsAsync(query, 20, default);
-        var additivesTask = store.GetAllFoodAdditivesAsync();
+        // StartSafely converts store implementations that throw synchronously (before a Task
+        // exists) into faulted tasks so the guards below catch them like async faults.
+        var localTask = StartSafely(() => store.SearchFoodProductsAsync(query, 20, default));
+        var additivesTask = StartSafely(() => store.GetAllFoodAdditivesAsync());
 
         // Search-a-licious responds in 2-3s; USDA in 1-5s.
         // 10s gives plenty of headroom for degraded conditions.
@@ -94,10 +96,28 @@ public static class FoodEndpoints
         {
         }
 
-        var localResults = await localTask;
-        var additives = await additivesTask;
+        List<FoodProduct> localResults = [];
+        try
+        {
+            localResults = await localTask;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Local food search failed for query '{Query}'", query);
+        }
+
+        List<FoodAdditive> additives = [];
+        try
+        {
+            additives = await additivesTask;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Additive load failed");
+        }
 
         IReadOnlyList<FoodProductDto> externalResults = [];
+        var allProvidersFailed = false;
         if (externalTask.IsCompletedSuccessfully)
         {
             var outcome = externalTask.Result;
@@ -106,6 +126,8 @@ public static class FoodEndpoints
             if (failedProviders.Count > 0)
                 logger.LogWarning("Food search providers failed for query '{Query}': {Providers}", query,
                     string.Join(", ", failedProviders.Select(p => p.Source)));
+
+            allProvidersFailed = outcome.ProviderOutcomes.Count > 0 && outcome.ProviderOutcomes.All(o => o.Status == ProviderSearchStatus.Failed);
         }
         cts.Dispose();
 
@@ -123,7 +145,12 @@ public static class FoodEndpoints
         // Persist canonical identity only for the candidates actually being returned to the
         // user — not every raw external candidate the providers returned. FoodProductPersistence
         // resolves existing identity (barcode -> source+externalId -> name+brand) first, so a
+
         // product already seen under a different query reuses its row instead of duplicating.
+        // Note: persistence depends on the local store too (FindExistingAsync searches by
+        // name+brand), so a store outage can fail here even for external-only candidates.
+        // Each candidate is guarded individually: a failure logs and returns the DTO with
+        // its unpersisted (empty) id — the UI already treats id-less products as detail-less.
         var finalResults = new List<FoodProductDto>(ranked.Count);
         foreach (var dto in ranked)
         {
@@ -133,36 +160,49 @@ public static class FoodEndpoints
                 continue;
             }
 
-            var persistedId = await FoodProductPersistence.ResolveOrPersistAsync(dto, store);
-            finalResults.Add(dto with { Id = persistedId });
+            try
+            {
+                var persistedId = await FoodProductPersistence.ResolveOrPersistAsync(dto, store);
+                finalResults.Add(dto with { Id = persistedId });
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Food product persistence failed for '{Name}' — returning unpersisted result", dto.Name);
+                finalResults.Add(dto);
+            }
         }
 
         // Only cache results that appear meaningful (at least 2 results or non-empty)
-        // to avoid locking in degraded results from API timeouts
-        if (finalResults.Count >= 2)
-            await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromMinutes(3));
-        else if (finalResults.Count > 0)
-            await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromSeconds(30));
-
+        // to avoid locking in degraded results from API timeouts or when all external providers failed
+        if (!allProvidersFailed)
+        {
+            if (finalResults.Count >= 2)
+                await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromMinutes(3));
+            else if (finalResults.Count > 0)
+                await cache.SetAsync(cacheKey, finalResults, TimeSpan.FromSeconds(30));
+        }
         return Results.Ok(finalResults);
+    }
+    /// <summary>Invokes an async factory, converting any synchronous throw into a faulted
+    /// task so callers can rely on awaiting alone for error handling.</summary>
+    private static Task<T> StartSafely<T>(Func<Task<T>> factory)
+    {
+        try
+        {
+            return factory();
+        }
+        catch (Exception ex)
+        {
+            return Task.FromException<T>(ex);
+        }
     }
 
 
     static async Task<FoodProductDto?> GetResolvedFoodProductDtoAsync(Guid id, ClaimsPrincipal user, ITableStore store, IExternalFoodAggregator? foodApi = null, IOfflineFoodDatabase? offlineDb = null)
     {
-        var product = await store.GetFoodProductAsync(id);
+        var product = await FoodProductResolver.GetEnrichedCatalogProductAsync(id, store, offlineDb, foodApi);
         if (product != null)
         {
-            // Enrich OFF products that are missing ingredients via barcode lookup.
-            // Search-a-licious doesn't return ingredients_text, and many products lack
-            // ingredients_tags — so we lazy-enrich on detail page view.
-            if (product.DataSource == DataSources.OpenFoodFacts &&
-                string.IsNullOrEmpty(product.Ingredients) &&
-                !string.IsNullOrEmpty(product.Barcode))
-            {
-                await EnrichFromOffBarcodeAsync(product, offlineDb, foodApi, store);
-            }
-
             var additives = await store.GetAllFoodAdditivesAsync();
             return MapToDto(product, additives);
         }
@@ -178,55 +218,6 @@ public static class FoodEndpoints
         return null;
     }
 
-    static async Task EnrichFromOffBarcodeAsync(FoodProduct product, IOfflineFoodDatabase? offlineDb, IExternalFoodAggregator? foodApi, ITableStore store)
-    {
-        try
-        {
-            var enriched = await LookupOffProductAsync(product.Barcode!, offlineDb, foodApi);
-            if (enriched is null) return;
-
-            product.Ingredients = enriched.Ingredients ?? product.Ingredients;
-            product.NovaGroup = enriched.NovaGroup ?? product.NovaGroup;
-            product.NutriScore = enriched.NutriScore ?? product.NutriScore;
-            product.ServingSize = enriched.ServingSize ?? product.ServingSize;
-            product.ServingQuantity = enriched.ServingQuantity ?? product.ServingQuantity;
-            product.ImageUrl = enriched.ImageUrl ?? product.ImageUrl;
-            product.AllergensTags = enriched.AllergensTags.Length > 0 ? enriched.AllergensTags : product.AllergensTags;
-            product.Calories100g = enriched.Calories100g ?? product.Calories100g;
-            product.Protein100g = enriched.Protein100g ?? product.Protein100g;
-            product.Carbs100g = enriched.Carbs100g ?? product.Carbs100g;
-            product.Fat100g = enriched.Fat100g ?? product.Fat100g;
-            product.Fiber100g = enriched.Fiber100g ?? product.Fiber100g;
-            product.Sugar100g = enriched.Sugar100g ?? product.Sugar100g;
-            product.SodiumMg100g = enriched.SodiumMg100g ?? product.SodiumMg100g;
-
-            // Re-persist enriched data so subsequent views don't need another lookup
-            await store.UpsertFoodProductAsync(product);
-        }
-        catch
-        {
-            // Silently degrade — the product will show "Ingredients unavailable"
-            // and we'll try again on next view
-        }
-    }
-
-    static async Task<FoodProductDto?> LookupOffProductAsync(string barcode, IOfflineFoodDatabase? offlineDb, IExternalFoodAggregator? foodApi)
-    {
-        // 1. Try offline database (Azure Table "offproducts", unlimited lookups)
-        if (offlineDb is not null)
-        {
-            var result = await offlineDb.LookupByBarcodeAsync(barcode);
-            if (result is not null)
-                return result;
-        }
-
-        // 2. Fall back to barcode API (rate-limited to 12 req/min/IP)
-        if (foodApi is not null)
-            return await foodApi.LookupBarcodeAsync(barcode);
-
-        return null;
-    }
-
     static async Task<IResult> GetFoodProductByBarcode(string barcode, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb)
     {
         if (string.IsNullOrWhiteSpace(barcode) || barcode.Length > 50)
@@ -235,12 +226,7 @@ public static class FoodEndpoints
         var product = await store.GetFoodProductByBarcodeAsync(barcode);
         if (product is not null)
         {
-            // Enrich OFF products that were cached from search without ingredients
-            if (product.DataSource == DataSources.OpenFoodFacts &&
-                string.IsNullOrEmpty(product.Ingredients))
-            {
-                await EnrichFromOffBarcodeAsync(product, offlineDb, foodApi, store);
-            }
+            product = await FoodProductResolver.GetEnrichedCatalogProductAsync(product.Id, store, offlineDb, foodApi) ?? product;
 
             var additives = await store.GetAllFoodAdditivesAsync();
             return Results.Ok(MapToDto(product, additives));
@@ -399,12 +385,21 @@ public static class FoodEndpoints
         return Results.Ok(result);
     }
 
-    static async Task<IResult> GetPersonalizedScore(Guid id, ClaimsPrincipal principal, ITableStore store, IExternalFoodAggregator foodApi, IOfflineFoodDatabase offlineDb, PersonalizedScoringService scoringService)
+    static async Task<IResult> GetPersonalizedScore(
+        Guid id,
+        string? timezoneId,
+        ClaimsPrincipal principal,
+        ITableStore store,
+        IExternalFoodAggregator foodApi,
+        IOfflineFoodDatabase offlineDb,
+        PersonalizedScoringService scoringService)
     {
+        if (timezoneId is { Length: > 100 })
+            return Results.BadRequest(new { error = "Timezone ID must not exceed 100 characters" });
         var dto = await GetResolvedFoodProductDtoAsync(id, principal, store, foodApi, offlineDb);
         if (dto is null) return Results.NotFound();
         var userId = Guid.Parse(principal.FindFirstValue("sub")!);
-        var result = await scoringService.ScoreAsync(dto, userId, store);
+        var result = await scoringService.ScoreAsync(dto, userId, store, timezoneId);
         return Results.Ok(result);
     }
 

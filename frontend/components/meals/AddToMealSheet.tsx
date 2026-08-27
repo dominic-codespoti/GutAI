@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import * as haptics from "../../src/utils/haptics";
 import { BottomSheet } from "../BottomSheet";
 import { MealTypePicker } from "../MealTypePicker";
 import { ServingSizeSelector } from "../ServingSizeSelector";
@@ -40,9 +39,7 @@ export function AddToMealSheet({
   const handleLog = () => {
     if (!product) return;
     onLog(product, effectiveGrams, mealType);
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
+    haptics.success();
   };
 
   const handleClose = () => {

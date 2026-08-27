@@ -19,15 +19,8 @@ public class WholeFoodApiService : IFoodProvider
 
     public Task<IReadOnlyList<FoodProductDto>> SearchAsync(string query, CancellationToken ct = default)
     {
-        var results = WholeFoodsDatabase.Search(query, 10);
-        foreach (var product in results)
-        {
-            // Update the data source to use the constant
-            var updatedProduct = product with { DataSource = DataSources.Usda };
-
-            // If the generator tool included the FDC ID, it might be in ExternalId or name.
-            // Currently, WholeFoodsDatabase.cs (F) function doesn't set ExternalId.
-        }
-        return Task.FromResult<IReadOnlyList<FoodProductDto>>(results);
+        // Provenance (DataSource/SourceVersion/license/attribution) is stamped per-record
+        // by the WholeFoodsDatabase factory at generation time — nothing to rewrite here.
+        return Task.FromResult<IReadOnlyList<FoodProductDto>>(WholeFoodsDatabase.Search(query, 10));
     }
 }

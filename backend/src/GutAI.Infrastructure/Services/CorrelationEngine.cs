@@ -9,10 +9,10 @@ public class CorrelationEngine : ICorrelationEngine
 
     public CorrelationEngine(ITableStore store) => _store = store;
 
-    public async Task<List<CorrelationDto>> ComputeCorrelationsAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    public async Task<List<CorrelationDto>> ComputeCorrelationsAsync(
+        Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default, string? timezoneId = null)
     {
-        var result = await FoodSymptomAssociationService.ComputeAsync(userId, from, to, _store, includeAdditives: true, ct);
-
+        var result = await FoodSymptomAssociationService.ComputeAsync(userId, from, to, _store, includeAdditives: true, ct, timezoneId);
         return result.Associations
             .Where(a => a.AssociatedMealWeight >= 3)
             .Select(a => new CorrelationDto

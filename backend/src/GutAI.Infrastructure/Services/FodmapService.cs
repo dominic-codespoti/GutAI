@@ -7,20 +7,43 @@ namespace GutAI.Infrastructure.Services;
 
 public class FodmapService : IFodmapService
 {
+    // Deduplicate on canonical trigger Name: synonym patterns intentionally share a Name
+    // ("wheat flour"/"whole wheat"/"wheat" → "Wheat (Fructan)"), so they still collapse,
+    // while DISTINCT foods in the same class (onion vs garlic vs wheat) each remain visible
+    // and counted — consistent with GutRisk's per-source stacking philosophy. The previous
+    // Category+SubCategory key silently hid every fructan/lactose/polyol source after the
+    // first, understating TriggerCount, HighCount and the screening score.
     static bool HasTrigger(List<FodmapTriggerDto> triggers, FodmapTriggerDto info) =>
-        triggers.Any(t =>
-            t.Category.Equals(info.Category, StringComparison.OrdinalIgnoreCase) &&
-            t.SubCategory.Equals(info.SubCategory, StringComparison.OrdinalIgnoreCase));
+        triggers.Any(t => t.Name.Equals(info.Name, StringComparison.OrdinalIgnoreCase));
 
     static readonly ConcurrentDictionary<string, Regex> _wholeFoodRegexCache = new();
     static bool WholeFoodRegexMatch(string text, string pattern)
     {
-        if (!_wholeFoodRegexCache.TryGetValue(pattern, out var regex))
+        // Plural-tolerant like IngredientPatternMatch: singular-authored entries
+        // ("pistachio") must catch plural product names ("Roasted Pistachios").
+        // Patterns already ending in 's' (blackberries, snow peas) stay exact;
+        // leading \b keeps false positives like pita/pepitas dead.
+        var regex = _wholeFoodRegexCache.GetOrAdd(pattern, static p =>
         {
-            regex = new Regex($@"\b{Regex.Escape(pattern)}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            _wholeFoodRegexCache[pattern] = regex;
-        }
+            var sfx = p.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? "" : "s?";
+            return new Regex($@"\b{Regex.Escape(p)}{sfx}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        });
         return regex.IsMatch(text);
+    }
+
+    static readonly ConcurrentDictionary<string, Regex> _ingredientTokenRegexCache = new();
+
+    /// <summary>Ingredient-text matching. Patterns without an explicit regex keep substring
+    /// semantics ONLY when multi-word (phrases are self-delimiting); single tokens get a
+    /// plural-tolerant word-boundary regex so "breaded"/"spelted"/"ciders" cannot
+    /// false-positive on "bread"/"spelt"/"cider".</summary>
+    static bool IngredientPatternMatch(string lower, string pattern, Regex? regex)
+    {
+        if (regex != null) return regex.IsMatch(lower);
+        if (pattern.Contains(' ')) return lower.Contains(pattern);
+        var re = _ingredientTokenRegexCache.GetOrAdd(pattern, static p =>
+            new Regex($@"\b{Regex.Escape(p)}s?\b", RegexOptions.Compiled | RegexOptions.IgnoreCase));
+        return re.IsMatch(lower);
     }
 
     static readonly Regex GarlicOilPattern = new(
@@ -53,7 +76,7 @@ public class FodmapService : IFodmapService
         {
             foreach (var (pattern, regex, info) in IngredientTriggers)
             {
-                bool matched = regex != null ? regex.IsMatch(lower) : lower.Contains(pattern);
+                bool matched = IngredientPatternMatch(lower, pattern, regex);
                 if (matched && !HasTrigger(triggers, info))
                 {
                     if ((isLactoseFree || isDairyFree) && info.SubCategory == "Lactose")
@@ -95,9 +118,12 @@ public class FodmapService : IFodmapService
             }
         }
 
-        // 4. Check for high sugar (potential excess fructose)
+        // 4. Check for high sugar (potential excess fructose). Skipped when any excess-fructose
+        //    trigger was already found (honey, apple juice, …) — the heuristic adds no
+        //    information then and previously double-penalized the score for one substance.
         if (sugar100g > 30m &&
-            (lower.Contains("fructose") || lower.Contains("fruit juice") || lower.Contains("apple juice") || lower.Contains("pear juice")))
+            (lower.Contains("fructose") || lower.Contains("fruit juice") || lower.Contains("apple juice") || lower.Contains("pear juice")) &&
+            !triggers.Any(t => t.SubCategory == "Excess Fructose"))
         {
             triggers.Add(new FodmapTriggerDto
             {
@@ -157,16 +183,22 @@ public class FodmapService : IFodmapService
                 triggers.RemoveAll(t => t.Name == "Garlic (Fructan)");
         }
 
-        // Firm/extra-firm tofu: GOS leaches out during pressing.
+        // Firm/extra-firm tofu: GOS leaches out during pressing. Only suppresses the plain
+        // whole-soybean trigger — an independent soy ingredient (flour/protein/isolate/oil)
+        // keeps its own evidence.
         if (FirmTofuPattern.IsMatch(lower))
-            triggers.RemoveAll(t => t.Name == "Soybean (GOS)");
+        {
+            var withoutTofu = FirmTofuPattern.Replace(lower, "");
+            if (!IndependentSoyFormPattern.IsMatch(withoutTofu))
+                triggers.RemoveAll(t => t.Name == "Soybean (GOS)");
+        }
 
         // Leek green tops/leaves are low-FODMAP — fructans concentrate in the white bulb.
         if (LeekGreenTopsPattern.IsMatch(lower))
             triggers.RemoveAll(t => t.Name.Contains("Leek", StringComparison.OrdinalIgnoreCase));
 
-        // Canned + rinsed legumes: downgrade rather than remove.
-        if (lower.Contains("canned"))
+        // Canned/tinned + rinsed legumes: downgrade rather than remove.
+        if (CannedLegumePattern.IsMatch(lower))
         {
             foreach (var legume in CannedLegumeNames)
             {
@@ -184,13 +216,29 @@ public class FodmapService : IFodmapService
         }
     }
 
-    static readonly string[] CannedLegumeNames = ["chickpea", "garbanzo", "lentil"];
+
+    static readonly Regex CannedLegumePattern = new(@"\b(?:canned|tinned)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>Soy forms whose GOS/fructan content is independent of tofu processing.</summary>
+    static readonly Regex IndependentSoyFormPattern = new(
+        @"\bsoy(?:bean)?\s+(?:flour|protein|isolate|oil)|\bsoya\b|\bsoy\s+lecithin\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    static readonly string[] CannedLegumeNames =
+    [
+        "chickpea", "garbanzo", "lentil", "kidney bean", "black bean", "navy bean",
+        "pinto bean", "lima bean", "cannellini", "fava bean", "broad bean", "baked bean",
+    ];
 
     static (FodmapAssessmentStatus Status, string Confidence, List<string> MissingEvidence) Resolve(
         int triggerCount, bool hasIngredients, bool hasDetailedIngredients, bool hasVerifiedIdentity,
-        bool isTextCall, bool hasNonTrivialEvidence)
+        bool isTextCall, bool hasNonTrivialEvidence, int textWordCount = 0)
     {
-        var confidence = isTextCall ? "Medium" : hasDetailedIngredients ? "Medium" : hasVerifiedIdentity ? "Medium" : "Low";
+        // Free-text confidence is graded: a one-word description ("pizza") screens against
+        // far less evidence than a composed dish description, so it must not claim Medium.
+        var confidence = isTextCall
+            ? textWordCount >= 3 ? "Medium" : "Low"
+            : hasDetailedIngredients || hasVerifiedIdentity ? "Medium" : "Low";
 
         if (triggerCount > 0)
             return (FodmapAssessmentStatus.PotentialTriggersDetected, confidence, []);
@@ -227,9 +275,11 @@ public class FodmapService : IFodmapService
     {
         var triggers = ScanTriggers(foodDescription, foodDescription.ToLowerInvariant(), null, null, null);
         var hasNonTrivialEvidence = !string.IsNullOrWhiteSpace(foodDescription);
+        var textWordCount = foodDescription.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
 
         var (status, confidence, missingEvidence) = Resolve(triggers.Count, hasIngredients: false,
-            hasDetailedIngredients: false, hasVerifiedIdentity: false, isTextCall: true, hasNonTrivialEvidence);
+            hasDetailedIngredients: false, hasVerifiedIdentity: false, isTextCall: true, hasNonTrivialEvidence,
+            textWordCount);
         return BuildDto(triggers, status, confidence, missingEvidence);
     }
 
@@ -269,15 +319,39 @@ public class FodmapService : IFodmapService
             };
         }
 
-        var distinctCategories = triggers.Select(t => t.SubCategory?.Split('+', ' ').FirstOrDefault() ?? t.Category)
-            .Where(c => !string.IsNullOrEmpty(c))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
+        // Breadth = distinct FODMAP families (Monash classes), not raw subcategory
+        // strings. Dual-class entries ("Excess Fructose + Sorbitol") previously counted
+        // once as "Excess", under-stating cumulative load for mixed-class foods.
+        var distinctCategories = triggers
+            .SelectMany(t => (t.SubCategory ?? t.Category).Split('+'))
+            .Select(ChemistryFamily)
+            .Where(f => f.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            .Count;
         if (distinctCategories >= 3)
             multiplier *= Math.Pow(0.92, distinctCategories - 2);
 
         return Math.Clamp((int)Math.Round(100 * multiplier), 0, 100);
     }
+
+    static readonly string[] PolyolMarkers =
+        ["Sorbitol", "Mannitol", "Maltitol", "Xylitol", "Isomalt", "Lactitol", "Erythritol", "Polyol"];
+
+    /// <summary>Buckets a sub-category fragment into one of the five Monash FODMAP
+    /// families — Sorbitol and Mannitol are different molecules but the same burden
+    /// class, and the stacking bonus models classes, not molecules.</summary>
+    static string ChemistryFamily(string fragment)
+    {
+        var f = fragment.Trim();
+        if (f.Length == 0) return "";
+        if (f.Contains("Fructan", StringComparison.OrdinalIgnoreCase)) return "Fructan";
+        if (f.Contains("GOS", StringComparison.OrdinalIgnoreCase)) return "GOS";
+        if (f.Contains("Lactose", StringComparison.OrdinalIgnoreCase)) return "Lactose";
+        if (f.Contains("Fructose", StringComparison.OrdinalIgnoreCase)) return "Excess Fructose";
+        if (PolyolMarkers.Any(m => f.Contains(m, StringComparison.OrdinalIgnoreCase))) return "Polyol";
+        return f;
+    }
+
 
     static int SeverityWeight(string s) => s switch
     {

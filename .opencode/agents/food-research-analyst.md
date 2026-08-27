@@ -74,10 +74,6 @@ Output a structured report covering:
 
 When asked about a specific food or ingredient, read these first as applicable:
 
-- `docs/SCORING_ANALYSIS_REPORT.md` — to understand known scoring limitations
-- `docs/FODMAP_SERVICE_ANALYSIS.md` — FODMAP-specific evidence base
-- `docs/GUTRISK_SERVICE_ANALYSIS.md` — additive assessment methodology
-- `docs/global-branded-food-data-analysis.md` — data source coverage
 - `.opencode/skills/food-research/references/sources-map.md` — external source details
 - `.opencode/skills/food-research/references/research-patterns.md` — research strategies
 

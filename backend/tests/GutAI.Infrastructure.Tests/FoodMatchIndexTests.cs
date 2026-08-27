@@ -245,4 +245,24 @@ public class FoodMatchIndexTests
 
         index.Search("xyznonexistentfood", 20).Should().BeEmpty();
     }
+
+    [Fact]
+    public void Search_TiedCandidates_ReturnsDeterministicOrderAcrossPermutations()
+    {
+        // Two candidates with identical score/quality/relevance inputs for the query.
+        // Equal scores must break ties deterministically by Name then ExternalId,
+        // regardless of index insertion order / arrival order.
+        var foodA = MakeFood("Apple, gala, raw", externalId: "usda-101", cal: 52, protein: 0.3m, carbs: 14, fat: 0.2m);
+        var foodB = MakeFood("Apple, fuji, raw", externalId: "usda-102", cal: 52, protein: 0.3m, carbs: 14, fat: 0.2m);
+
+        var index1 = new FoodMatchIndex([foodA, foodB]);
+        var index2 = new FoodMatchIndex([foodB, foodA]);
+
+        var results1 = index1.Search("apple", 10);
+        var results2 = index2.Search("apple", 10);
+
+        results1.Select(r => r.Name).Should().Equal(results2.Select(r => r.Name));
+        results1.Select(r => r.ExternalId).Should().Equal(results2.Select(r => r.ExternalId));
+        results1.Select(r => r.Name).Should().ContainInOrder("Apple, fuji, raw", "Apple, gala, raw");
+    }
 }

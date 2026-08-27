@@ -69,37 +69,10 @@ public class UsdaFoodDataClient : IFoodProvider
     {
         try
         {
-            var url = $"https://api.nal.usda.gov/fdc/v1/foods/search?query={Uri.EscapeDataString(query)}&dataType={Uri.EscapeDataString(dataType)}&pageSize={pageSize}&api_key={_apiKey}";
+            var url = $"fdc/v1/foods/search?query={Uri.EscapeDataString(query)}&dataType={Uri.EscapeDataString(dataType)}&pageSize={pageSize}&api_key={_apiKey}";
             var response = await _http.GetFromJsonAsync<UsdaSearchResponse>(url, ct);
 
-            return response?.Foods?.Select(f =>
-            {
-                var isWhole = f.DataType is "SR Legacy" or "Foundation";
-                var name = f.Description ?? "Unknown";
-                // Clean up USDA names - they're often ALL CAPS
-                if (name == name.ToUpperInvariant() && name.Length > 3)
-                    name = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(name.ToLowerInvariant());
-
-                return new FoodProductDto
-                {
-                    Name = name,
-                    Brand = isWhole ? null : f.BrandOwner,
-                    Calories100g = Nutrient(f, 1008),
-                    Protein100g = Nutrient(f, 1003),
-                    Carbs100g = Nutrient(f, 1005),
-                    Fat100g = Nutrient(f, 1004),
-                    Fiber100g = Nutrient(f, 1079),
-                    Sugar100g = Nutrient(f, 2000),
-                    SodiumMg100g = Nutrient(f, 1093),
-                    DataSource = DataSources.Usda,
-                    SourceVersion = "live-api",
-                    LicenseType = "USDA FoodData Central terms",
-                    Attribution = "USDA FoodData Central",
-                    RetrievedAt = DateTime.UtcNow,
-                    SourceUrl = $"https://fdc.nal.usda.gov/fdc-app.html#/food-details/{f.FdcId}/nutrients",
-                    ExternalId = f.FdcId.ToString()
-                };
-            }).ToList() ?? [];
+            return response?.Foods?.Select(UsdaFoodMapper.ToDto).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -108,8 +81,7 @@ public class UsdaFoodDataClient : IFoodProvider
         }
     }
 
-    private static decimal? Nutrient(UsdaFood f, int id) =>
-        f.FoodNutrients?.FirstOrDefault(n => n.NutrientId == id)?.Value;
+
 }
 
 public record UsdaSearchResponse
@@ -124,7 +96,44 @@ public record UsdaFood
     public string? BrandOwner { get; init; }
     public string? DataType { get; init; }
     public string? FoodCategory { get; init; }
+    public string? Ingredients { get; init; }
     public List<UsdaNutrient>? FoodNutrients { get; init; }
+}
+
+internal static class UsdaFoodMapper
+{
+    public static FoodProductDto ToDto(UsdaFood f)
+    {
+        var isWhole = f.DataType is "SR Legacy" or "Foundation";
+        var name = f.Description ?? "Unknown";
+        // Clean up USDA names - they're often ALL CAPS
+        if (name == name.ToUpperInvariant() && name.Length > 3)
+            name = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(name.ToLowerInvariant());
+
+        return new FoodProductDto
+        {
+            Name = name,
+            Brand = isWhole ? null : f.BrandOwner,
+            Ingredients = string.IsNullOrWhiteSpace(f.Ingredients) ? null : f.Ingredients.Trim(),
+            Calories100g = Nutrient(f, 1008),
+            Protein100g = Nutrient(f, 1003),
+            Carbs100g = Nutrient(f, 1005),
+            Fat100g = Nutrient(f, 1004),
+            Fiber100g = Nutrient(f, 1079),
+            Sugar100g = Nutrient(f, 2000),
+            SodiumMg100g = Nutrient(f, 1093),
+            DataSource = DataSources.Usda,
+            SourceVersion = "live-api",
+            LicenseType = "USDA FoodData Central terms",
+            Attribution = "USDA FoodData Central",
+            RetrievedAt = DateTime.UtcNow,
+            SourceUrl = $"https://fdc.nal.usda.gov/fdc-app.html#/food-details/{f.FdcId}/nutrients",
+            ExternalId = f.FdcId.ToString()
+        };
+    }
+
+    private static decimal? Nutrient(UsdaFood f, int id) =>
+        f.FoodNutrients?.FirstOrDefault(n => n.NutrientId == id)?.Value;
 }
 
 public record UsdaNutrient

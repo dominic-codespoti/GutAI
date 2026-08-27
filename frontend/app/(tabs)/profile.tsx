@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { confirm } from "../../src/utils/confirm";
 import { toast } from "../../src/stores/toast";
 import { ErrorState } from "../../components/ErrorState";
+import { EmptyState } from "../../components/EmptyState";
 import { BottomSheet } from "../../components/BottomSheet";
 import { AllergyChips } from "../../components/AllergyChips";
 import { GoalField } from "../../components/GoalField";
@@ -34,11 +35,13 @@ import {
   useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
 
 export default function ProfileScreen() {
   const colors = useThemeColors();
   const fonts = useThemeFonts();
   const { shadow, shadowMd } = useThemeShadow();
+  const timezoneId = getDeviceTimezoneId();
 
   const inputStyle = {
     borderWidth: 1,
@@ -73,7 +76,7 @@ export default function ProfileScreen() {
     isError: corrError,
     refetch: refetchCorr,
   } = useQuery({
-    queryKey: ["correlations"],
+    queryKey: ["correlations", timezoneId],
     queryFn: () => insightApi.correlations(30).then((r) => r.data),
   });
 
@@ -92,6 +95,11 @@ export default function ProfileScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
       toast.success("Alert removed");
+      haptics.heavy();
+    },
+    onError: () => {
+      toast.error("Failed to remove alert");
+      haptics.error();
     },
   });
 
@@ -135,7 +143,10 @@ export default function ProfileScreen() {
       dailyFiberGoalG: number;
     }) => userApi.updateGoals(data),
     onSuccess: () => {
-      userApi.getProfile().then(({ data }) => setUser(data));
+      userApi
+        .getProfile()
+        .then(({ data }) => setUser(data))
+        .catch(() => toast.error("Failed to refresh profile"));
       queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
       setEditingGoals(false);
       toast.success("Goals updated");
@@ -208,14 +219,14 @@ export default function ProfileScreen() {
 
     goalsMutation.mutate({
       dailyCalorieGoal: cal,
-      dailyProteinGoalG: prot || 50,
-      dailyCarbGoalG: carb || 250,
-      dailyFatGoalG: fat || 65,
-      dailyFiberGoalG: fib || 25,
+      dailyProteinGoalG: prot,
+      dailyCarbGoalG: carb,
+      dailyFatGoalG: fat,
+      dailyFiberGoalG: fib,
     });
   };
-
   const handleLogout = () => {
+    haptics.warning();
     confirm("Logout", "Are you sure?", logout);
   };
 
@@ -568,40 +579,14 @@ export default function ProfileScreen() {
                     </View>
                   ))
                 ) : (
-                  <View
-                    style={{
-                      alignItems: "center",
-                      paddingVertical: spacing.md,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 22,
-                        backgroundColor: colors.warningBg,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginBottom: spacing.sm,
-                      }}
-                    >
-                      <Ionicons
-                        name="notifications-outline"
-                        size={22}
-                        color={colors.warning}
-                      />
-                    </View>
-                    <Text
-                      style={{
-                        ...fonts.caption,
-                        textAlign: "center",
-                        lineHeight: 18,
-                      }}
-                    >
-                      No additive alerts set.{"\n"}Tap 'Manage Alerts' below to
-                      get notified about specific additives.
-                    </Text>
-                  </View>
+                  <EmptyState
+                    icon="notifications-outline"
+                    title="No additive alerts set"
+                    body="Browse additives to get notified when foods contain them."
+                    actionLabel="Browse Additives"
+                    onAction={() => setShowAdditiveBrowser(true)}
+                    compact
+                  />
                 )}
               </View>
 

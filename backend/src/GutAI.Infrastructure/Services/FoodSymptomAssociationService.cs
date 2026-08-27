@@ -1,3 +1,4 @@
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 
@@ -57,19 +58,25 @@ internal static class FoodSymptomAssociationService
     private const decimal LowQualityMatchConfidenceThreshold = 0.6m;
 
     public static async Task<FoodSymptomAssociationResult> ComputeAsync(
-        Guid userId, DateOnly from, DateOnly to, ITableStore store, bool includeAdditives, CancellationToken ct = default)
+        Guid userId, DateOnly from, DateOnly to, ITableStore store, bool includeAdditives, CancellationToken ct = default, string? timezoneId = null)
     {
-        var meals = await store.GetMealLogsByDateRangeAsync(userId, from, to, ct);
+        var user = await store.GetUserAsync(userId, ct);
+        var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(user, from, to, timezoneId);
+        var coarseFrom = DateOnly.FromDateTime(utcStart);
+        var coarseTo = DateOnly.FromDateTime(utcEnd);
+
+        var meals = await store.GetMealLogsByDateRangeAsync(userId, coarseFrom, coarseTo, ct);
+        meals = meals.Where(m => m.LoggedAt >= utcStart && m.LoggedAt <= utcEnd).ToList();
         foreach (var meal in meals)
             meal.Items = await store.GetMealItemsAsync(userId, meal.Id, ct);
 
         if (includeAdditives)
             await HydrateAdditivesAsync(meals, store, ct);
 
-        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, from, to, ct);
+        var symptoms = await store.GetSymptomLogsByDateRangeAsync(userId, coarseFrom, coarseTo, ct);
+        symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
         foreach (var s in symptoms)
             s.SymptomType = await store.GetSymptomTypeAsync(s.SymptomTypeId, ct);
-
         // Exposure key -> meal ids that contain it. Foods are grouped by a normalized
         // identity key (case/punctuation/plural-insensitive) so "Chicken Breast" and
         // "chicken breasts" share one bucket; additive keys are tagged "[additive] Name".

@@ -5389,7 +5389,8 @@ public static class BrandedFoodsDatabase
         return _index.Value.Search(query, maxResults);
     }
 
-    private static FoodProductDto F(string name, string brand, string ingredients, int cal, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal sugar, decimal sodium) =>
+    // Note: Records generated before this change may encode missing optional nutrients as 0; regenerate to correct.
+    private static FoodProductDto F(string name, string brand, string ingredients, int cal, decimal protein, decimal carbs, decimal fat, decimal? fiber, decimal? sugar, decimal? sodium) =>
         new()
         {
             Name = name,
@@ -5401,7 +5402,7 @@ public static class BrandedFoodsDatabase
             Fat100g = fat,
             Fiber100g = fiber,
             Sugar100g = sugar,
-            SodiumMg100g = sodium * 1000m,
+            SodiumMg100g = sodium.HasValue ? sodium.Value * 1000m : null,
             DataSource = "USDA",
             SourceVersion = "USDA embedded FoodData Central snapshot",
             LicenseType = "USDA FoodData Central terms",

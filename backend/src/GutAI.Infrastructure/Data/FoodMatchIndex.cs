@@ -102,7 +102,10 @@ public sealed class FoodMatchIndex
                 return (Candidate: c, Score: personalized, Eligible: eligible, Exact: exact, Coverage: coverage);
             })
             .Where(x => x.Eligible)
+            // Equal scores previously preserved provider arrival order, making result order nondeterministic across retries.
             .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Candidate.Dto.Name, StringComparer.Ordinal)
+            .ThenBy(x => x.Candidate.Dto.ExternalId ?? "", StringComparer.Ordinal)
             .Take(maxResults)
             .ToList();
 

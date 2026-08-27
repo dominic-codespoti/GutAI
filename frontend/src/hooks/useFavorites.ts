@@ -1,6 +1,5 @@
-import { Platform } from "react-native";
-import * as Haptics from "expo-haptics";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as haptics from "../utils/haptics";
 import { foodApi } from "../api";
 import { toast } from "../stores/toast";
 import type { FavoriteFood } from "../types";
@@ -46,13 +45,12 @@ export function useFavorites() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["favorite-foods"] });
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
+      haptics.light();
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(["favorite-foods"], ctx.prev);
       toast.error("Failed to favorite food");
+      haptics.error();
     },
   });
 
@@ -69,13 +67,12 @@ export function useFavorites() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["favorite-foods"] });
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
+      haptics.light();
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(["favorite-foods"], ctx.prev);
       toast.error("Failed to unfavorite food");
+      haptics.error();
     },
   });
 

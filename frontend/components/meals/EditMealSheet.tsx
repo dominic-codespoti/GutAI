@@ -18,6 +18,7 @@ import {
   shiftDate,
   formatDateLabel,
   buildLoggedAt,
+  toLocalDateStr,
 } from "../../src/utils/date";
 import { MEAL_TYPES } from "../../src/utils/constants";
 import { toast } from "../../src/stores/toast";
@@ -51,7 +52,7 @@ export function EditMealSheet() {
   useEffect(() => {
     if (editingMeal) {
       setEditMealType(editingMeal.mealType);
-      setEditMealDate(editingMeal.loggedAt.split("T")[0]);
+      setEditMealDate(toLocalDateStr(new Date(editingMeal.loggedAt)));
       const t = new Date(editingMeal.loggedAt);
       setEditHour(String(t.getHours()).padStart(2, "0"));
       setEditMinute(String(t.getMinutes()).padStart(2, "0"));

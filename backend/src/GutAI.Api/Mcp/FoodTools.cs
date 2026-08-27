@@ -4,6 +4,7 @@ using System.Text.Json;
 using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Infrastructure.Services;
+using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -20,6 +21,8 @@ public class FoodTools
 
     private readonly IFoodSearchService _foodApi;
     private readonly ITableStore _store;
+    private readonly IOfflineFoodDatabase? _offlineDb;
+    private readonly IExternalFoodAggregator? _externalFoodAggregator;
     private readonly FodmapService _fodmapService;
     private readonly GutRiskService _gutRiskService;
     private readonly PersonalizedScoringService _scoringService;
@@ -31,10 +34,14 @@ public class FoodTools
         FodmapService fodmapService,
         GutRiskService gutRiskService,
         PersonalizedScoringService scoringService,
-        ILogger<FoodTools> logger)
+        ILogger<FoodTools> logger,
+        IOfflineFoodDatabase? offlineDb = null,
+        IExternalFoodAggregator? externalFoodAggregator = null)
     {
         _foodApi = foodApi;
         _store = store;
+        _offlineDb = offlineDb;
+        _externalFoodAggregator = externalFoodAggregator;
         _fodmapService = fodmapService;
         _gutRiskService = gutRiskService;
         _scoringService = scoringService;
@@ -42,6 +49,7 @@ public class FoodTools
     }
 
     [McpServerTool(Name = "gutai_search_foods", ReadOnly = true)]
+    [Authorize]
     [Description("Search the food database by name for matching food products. Call this first before any food-related operation to find the right food product ID. Returns up to 10 results with nutrition per 100g, brand, data source, and match confidence.")]
     public async Task<string> SearchFoods(
         ClaimsPrincipal? user,
@@ -78,7 +86,8 @@ public class FoodTools
     }
 
     [McpServerTool(Name = "gutai_get_fodmap_assessment", ReadOnly = true)]
-    [Description("Get the FODMAP assessment for a food product (score, rating, triggers, summary). This is a subset of gutai_get_food_safety. Use when you only need FODMAP-specific info, or use gutai_get_food_safety for the complete safety picture including gut risk and personalized scoring.")]
+    [Authorize]
+    [Description("Get the FODMAP ingredient-screening assessment for a food product: status (PotentialTriggersDetected / NoKnownTriggersDetected / InsufficientInformation), screening score 0-100 (higher = fewer triggers), confidence, trigger list with categories/severities, and summary. This is an ingredient screen, not a serving-size FODMAP classification.")]
     public async Task<string> GetFodmapAssessment(
         ClaimsPrincipal? user,
         [Description("The food product ID (GUID) from gutai_search_foods results (required)")] string foodProductId,
@@ -89,7 +98,7 @@ public class FoodTools
             if (!Guid.TryParse(foodProductId, out var id))
                 throw new McpException("Invalid food product ID format. Provide a valid GUID.");
 
-            var product = await _store.GetFoodProductAsync(id, ct);
+            var product = await FoodProductResolver.GetEnrichedCatalogProductAsync(id, _store, _offlineDb, _externalFoodAggregator, ct, _logger);
             if (product is null)
                 throw new McpException("Food product not found.");
 
@@ -98,10 +107,15 @@ public class FoodTools
             return JsonSerializer.Serialize(new
             {
                 fodmap.Status,
+                fodmap.IngredientScreeningScore,
                 fodmap.Confidence,
                 fodmap.MissingEvidence,
                 fodmap.TriggerCount,
-                triggers = fodmap.Triggers.Select(t => new { t.Name, t.Category, t.Severity, t.Explanation }),
+                fodmap.HighCount,
+                fodmap.ModerateCount,
+                fodmap.LowCount,
+                fodmap.Categories,
+                triggers = fodmap.Triggers.Select(t => new { t.Name, t.Category, t.SubCategory, t.Severity, t.Explanation }),
                 fodmap.Summary
             }, JsonOpts);
         }
@@ -114,21 +128,21 @@ public class FoodTools
     }
 
     [McpServerTool(Name = "gutai_get_food_safety", ReadOnly = true)]
+    [Authorize]
     [Description("Get a comprehensive personalized safety report for a food product. Combines FODMAP assessment, gut risk analysis (additives, NOVA, sodium), and a personalized score factoring in the user's allergies, conditions, and meal history. Prefer this over gutai_get_fodmap_assessment when you need the full picture.")]
     public async Task<string> GetFoodSafety(
-        HttpContext httpContext,
         ClaimsPrincipal? user,
         [Description("The food product ID (GUID) from gutai_search_foods results (required)")] string foodProductId,
         CancellationToken ct)
     {
         try
         {
-            var userId = GetUserId(httpContext);
+            var userId = GetUserId(user!);
 
             if (!Guid.TryParse(foodProductId, out var id))
                 throw new McpException("Invalid food product ID format. Provide a valid GUID.");
 
-            var product = await _store.GetFoodProductAsync(id, ct);
+            var product = await FoodProductResolver.GetEnrichedCatalogProductAsync(id, _store, _offlineDb, _externalFoodAggregator, ct, _logger);
             if (product is null)
                 throw new McpException("Food product not found.");
 
@@ -152,6 +166,6 @@ public class FoodTools
         }
     }
 
-    private static Guid GetUserId(HttpContext httpContext) =>
-        Guid.Parse(httpContext.User.FindFirstValue("sub")!);
+    private static Guid GetUserId(ClaimsPrincipal? user) =>
+        Guid.Parse(user!.FindFirstValue("sub")!);
 }

@@ -1,10 +1,15 @@
 import { Text, View, Pressable } from "react-native";
-import * as Haptics from "expo-haptics";
+import * as haptics from "../../src/utils/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SwipeableItemRow } from "../SwipeableItemRow";
 import { SafetyRatingBadge } from "./SafetyRatingBadge";
 import { spacing } from "../../src/utils/theme";
+import {
+  formatMealItemPortion,
+  formatServingHint,
+  titleCaseFoodName,
+} from "../../src/utils/foodDisplay";
 import { useThemeColors } from "../../src/stores/theme";
 import { foodApi } from "../../src/api";
 import { toast } from "../../src/stores/toast";
@@ -18,10 +23,21 @@ interface Props {
   onDelete: (meal: MealLog, index: number) => void;
 }
 
-export function MealItemRow({ item, meal, itemIndex, onSwap, onDelete }: Props) {
+export function MealItemRow({
+  item,
+  meal,
+  itemIndex,
+  onSwap,
+  onDelete,
+}: Props) {
   const colors = useThemeColors();
   const router = useRouter();
-const handleTap = async () => {
+  const portionText = formatMealItemPortion(item);
+  const portionGuidance = formatServingHint({
+    ...item,
+    grams: item.servingWeightG ?? 0,
+  });
+  const handleTap = async () => {
     if (item.foodProductId) {
       router.push(`/food/${item.foodProductId}`);
       return;
@@ -46,10 +62,13 @@ const handleTap = async () => {
   return (
     <SwipeableItemRow
       onSwap={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        haptics.medium();
         onSwap(meal, itemIndex);
       }}
-      onDelete={() => onDelete(meal, itemIndex)}
+      onDelete={() => {
+        haptics.heavy();
+        onDelete(meal, itemIndex);
+      }}
     >
       <Pressable
         onPress={handleTap}
@@ -69,10 +88,11 @@ const handleTap = async () => {
           style={{ color: colors.textSecondary, flex: 1 }}
           numberOfLines={1}
         >
-          {item.foodName}
+          {titleCaseFoodName(item.foodName)}
           <Text style={{ color: colors.textMuted }}>
             {" · "}
-            {item.servings} {item.servingUnit}
+            {portionText}
+            {portionGuidance ? ` · ${portionGuidance}` : ""}
           </Text>
         </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

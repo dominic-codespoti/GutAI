@@ -36,6 +36,38 @@ public class MealVisionValidatorTests
     }
 
     [Fact]
+    public void Validate_ServingHintWithinBounds_IsPreserved()
+    {
+        var component = ValidComponent();
+        component.ServingHintUnit = "large egg";
+        component.ServingHintUnitPlural = "large eggs";
+        component.ServingHintUnitGrams = 50m;
+
+        var result = MealVisionValidator.Validate(
+            new MealVisionResult { Components = [component] }, maxComponents: 12);
+
+        result.Components[0].ServingHintUnit.Should().Be("large egg");
+        result.Components[0].ServingHintUnitPlural.Should().Be("large eggs");
+        result.Components[0].ServingHintUnitGrams.Should().Be(50m);
+    }
+
+    [Fact]
+    public void Validate_InvalidServingHint_IsCleared()
+    {
+        var component = ValidComponent();
+        component.ServingHintUnit = "large egg";
+        component.ServingHintUnitPlural = "large eggs";
+        component.ServingHintUnitGrams = 5000m;
+
+        var result = MealVisionValidator.Validate(
+            new MealVisionResult { Components = [component] }, maxComponents: 12);
+
+        result.Components[0].ServingHintUnit.Should().BeEmpty();
+        result.Components[0].ServingHintUnitPlural.Should().BeEmpty();
+        result.Components[0].ServingHintUnitGrams.Should().Be(0m);
+    }
+
+    [Fact]
     public void Validate_EmptyComponents_Throws()
     {
         var act = () => MealVisionValidator.Validate(new MealVisionResult(), maxComponents: 12);

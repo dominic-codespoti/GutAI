@@ -8,16 +8,16 @@
 
 | Concern | Today | Where |
 |---|---|---|
-| Chat coach | Azure OpenAI **Assistants API** (`AssistantClient`, Foundry agent "GutAI Coach"), hand-rolled tool loop `MaxToolRounds = 8`, streaming SSE events | `AzureOpenAIChatService.cs`, `AssistantFactory.cs` |
-| Tool definitions | 12 static `FunctionToolDefinition` objects (`search_foods`, `log_meal`, `get_food_safety`, …) with inline JSON-schema strings | `ChatTools.cs` |
+| Chat coach | `Microsoft.Extensions.AI` `IChatClient` over Azure OpenAI **Responses** transport, `UseFunctionInvocation` tool loop, streaming SSE events | `CoachChatService.cs`, `DependencyInjection.cs` |
+| Tool definitions | 12 typed `AIFunctionFactory` adapters with ambient authenticated user identity | `CoachChatService.cs` |
 | ~~MCP server~~ | **Being removed** — external-AI-apps surface (`/mcp`, `Api/Mcp/*.cs`, `ModelContextProtocol.AspNetCore`). Nothing internal consumed it; chat used its own definitions. Re-addable later via `McpServerTool.Create(AIFunction)` wrapping the same shared tool classes if ever needed | `Api/Mcp/*.cs`, `Program.cs` |
-| Vision | Chat Completions with `CreateImagePart(BinaryData)` inside label-parse fallback | `ContentUnderstandingService.ParseWithLlmVisionAsync` |
-| Text→food / Foundry agents | `AIProjectClient.OpenAI.GetProjectResponsesClientForAgent(AgentReference)` (Responses API) | `DescribeFoodWithAgentAsync` |
+| Vision | `IChatClient.GetResponseAsync<T>` with strict structured output over Azure OpenAI **Responses**; developer-role instructions | `MealScanService.cs`, `DependencyInjection.cs` |
+| Text→food / Foundry agents | `IChatClient` structured output or `AIProjectClient.OpenAI.GetProjectResponsesClientForAgent(AgentReference)` | `ContentUnderstandingService.cs` |
 | Search/ranking | `IFoodSearchService.SearchAsync / ResolveAsync` over USDA·OFF·AU aggregator with canonicalizer + single ranking pass | `Application/Common/Interfaces/IFoodSearchService.cs` |
 | Persistence | Azure Table Storage via `ITableStore`; Pro gating via `useSubscriptionStore` paywall; `aiExtraction` rate-limit partition | throughout |
-| Packages | `Azure.AI.OpenAI 2.9.0-beta`, `Azure.AI.Projects 2.0.0-beta`, `Azure.AI.ContentUnderstanding`, `Mcp.AspNetCore`, ImageSharp | csproj |
+| Packages | `Azure.AI.OpenAI 2.9.0-beta.1`, `Azure.AI.Projects 2.0.0-beta.2`, `Microsoft.Extensions.AI/OpenAI 10.4.0`, `Microsoft.Agents.AI/OpenAI 1.0.0`, Content Understanding, ImageSharp | csproj |
 
-**Notable:** OpenAI has deprecated the Assistants API in favor of Responses; and Semantic Kernel itself has been superseded by **Microsoft Agent Framework** (SK is in maintenance). Both matter for §1.
+**Notable:** meal photos use a dedicated color-preserving preprocessor (`MealPhotoPreprocessor`: auto-orient, 2000px cap, JPEG q85). The grayscale `NutritionLabelImagePreprocessor` is for label OCR only. All model inference uses the Responses transport. Reasoning-model requests omit sampling parameters such as `temperature`; stable instructions are sent once as a developer message, while dynamic user data remains user input. Stage-A `VisionReasoningEffort` accepts `none`, `low`, `medium`, `high`, `xhigh`, and `max`; the golden harness isolates each effort in its cache key and uses a 10-minute network timeout so high-effort runs are measured rather than prematurely cancelled. OpenAI has deprecated the Assistants API in favor of Responses; Semantic Kernel itself has been superseded by Microsoft Agent Framework (SK is in maintenance).
 
 ---
 
@@ -28,9 +28,9 @@
 | Option | Assessment |
 |---|---|
 | **A. Semantic Kernel** | ❌ Don't introduce in 2026. SK is in maintenance mode; Microsoft's own migration guide moves all new work to Agent Framework. Adding it now means adopting a framework already two steps behind its successor. |
-| **B. Microsoft Agent Framework** (`Microsoft.Agents.AI`) | The official SK successor, built on `Microsoft.Extensions.AI` types. Good fit *if* we want multi-agent orchestration or workflow graphs. Overkill for v1: our scan pipeline is a fixed 3-stage graph, not an open-ended agent loop. Revisit if/when the Coach chat migrates off Assistants API. |
+| **B. Microsoft Agent Framework** (`Microsoft.Agents.AI`) | The official SK successor, built on `Microsoft.Extensions.AI` types. Good fit *if* we want multi-agent orchestration or workflow graphs. Overkill for v1: our scan pipeline is a fixed 3-stage graph, not an open-ended agent loop. The Coach already uses the Responses-backed `IChatClient` tool loop; revisit Agent Framework only if durable workflow/session features justify it. |
 | **C. Microsoft.Extensions.AI** (`IChatClient`) ✅ | The stable .NET 10 base-layer abstraction that both SK and Agent Framework sit on. Gives us: provider-agnostic `IChatClient` (swap Azure OpenAI ↔ Gemini ↔ Ollama via config), built-in middleware (`UseFunctionInvocation` auto tool-loop, `UseLogging`, OpenTelemetry), **native structured output** via `GetResponseAsync<T>(...)`, and `AIFunctionFactory.Create()` for POCO-as-tool registration without JSON-string schemas. No vendor lock-in, no dead framework. |
-| **D. Stay on raw Azure SDK** | What label-parse does today. Fine, but we'd hand-roll another tool loop and another schema parser, and remain coupled to the OpenAI SDK shape. |
+| **D. Stay on raw Azure SDK** | Not permitted for production inference. Keep raw Azure clients only where an Azure-specific service has no `IChatClient` equivalent; all OpenAI model calls go through the shared Responses-backed adapter. |
 
 ### Recommendation
 **Adopt `Microsoft.Extensions.AI` (option C) as the LLM abstraction for all new AI code**, wrapped over the existing `AzureOpenAIClient`:
@@ -45,14 +45,15 @@ This is forward-compatible with Agent Framework later (`chatClient.AsAIAgent(...
 
 ### North-star stack statement (amended 2026-08-23 after AF guidance review)
 
-> Microsoft.Extensions.AI is the common inference abstraction. Bounded model
-> operations (meal vision decomposition, candidate selection) use `IChatClient`
-> directly over Azure OpenAI **Responses** transport. Microsoft Agent Framework
-> is reserved for genuinely agentic/conversational features (the coach):
-> `ChatClientAgent`, `AgentSession`, middleware, explicitly registered
-> `AIFunctionFactory` tool adapters. Fixed business pipelines remain ordinary C#
-> unless they later need workflow checkpointing / HITL / durable orchestration.
-> No Foundry-hosted agent objects, no Harness — simplest sufficient integration.
+> Microsoft.Extensions.AI remains the common inference abstraction. The fixed scan
+> pipeline remains ordinary C# for sequencing, validation, grounding, persistence,
+> and deterministic nutrition. Stage-B2 is a cascade: direct structured candidate
+> choice first, then a bounded Agent Framework `ChatClientAgent` only when direct
+> B2 abstains. The agent receives read-only server-owned grounding snapshots and
+> may request one capped reanalysis; its proposal must pass the deterministic
+> agent acceptance gate. Microsoft Agent Framework also owns the Coach agent
+> surface. No autonomous workflow may bypass resolver status, compatibility gates,
+> or human review.
 
 Layer map:
 
@@ -61,9 +62,11 @@ Layer map:
 | Bounded model inference | `IChatClient` (M.E.AI) |
 | Model transport | Azure OpenAI Responses API |
 | Meal-scan orchestration | plain deterministic C# |
+| Meal-scan ambiguous review | Agent Framework `ChatClientAgent` + typed read-only tools |
 | Nutrition/FODMAP computation | existing domain services |
 | Conversational coach | Agent Framework `ChatClientAgent` |
 | Coach tools | `AIFunctionFactory` over thin typed tool adapters (ambient user identity — never model-supplied userIds) |
+| Scan review tools | server-owned grounding snapshots; one bounded reanalysis call; no mutation |
 | Coach state | `AgentSession` (opaque) + app-owned `CoachSessionEntity` |
 | Mutating tools | approval-gated via function middleware (structural, not prompt-level) |
 | Telemetry | OpenTelemetry on `IChatClient` spans only; sensitive content disabled in prod |
@@ -101,15 +104,20 @@ to `ChatClientAgent` + Responses is therefore **P0b — before any meal-scan wor
                                         │
                                         ▼
               Frontend confirmation sheet (per-item provenance chips,
-              editable name/grams, ±25% stepper, High/Med/Low badges —
-              reuses AddToMealSheet patterns)
+              editable name/grams, ±25% stepper, model-supplied household serving hints,
+              High/Med/Low badges — reuses AddToMealSheet patterns)
                                         │ confirm (PUT /api/meals/scan/{id}/confirm)
+                                        ▼
+                     Confirm normalizes display names to Title Case, persists
+                     total grams in ServingWeightG, then logs the reviewed meal
                                         ▼
                      CreateMeal (existing endpoint/logic, zero changes downstream)
 ```
 
 Design rules carried over from the research doc:
-- The LLM never invents nutrition numbers — only **identity**, **grams (range+midpoint)**, and **confidence**.
+- The LLM never invents nutrition numbers — only **identity**, **grams (range+midpoint)**,
+  **confidence**, and optional **household serving-unit hints** (unit singular/plural plus
+  grams for one unit). Hint math is display-only and never contributes nutrition calculations.
 - Every displayed value traces to a named source (`usda` | `off` | `au` | `web:<url>` | `ai-estimate`).
 - Web results never touch FODMAP flags (curated dataset stays authoritative).
 
@@ -137,6 +145,10 @@ public sealed class ScannedComponent
     public required decimal EstimatedGramsHigh { get; init; }
     public required decimal Confidence { get; init; }     // 0..1
     public string? PreparationNote { get; init; }         // "appears fried", "sauce visible"
+    public string? ServingHintUnit { get; init; }         // "large egg"
+    public string? ServingHintUnitPlural { get; init; }   // "large eggs"
+    public decimal ServingHintUnitGrams { get; init; }    // grams for one unit; 0 = no hint
+
 }
 
 /// One resolved line item in the draft returned to the client.
@@ -151,6 +163,9 @@ public sealed class MealScanItemDto
     public string? SourceUrl { get; init; }               // citation when Source == "web"
 
     public required decimal Grams { get; set; }           // editable midpoint
+    public string? ServingHintUnit { get; init; }         // carried through for review/log display
+    public string? ServingHintUnitPlural { get; init; }
+    public decimal? ServingHintUnitGrams { get; init; }
     // Computed in Stage C from DB per-100g × grams (null when Source == "ai")
     public decimal? Calories { get; set; }
     public decimal? ProteinG { get; set; }
@@ -185,50 +200,47 @@ Interface in `Application/Common/Interfaces/IMealScanService.cs`.
 ### 4.1 DI registration (Infrastructure/DependencyInjection.cs)
 
 ```csharp
-// M.E.AI pipeline over the existing AzureOpenAI resource — RESPONSES transport
-// (Chat Completions is legacy path; AsIChatClient carries experimental metadata,
-// so this adapter lives ONLY here in DI, never referenced elsewhere).
+// M.E.AI pipeline over the existing AzureOpenAI resource — RESPONSES transport.
+// The adapter is registered once in DI; every inference workload uses this client.
 services.AddSingleton<IChatClient>(sp =>
 {
     var cfg = sp.GetRequiredService<IConfiguration>();
-    var azure = sp.GetRequiredService<AzureOpenAIClient>();       // already registered
-    var deployment = cfg["AzureOpenAI:VisionDeployment"]!;        // e.g. "gpt-4.1-mini"
+    var azure = sp.GetRequiredService<AzureOpenAIClient>();
+    var deployment = cfg["AzureOpenAI:DeploymentName"]!;
     return new ChatClientBuilder(
             azure.GetResponsesClient().AsIChatClient(deployment))
-        .UseFunctionInvocation()      // auto-executes AIFunction tools (Stage B disambiguation)
+        .UseFunctionInvocation(sp.GetRequiredService<ILoggerFactory>())
         .UseLogging(sp.GetRequiredService<ILoggerFactory>())
-        .Build();                     // .UseOpenTelemetry() wired in P1 per §10
+        .Build();
 });
 
 services.AddSingleton<IMealScanService, MealScanService>();
 ```
 
-`AsChatClient(deployment)` comes from `Microsoft.Extensions.AI.OpenAI` and accepts the same credential/endpoint you already construct — no new secrets.
+`AsIChatClient(deployment)` comes from `Microsoft.Extensions.AI.OpenAI` and accepts the same credential/endpoint already constructed — no new secrets.
 
 ### 4.2 Stage A — vision decomposition (structured output)
 
 ```csharp
 private static readonly ChatOptions VisionOptions = new()
 {
-    ResponseFormat = ChatResponseFormat.ForJsonSchema(
-        AIJsonSchema.Create(typeof(MealVisionResult))),   // exact JSON schema, generated
-    Temperature = 0.1f,
+    // Do not set Temperature for reasoning deployments.
     MaxOutputTokens = 2000,
 };
 
-private const string VisionSystemPrompt = """
+private static readonly ChatRole DeveloperRole = new("developer");
+
+private const string VisionDeveloperInstructions = """
     You are a food identification assistant. Analyze the meal photo and list every
     distinct food component visible.
 
     Rules:
-    - Separate components (rice, chicken, salad dressing) — never merge into one dish
-      unless truly inseparable (e.g. casserole).
     - Estimate grams per component using visual references (plate ≈26cm, cutlery,
       hands) when present; say so in scaleNotes. Without references, widen the
       low/high range and lower confidence.
     - Account for cooking method in preparationNote (oil absorbed, breading, sauces).
     - estimatedGramsMidpoint must lie within [low, high].
-    - Confidence reflects BOTH identity certainty AND portion certainty.
+    - Return only the structured output schema.
     """;
 
 async Task<MealVisionResult> DecomposeAsync(byte[] image, string contentType, CancellationToken ct)
@@ -236,13 +248,17 @@ async Task<MealVisionResult> DecomposeAsync(byte[] image, string contentType, Ca
     var message = new ChatMessage(ChatRole.User,
     [
         new TextContent("Identify all food components in this meal photo."),
-        new DataContent(image, contentType),          // M.E.AI image part
+        new DataContent(image, contentType),
     ]);
     var result = await _chat.GetResponseAsync<MealVisionResult>(
-        [message], VisionOptions, ct);                 // typed structured output
+        [
+            new ChatMessage(DeveloperRole, VisionDeveloperInstructions),
+            message,
+        ], VisionOptions, ct);
     return result.Result ?? throw new MealScanException("Vision stage returned no parseable result.");
 }
 ```
+
 
 ### 4.3 Stage B — grounding through the existing search stack
 
@@ -341,10 +357,21 @@ The repo has three places LLMs meet domain logic. The scan capability appears in
 
 | Surface | Integration | Mechanism |
 |---|---|---|
-| **Scan pipeline (new)** | Direct `IChatClient` calls, structured output | §4 above — not agentic, fixed stages |
-| **Coach chat (Assistants → AF migration)** | Photo attachment in chat → `analyze_meal_photo` tool that runs the same `IMealScanService` and returns the draft into the conversation for the existing present-confirm-log flow | Tool method on a shared tool class registered via `AIFunctionFactory.Create(...)`; image arrives as message attachment content. Reuses the mandatory present-before-`log_meal` rules verbatim. |
+| **Scan pipeline (new)** | Direct `IChatClient` calls; Agent Framework escalation is opt-in and disabled by default | Stage A and direct Stage-B2 remain ordinary C#. If `EnableAgentGroundingReview` is explicitly enabled after direct B2 abstains, a `ChatClientAgent` inspects server-owned grounding snapshots and may request one capped reanalysis. |
+| **Coach chat** | Agent Framework `ChatClientAgent` with domain tools | `AIFunctionFactory.Create(...)` adapters; ambient authenticated identity; approval rules for mutating tools. |
 
-Because Stage B consumes `IFoodSearchService` (not the LLM tools directly), both surfaces share one grounding path — no divergence between what chat logs and what scans log.
+The scan agent cannot search arbitrary providers or mutate products. Its proposed
+candidate must pass:
+
+- candidate membership in the inspected snapshot;
+- `AgentMinSelectionConfidence` (default 0.90);
+- identity-token overlap with the observed component/search queries;
+- post-reanalysis confidence improvement (`AgentReanalysisMinImprovement`, default 0.05)
+  when inspection ID > 0;
+- existing compatibility/validation gates.
+
+Every agent verdict—accepted, abstained, rejected, or missing—is logged with its
+reason and tool-call counts.
 
 ### Consolidated tool architecture (MCP dropped)
 

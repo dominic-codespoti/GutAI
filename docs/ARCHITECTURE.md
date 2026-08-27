@@ -26,10 +26,12 @@ The shipped system now draws a hard line between four different evidence types a
 - **Food resolution:** every search/parse path resolves to `Exact` / `Probable` / `Ambiguous` / `Unresolved` with `MatchConfidence`. Zero-overlap queries abstain instead of returning a confident wrong guess.
 - **Selection-only persistence:** external candidates are not authoritative products until selected or committed. Repeated selections converge through canonical identity (`barcode → source+externalId → name+brand`) so one real product does not grow duplicate rows.
 - **Parsed meal provenance:** parsed items carry independent identity confidence, portion confidence, and nutrition provenance (`Sourced` / `Estimated` / `Unknown`). The frontend review step exposes those signals separately.
-- **FODMAP:** rule-based ingredient/name screening with three statuses — `PotentialTriggersDetected`, `NoKnownTriggersDetected`, `InsufficientInformation`. It is intentionally an **ingredient screen**, not a serving-level laboratory classification; unsupported cases remain unknown instead of showing a misleading green “Low FODMAP”.
-- **Gut risk / glycemic / personalized score:** additive screening, glycemic reference matching, and the personalized composite score intentionally remain separate systems. They are allowed to disagree because they represent different evidence.
+- **FODMAP:** rule-based ingredient/name screening with three statuses — `PotentialTriggersDetected`, `NoKnownTriggersDetected`, `InsufficientInformation`. It is intentionally an **ingredient screen**, not a serving-level laboratory classification; unsupported cases remain unknown instead of showing a misleading green “Low FODMAP”. Trigger records dedupe on **canonical Name** (synonym patterns like "wheat flour"/"wheat" share one Name; distinct foods in the same FODMAP class stay individually visible so multi-source load is counted). Single-token ingredient patterns match with plural-tolerant word boundaries ("breaded" ≠ "bread"); free-from claims ("lactose-free") are ignored when negated. Severity ratings derive **by construction** from the canonical `SharedFodmapSeverities` map via `Resolve(key, fallback)` — ~85% of patterns are keyed (composite dishes stay list-local by policy), so drift is unrepresentable rather than merely detected; whole-food name matching tolerates plurals (`Pistachios` matches `pistachio`); and the stacking bonus counts distinct Monash chemistry families parsed from dual-class entries (`Excess Fructose + Sorbitol` = two families). Meal-scan health chips render all three statuses distinctly (warning / no-known-triggers / muted not-enough-info).
+- **Product-resolution parity:** every consumer of a stored product (REST detail, MCP tools, Coach chat tools) goes through one shared `FoodProductResolver` that lazy-enriches OFF products missing ingredient text (offline table → barcode API) before assessment — a product's FODMAP screening no longer depends on which surface asked. USDA live search maps the FDC `ingredients` field for branded foods.
+- **Gut risk / glycemic / personalized score:** additive screening, glycemic reference matching, and the personalized composite score intentionally remain separate systems. They are allowed to disagree because they represent different evidence; the food detail page notes explicitly that low GI does not imply low FODMAP for fructose/polyol-rich foods. The personalized composite documents its weights in code (FODMAP 35 / additive-only 20 / NOVA 15 / fiber 15 / allergen 15, diagnostic sugar-alcohol component at weight 0, personal-history penalty capped at −25) and shifts emphasis deterministically for declared profiles: FODMAP-sensitivity conditions or a low-fodmap preference move FODMAP to 45% (NOVA/fiber drop to 10%), and celiac/gluten conditions add an ingredients-text gluten scan on top of official allergen data. Profiles without those declarations produce exactly the default weights.
 - **Food-symptom analysis:** one shared `FoodSymptomAssociationService` now powers Correlations, Food Diary, Elimination Diet, and the Coach chat. It uses a 1–6 hour onset window, respects explicit `RelatedMealLogId` links first, splits inferred evidence across competing candidate meals instead of double-counting it, compares exposed-vs-baseline symptom rates, and flags co-consumption limitations.
 - **Frontend uncertainty propagation:** the UI exposes uncertainty as text, not color alone — e.g. “Multiple possible matches”, “Nutrition estimated”, “Portion assumed”, muted “Not Enough Info” FODMAP badges, baseline percentages on correlation cards, and missing-evidence disclosures.
+- **Static dataset governance:** the curated datasets (`FodmapData`, `GutRiskData`, `GlycemicData`) and embedded catalogs (`WholeFoodsDatabase` ~7.2k USDA foods, `BrandedFoodsDatabase` 5k with ingredients, `AustralianFoodsDatabase` — hand-seeded rather than generator-produced) are compile-time snapshots regenerated only via `backend/tools/*Generator` — `scripts/refresh-food-data.sh` and the manual `refresh-food-data` workflow orchestrate downloads; nothing refreshes automatically. Embedded snapshot records currently stamp `DataSource="USDA"` for identity stability with persisted rows; live-API vs snapshot distinction is carried by record provenance fields, not source name. Integrity is test-enforced: dataset pattern lists contain no duplicate entries.
 
 Known evidence limits remain explicit: ingredient order is not dose, proprietary FODMAP concentration thresholds are not embedded, GI reference matches do not establish an exact branded product’s measured GI, and observational food-symptom patterns still do not prove causation.
 
@@ -38,19 +40,111 @@ Known evidence limits remain explicit: ingredient order is not dose, proprietary
 The system features two modern, production-hardened AI sub-systems:
 
 #### 1. Conversational Coach (`CoachChatService`)
-- **Transport:** Built on `Microsoft.Extensions.AI` (`IChatClient`) over Azure OpenAI **Responses** transport (replaces the retired Assistants API).
+- **Transport:** Built on `Microsoft.Extensions.AI` (`IChatClient`) over Azure OpenAI **Responses** transport (replaces the retired Assistants API). The Azure client network timeout is configurable and defaults to 300 seconds for reasoning workloads.
 - **Tool Calling:** `UseFunctionInvocation` middleware executes the 12 domain tools (`search_foods`, `log_meal`, `get_food_safety`, `get_todays_meals`, etc.) via `AIFunctionFactory` adapters. User identity is captured server-side from JWT claims and is NEVER a model-supplied argument.
+- **Current-day and local-range parity:** User-local date requests carry the browser/device IANA timezone when available; the server falls back to the persisted profile timezone, then UTC. All local ranges use DST-aware UTC boundaries while stored/exported timestamps remain UTC instants.
+- **Structured tool results (2026-08):** after each tool completes the stream emits `{ tool_result, summary }` where `summary` is a compact typed payload built by `GutAI.Application.Chat.ChatToolSummaries` — `meal_logged {mealType, calories, items[≤3]}`, `meals_today {count, calories}`, `triggers {count, top}`; unknown tools send `summary: null` and clients render a neutral chip. Shapes are locked by `ChatToolSummariesTests` (AGENTS.md #3).
 - **State & History:** App-owned conversation history stored in Azure Table Storage (`COACHMSG|` partition rows, inverted-tick ordering) instead of cloud-managed threads.
-- **System Instructions:** Encoded verbatim in `CoachPrompts.cs` preserving strict behavioral workflows (clarification handling, active workflow priority, present-before-log).
+- **Developer Instructions:** Stable coach instructions live in `CoachPrompts.cs` and are sent as one developer-role message. User profile data is delimited user content, not elevated instructions.
 
 #### 2. Meal Photo Scanning & Grounding Pipeline (`MealScanService`)
-- **Stage A (Vision Decomposition):** `POST /api/meals/scan/image` accepts a meal photo (preprocessed via ImageSharp for EXIF stripping, 2000px downscale, JPEG q80) and calls `IChatClient.GetResponseAsync<MealVisionResult>()` with strict schema output. Output carries component names, gram ranges ($low, midpoint, high$), scale notes, and confidence. The LLM **never produces calories or nutrition numbers**.
+- **Stage A (Vision Decomposition):** `POST /api/meals/scan/image` accepts a meal photo (preprocessed via ImageSharp for EXIF stripping, 2000px downscale, JPEG q80) and calls `IChatClient.GetResponseAsync<MealVisionResult>()` with strict schema output and configurable `VisionReasoningEffort` (`none` through `max`). Output carries component names, gram ranges ($low, midpoint, high$), scale notes, and confidence. The LLM **never produces calories or nutrition numbers**.
+- **Stage-B Agent Review:** Ambiguous grounding snapshots are exposed to a bounded Agent Framework `ChatClientAgent` through typed read-only tools. The agent may inspect the authoritative candidate snapshot and request one server-capped reanalysis with a different effort. Final selection still passes through `MealScanCandidateSelector`, compatibility checks, and human-review thresholds.
 - **Deterministic Semantic Validation:** `MealVisionValidator` checks $low \le midpoint \le high$, caps portions at $\le 5\text{ kg}$, enforces component count limits, and drops invalid items.
 - **Stage B (Database Grounding):** `ComponentGroundingEngine` resolves each component through `IFoodSearchService.ResolveAsync`. Auto-select occurs ONLY when status is `Exact` or `Probable` AND `MatchConfidence >= 0.85`. Ambiguous items abstain to human review with top-3 candidates exposed. Quantities attach to the detected component, never database default servings.
 - **Stage B3 (Zero-Cost Web Cascade):** `WebNutritionCascade` runs for unresolved items behind `Features:WebGrounding` (Table cache $\rightarrow$ DuckDuckGo HTML search $\rightarrow$ Jina Reader markdown $\rightarrow$ LLM extraction $\rightarrow$ physiological plausibility gate $\rightarrow$ cache write).
 - **Stage C & Health Signals:** Macros are computed deterministically from verified per-100g database values $\times$ grams. `MealScanHealthSignals` enriches grounded items with FODMAP status/triggers and gut ratings. Web-scraped and AI-estimated items physically cannot receive FODMAP signals.
 - **Frontend Review Sheet:** `MealScanReviewSheet.tsx` provides an interactive bottom sheet with confidence badges, provenance chips (`USDA`, `OFF`, `AU`, `Web ↗`, `AI`), FODMAP/gut badges, portion steppers with live macro scaling, 1-tap candidate swapper, and meal type logging.
 - **Regression Gating:** `backend/tools/GoldenScanHarness` tests Stage A across a golden test suite of meal photos (`golden-images/manifest.json`), reporting component recall, gram error, and token usage with an automated `--gate` exit rule.
+
+### External AI-consumer access via pairing-code linking (2026-08)
+
+External AI apps (Claude Desktop, Cursor, any MCP client) connect to GutAI through the
+Streamable HTTP MCP endpoint at the pinned route **`/mcp`** (the SDK's default route is
+site root — `app.MapMcp("/mcp")` makes it explicit) without ever handling a user password:
+
+- **Pairing flow:** the user generates a single-use code in-app (`POST /api/user/pairing-codes`,
+  `PairingService`); the assistant calls the anonymous MCP tool `gutai_link_account(code)`,
+  which redeems it for a read-only `PersonalAccessToken` (`gutai_pat_…`). Plaintext exists
+  exactly once — only SHA-256 hashes are stored (`PLOOKUP`/`PATLOOKUP` hash rows mirror the
+  refresh-token pattern).
+- **Auth surface:** one policy scheme (`MultiAuth`) forwards `gutai_pat_`-prefixed
+  Authorization headers to `PatAuthenticationHandler` and everything else to JwtBearer.
+  PATs emit `sub`, `email`, `token_type=pat`, and per-scope `scope` claims, so all existing
+  tools resolve identity unchanged. PATs are valid **only on `/mcp`** — a leaked pairing
+  token cannot drive the REST API.
+- **Per-tool authorization:** `/mcp` has NO route-level authorization;
+  `AddAuthorizationFilters` enforces `[Authorize]` on every data tool while
+  `gutai_link_account` is `[AllowAnonymous]`. Mutating tools (`gutai_log_meal`,
+  `gutai_log_symptom`) additionally call `McpAccess.EnsureWrite(user)` — PAT links are
+  read-only today; JWT sessions keep full access.
+- **Tool parameter contract (hard-won, verified end-to-end by `McpLinkFlowTests`):**
+  SDK 1.2.0 binds ONLY these request-context parameter types: `ClaimsPrincipal`,
+  `McpServer`, `RequestContext<CallToolRequestParams>`, `IProgress<ProgressNotificationValue>`,
+  and `CancellationToken`. An `HttpContext` parameter silently becomes a required JSON
+  argument ("missing required parameter 'httpContext'") — every tool that used one was
+  broken over real transports until converted to `ClaimsPrincipal`. Optional tool parameters
+  MUST carry explicit defaults (`= null` / `= default`), otherwise M.E.AI marks them
+  required in the schema and rejects calls that omit them.
+- **Rate limiting:** dedicated `mcp` policy — 120/min token bucket per user, 20/min fixed
+  window per IP for unauthenticated traffic (the pairing tool is the brute-force surface;
+  codes add a 5-attempt burn-in on top).
+- **Lifecycle:** users list/revoke connections at `/api/user/tokens`; account deletion
+  removes tokens and pairing codes. `LastUsedAt` is throttled to one write per minute per
+  token to bound table-write amplification from chatty agents.
+
+Guardrail (AGENTS.md #10): every future MCP tool MUST carry `[Authorize]` unless it is an
+explicit link/auth exception, MUST take `ClaimsPrincipal?` (never `HttpContext`) for
+identity, and MUST call `McpAccess.EnsureWrite` before any side effect.
+
+### Health-platform import/export (2026-08)
+
+GutAI exchanges meal data with Apple HealthKit and Google Health Connect through a
+device-side abstraction, not a third-party aggregator:
+
+- **HealthBridge (`frontend/src/services/health/`)** — one TypeScript interface
+  (`isAvailable` / `requestPermissions` / `readNutrition` / `writeMeal` / `deleteMeal`)
+  with platform files over per-platform libraries: `react-native-health-connect`
+  (Android) and `@kingstinct/react-native-healthkit` (iOS, Nitro module — swapped in
+  because the legacy ObjC `react-native-health` bridge cannot return saved UUIDs,
+  cannot delete correlations, and hides sample sources, which made correct
+  write/update/delete semantics impossible). No unified wrapper library — pairing the
+  two best-of-breed platform bridges plus a thin shared interface is the settled
+  industry pattern.
+- **Import path:** incremental watermark reads → normalized rows → `POST /api/meals/import`
+  (JWT, ≤2000 items/request). The endpoint derives meal type from local hour when absent,
+  clamps values via `MealValidation`, persists with `NutritionProvenance="Estimated"`
+  (imported nutrition is never treated as verified), and dedupes on
+  `(ExternalSource, ExternalId)` — re-imports are idempotent. Name-only rows still feed
+  trigger tracking via normalized-name grouping.
+  Android reads follow Health Connect pagination tokens so windows larger than the
+  native 1000-record default page are never silently truncated.
+- **Export path:** opt-in per platform (default OFF, Apple 5.1.3-compliant contextual
+  permission request). Meal create/update/delete hooks fire after successful API commits;
+  failures never block the meal flow. Android writes use HC `clientRecordId = mealId`
+  (upsert semantics); iOS tracks saved sample UUIDs locally for deletes.
+- **Availability honesty:** `SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED` is reported as
+  "Google Health Connect needs an update" with a deep link to its Play Store listing,
+  never mislabeled as "not installed".
+- **Dual-direction safety:** when reading, records whose originating app is GutAI itself
+  are skipped (HC `metadata.dataOrigin`; HealthKit source bundle id). Without this filter,
+  enabling both directions duplicates every meal once per sync cycle.
+- **Fidelity honesty:** Health Connect carries real meals (name + mealType); HealthKit is
+  sample-shaped — the iOS bridge prefers food correlations and otherwise clusters macro
+  samples into meal windows, yielding coarser meals. Imported rows display estimated
+  provenance in the existing evidence UI.
+- **Store declarations:** Play Console health-apps declaration for READ/WRITE_NUTRITION
+  (moved into Play Console proper as of 2026-09-03; expect ≥7-day review + propagation);
+  iOS needs the HealthKit entitlement plus NSHealthShareUsageDescription /
+  NSHealthUpdateUsageDescription and passes App Review 5.1.3.
+- **Device verification (manual, requires EAS dev build):** health libraries carry native
+  code, so this surface cannot be exercised by unit/contract suites. Release gate:
+  ① `eas build --profile development` on both platforms; ② Health Connect Toolbox app
+  seeded with Nutrition records → import pulls them with `Estimated` provenance and
+  correct meal-type derivation; ③ log a GutAI meal with export enabled → record appears
+  in HC/Apple Health attributed to GutAI; ④ delete that meal → platform record removed;
+  ⑤ enable BOTH directions → run import twice → zero duplicate meals (self-origin filter);
+  ⑥ revoke permission at OS level → app surfaces unavailable state without crashing.
 
 ### Verification hardening (Phase 7 closeout)
 
@@ -94,7 +188,7 @@ assertion:
 | **Insight Endpoints**    | ✅     | Correlations, nutrition trends, additive exposure, food diary analysis, elimination-diet status — cached projections over the shared evidence engine |
 | **User Endpoints**       | ✅     | Profile CRUD, goals, alerts watchlist, **account deletion**                                                    |
 | **Middleware**           | ✅     | ExceptionMiddleware (ProblemDetails), RateLimiting (3 policies), Serilog request logging                       |
-| **External APIs**        | ✅     | Composite food fan-out (OFF + USDA + embedded providers), CalorieNinjas — all with Polly resilience            |
+| **External APIs**        | ✅     | Composite food fan-out (OFF + USDA + embedded providers), CalorieNinjas — OFF has full Polly resilience (retry + circuit breaker); USDA runs on a typed HttpClient (8s timeout); embedded catalogs are local |
 | **Caching**              | ✅     | In-memory cache for projections/history lookups                                                                 |
 | **Security**             | ✅     | JWT (no hardcoded fallback — throws on missing secret), Identity, rate limiting, input validation              |
 | **Database**             | ✅     | Azure Table Storage via `TableStorageStore` — single-table entity persistence with explicit `Upsert`/`MapTo` roundtrip rules |
@@ -115,9 +209,11 @@ assertion:
 | **Login/Register** | ✅     | **Email validation**, password visibility toggle, proper error typing (`catch (e: unknown)`)             |
 | **Onboarding**     | ✅     | 4-step wizard with **goal validation** (calorie range 1-10000, no negatives)                             |
 | **Settings**       | ✅     | Change password, data export, app info, **account deletion** (danger zone)                               |
-| **Components**     | ✅     | ErrorBoundary, ErrorState, SkeletonLoader, Toast, pull-to-refresh on all lists                           |
-| **Shared Utils**   | ✅     | severityColor, ratingColor, cspiColor, **confidenceColor/Icon**, shiftDate, formatDateLabel, **today()** |
+| **Components**     | ✅     | ErrorBoundary, ErrorState, SkeletonLoader, **EmptyState**, Toast, **CountUpText**, **CelebrationOverlay**, **ShareCardPortal + share/ templates (off-screen composed cards → PNG via react-native-view-shot → expo-sharing; brand-fixed palette `shareCardColors`)**, pull-to-refresh. Motion rule: celebratory/entering animation gates on `useReducedMotion()` |
+| **Illustrations** | ✅     | unDraw SVGs recolored to brand (`assets/onboarding/`), inlined at build time via `react-native-svg-transformer` (see `metro.config.js`, `svg.d.ts`). Onboarding steps + meals empty state use them; `EmptyState` takes an optional `illustration` node. Brand sweep: all user-facing "GutLens" copy is now "GutAI" |
+| **Store Artwork** | ✅     | Real UI captures in `assets/store/captures/raw/`; ChatGPT-generated backdrop assets in `assets/store/backgrounds/`; reproducible ImageMagick compositor at `frontend/scripts/compose-store-art.sh` emits Apple phone (1290×2796), Apple iPad (2048×2732), and Google phone (1080×1920) sets under `assets/store/final/`. Captions are composited outside untouched UI pixels. |
 | **API Layer**      | ✅     | All endpoints including **changePassword, export, deleteAccount**                                        |
+| **Retention**     | ✅     | Local-only reminders (`src/utils/notifications.ts`): opt-in daily logging reminder + one-shot evening streak nudge resynced on foreground/meal-log (no server push, no tokens — see privacy §2). Settings → Reminders with contextual permission priming. Dashboard "Your consistency" 28-day calendar (`StreakCalendar`). Requires the EAS dev build carrying `expo-notifications` |
 | **Types**          | ✅     | All DTOs typed including **servingWeightG, foodProductId, ChangePasswordRequest, DataExport**            |
 
 ### Infrastructure ✅
@@ -150,9 +246,10 @@ Request → ExceptionMiddleware → SerilogRequestLogging → CORS → RateLimit
 - TTL: 15min (correlations), 10min (trends/exposure)
 - Invalidation: On meal create/update/delete — clears 7/14/30-day windows
 
-### External API Resilience (Polly)
+### External API Resilience
 
-- All HTTP clients: retry 2x, circuit breaker 30s, timeout 5s/15s
+- OpenFoodFacts client: Polly standard resilience (1 retry, 8s attempt / 12s total budget, circuit breaker) via typed HttpClient (12s timeout)
+- USDA client: typed HttpClient with 8s timeout and User-Agent (no Polly); bounded by the search endpoint's 10s overall CTS
 - API key guards: USDA + CalorieNinjas skip if keys empty (graceful degradation)
 
 ---
@@ -204,11 +301,11 @@ Request → ExceptionMiddleware → SerilogRequestLogging → CORS → RateLimit
 | -------------- | ----------------------------------- |
 | Framework      | React Native 0.81+ with Expo SDK 54 |
 | Navigation     | Expo Router v6 (file-based)         |
-| Styling        | React Native StyleSheet (inline)    |
-| Server State   | TanStack Query v5 (React Query)     |
-| Client State   | Zustand                             |
-| Camera/Barcode | expo-camera                         |
-| Storage        | expo-secure-store (tokens)          |
+| Charts          | victory-native v42 (ex-"Victory Native XL") on @shopify/react-native-skia ^2.11.1 for native; platform-specific `.web.tsx` RN fallbacks keep Expo web export functional without CanvasKit. Axis labels require bundled fonts (`@expo-google-fonts/inter` → `useChartFonts`). |
+| Camera/Barcode  | expo-camera                         |
+| Server State    | TanStack Query v5 (React Query)     |
+| Client State    | Zustand                             |
+| Storage         | expo-secure-store (tokens)          |
 | HTTP           | Axios with interceptors             |
 | Testing        | Jest + React Native Testing Library |
 

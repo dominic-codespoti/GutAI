@@ -9,7 +9,9 @@ import {
   Platform,
   ActivityIndicator,
   StyleSheet,
+  Linking,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,10 +23,14 @@ import {
   useSubscriptionStore,
   presentPaywall,
 } from "../../src/stores/subscription";
+import { confirm } from "../../src/utils/confirm";
+import { toLocalDateStr } from "../../src/utils/date";
+import { getDeviceTimezoneId } from "../../src/utils/timezone";
+import { toast } from "../../src/stores/toast";
 import { useChatStream, formatToolName } from "../../src/hooks/useChatStream";
 import TypingIndicator from "../../src/components/TypingIndicator";
 
-import type { ChatMessage } from "../../src/types";
+import type { ChatMessage, ToolResultSummary } from "../../src/types";
 
 interface LocalMessage {
   id: string;
@@ -32,43 +38,143 @@ interface LocalMessage {
   content: string;
   isStreaming?: boolean;
   toolStatus?: string;
+  toolResults?: ToolResultSummary[];
 }
 
+/** Rich inline card for a completed coach tool (persistent, not transient). */
+function ToolResultCard({ summary }: { summary: ToolResultSummary }) {
+  const c = useThemeColors();
+  const bg =
+    summary.type === "triggers"
+      ? c.warningBg
+      : summary.type === "meal_logged"
+        ? c.primaryBg
+        : c.secondaryBg;
+  const fg =
+    summary.type === "triggers"
+      ? c.warning
+      : summary.type === "meal_logged"
+        ? c.primary
+        : c.secondary;
+  const icon: keyof typeof Ionicons.glyphMap =
+    summary.type === "meal_logged"
+      ? "checkmark-circle"
+      : summary.type === "meals_today"
+        ? "restaurant-outline"
+        : "warning-outline";
+
+  let headline = "";
+  if (summary.type === "meal_logged") {
+    headline = `Logged${summary.mealType ? ` · ${summary.mealType}` : ""} · ${Math.round(summary.calories)} kcal`;
+  } else if (summary.type === "meals_today") {
+    headline = `${summary.count} meal${summary.count === 1 ? "" : "s"} today · ${Math.round(summary.calories)} kcal`;
+  } else {
+    headline = summary.top
+      ? `Pattern found: ${summary.top}${summary.count > 1 ? ` (+${summary.count - 1})` : ""}`
+      : "Trigger scan complete";
+  }
+
+  return (
+    <View
+      style={[
+        trStyles.card,
+        { backgroundColor: bg, borderColor: fg + "55" },
+      ]}
+      accessibilityRole="text"
+      accessibilityLabel={headline}
+    >
+      <Ionicons name={icon} size={14} color={fg} />
+      <Text style={[trStyles.text, { color: c.text }]} numberOfLines={1}>
+        {headline}
+      </Text>
+    </View>
+  );
+}
+
+const trStyles = StyleSheet.create({
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+  },
+  text: { fontSize: 12, fontWeight: "600", flexShrink: 1 },
+});
 export default function ChatScreen() {
   const colors = useThemeColors();
   const styles = getStyles(colors);
   const mdStyles = getMarkdownStyles(colors);
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const timezoneId = getDeviceTimezoneId();
   const flatListRef = useRef<FlatList>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const { startStream, cancelStream } = useChatStream();
-  const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
-
-  const { isLoading } = useQuery({
+  const { isLoading, isFetching } = useQuery({
     queryKey: ["chatHistory"],
     queryFn: async () => {
       const res = await chatApi.getHistory(50);
       return res.data;
     },
-    staleTime: Infinity,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const historyData = queryClient.getQueryData<ChatMessage[]>(["chatHistory"]);
   useEffect(() => {
-    if (historyData && messages.length === 0) {
-      setMessages(
-        historyData.map((m) => ({
+    if (!historyData || isStreaming || isFetching) return;
+    setMessages(
+      historyData
+        .filter((m) => m.content.trim().length > 0)
+        .map((m) => ({
           id: m.id,
           role: m.role,
           content: m.content,
         })),
-      );
-    }
-  }, [historyData]);
+    );
+  }, [historyData, isStreaming, isFetching]);
+  const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
 
+  // Contextual starter prompts from local time and already-cached app state.
+  const suggestedPrompts = useCallback(() => {
+    const h = new Date().getHours();
+    const base =
+      h < 11
+        ? "Plan a gut-friendly breakfast"
+        : h < 15
+          ? "What should I have for lunch?"
+          : h < 21
+            ? "What's a good dinner option tonight?"
+            : "How can I sleep better with less bloating?";
+    const prompts = [base, "How's my nutrition today?"];
+    const summary = queryClient.getQueryData<{ totalCalories: number; calorieGoal: number }>([
+      "daily-summary",
+      toLocalDateStr(),
+      timezoneId,
+    ]);
+    if (summary && summary.calorieGoal > 0) {
+      const remaining = Math.max(summary.calorieGoal - summary.totalCalories, 0);
+      if (remaining < 300) {
+        prompts.unshift(`I have only ${Math.round(remaining)} kcal left today — what should I eat?`);
+      } else if (remaining > 800 && h >= 15) {
+        prompts.push(`I still have ${Math.round(remaining)} kcal left — meal ideas?`);
+      }
+    }
+    const triggers = queryClient.getQueryData<{ food: string }[]>(["trigger-foods", 30, timezoneId])
+      ?? queryClient.getQueryData<{ food: string }[]>(["trigger-foods-dashboard", timezoneId]);
+    if (triggers?.length) {
+      prompts.push(`Tell me more about ${triggers[0].food}`);
+    }
+    return prompts.slice(0, 4);
+  }, [queryClient, timezoneId]);
   const scrollToBottom = useCallback(() => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, []);
@@ -116,6 +222,17 @@ export default function ChatScreen() {
           ),
         );
       },
+      onToolResult: (_toolName, summary) => {
+        if (!summary) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, toolResults: [...(m.toolResults ?? []), summary] }
+              : m,
+          ),
+        );
+        scrollToBottom();
+      },
       onDone: () => {
         setIsStreaming(false);
         setMessages((prev) =>
@@ -129,6 +246,7 @@ export default function ChatScreen() {
       },
       onError: (errorMessage) => {
         setIsStreaming(false);
+        haptics.error();
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -145,12 +263,54 @@ export default function ChatScreen() {
     onSuccess: () => {
       setMessages([]);
       queryClient.setQueryData(["chatHistory"], []);
+      toast.success("Chat history cleared");
+    },
+    onError: () => {
+      toast.error("Failed to clear chat history");
+      haptics.error();
     },
   });
+
+  const handleClearChat = useCallback(() => {
+    confirm(
+      "Clear Chat History",
+      "Are you sure you want to clear your conversation history? This action cannot be undone.",
+      () => {
+        if (isStreaming) {
+          cancelStream();
+          setIsStreaming(false);
+        }
+        clearChat.mutate();
+      },
+    );
+  }, [isStreaming, cancelStream, clearChat]);
 
   useEffect(() => {
     return () => cancelStream();
   }, [cancelStream]);
+  const handleLinkPress = useCallback(
+    (url: string) => {
+      try {
+        if (url.startsWith("food://")) {
+          const foodId = url.replace(/^food:\/\//, "");
+          if (foodId) {
+            haptics.light();
+            router.push(`/food/${foodId}`);
+          }
+          return false;
+        }
+        if (/^https?:\/\//i.test(url)) {
+          Linking.openURL(url).catch(() => {});
+          return false;
+        }
+      } catch {
+        // fail silent-safe on unroutable / invalid hrefs
+      }
+      return false;
+    },
+    [router],
+  );
+
 
   const renderMessage = useCallback(
     ({ item }: { item: LocalMessage }) => {
@@ -187,7 +347,9 @@ export default function ChatScreen() {
           ) : (
             <>
               {item.content ? (
-                <Markdown style={mdStyles}>{item.content}</Markdown>
+                <Markdown style={mdStyles} onLinkPress={handleLinkPress}>
+                  {item.content}
+                </Markdown>
               ) : item.isStreaming && !item.toolStatus ? (
                 <View style={styles.typingContainer}>
                   <TypingIndicator visible={true} />
@@ -196,12 +358,19 @@ export default function ChatScreen() {
               {item.isStreaming && item.content && (
                 <View style={styles.cursorDot} />
               )}
+              {!isUser && (item.toolResults?.length ?? 0) > 0 ? (
+                <View style={styles.toolResultsRow}>
+                  {item.toolResults!.map((tr, i) => (
+                    <ToolResultCard key={`${tr.type}-${i}`} summary={tr} />
+                  ))}
+                </View>
+              ) : null}
             </>
           )}
         </View>
       );
     },
-    [colors, styles, mdStyles],
+    [colors, styles, mdStyles, handleLinkPress],
   );
 
   if (!subLoaded) {
@@ -285,12 +454,17 @@ export default function ChatScreen() {
           </View>
         </View>
         <TouchableOpacity
-          onPress={() => clearChat.mutate()}
-          style={styles.clearBtn}
+          onPress={handleClearChat}
+          disabled={clearChat.isPending}
+          style={[styles.clearBtn, clearChat.isPending && { opacity: 0.5 }]}
           accessibilityRole="button"
           accessibilityLabel="Clear chat"
         >
-          <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+          {clearChat.isPending ? (
+            <ActivityIndicator size="small" color={colors.textMuted} />
+          ) : (
+            <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -315,11 +489,7 @@ export default function ChatScreen() {
             personalized nutrition advice.
           </Text>
           <View style={styles.suggestions}>
-            {[
-              "What are my trigger foods?",
-              "Log lunch: chicken salad and water",
-              "How\u0027s my nutrition today?",
-            ].map((s) => (
+            {suggestedPrompts().map((s) => (
               <TouchableOpacity
                 key={s}
                 style={styles.suggestionChip}
@@ -486,6 +656,12 @@ const getStyles = (colors: any) =>
       marginBottom: 24,
     },
     suggestions: { gap: 8, width: "100%" },
+    toolResultsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 6,
+    },
     suggestionChip: {
       backgroundColor: colors.primaryBg,
       borderWidth: 1,

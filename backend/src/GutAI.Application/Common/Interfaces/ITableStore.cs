@@ -3,7 +3,7 @@ using GutAI.Domain.Entities;
 
 namespace GutAI.Application.Common.Interfaces;
 
-public record CoachChatMessage(string Role, string Text, DateTimeOffset CreatedAt);
+public record CoachChatMessage(string Role, string Text, DateTimeOffset CreatedAt, string? Id = null);
 
 public interface ITableStore
 {
@@ -19,6 +19,7 @@ public interface ITableStore
     Task<MealLog?> GetMealLogAsync(Guid userId, Guid mealId, CancellationToken ct = default);
     Task<List<MealLog>> GetMealLogsByDateAsync(Guid userId, DateOnly date, CancellationToken ct = default);
     Task<List<MealLog>> GetMealLogsByDateRangeAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default);
+    Task<MealLog?> GetMealLogByExternalRefAsync(Guid userId, string source, string externalId, CancellationToken ct = default);
     Task UpsertMealLogAsync(MealLog meal, CancellationToken ct = default);
 
     Task<List<MealItem>> GetMealItemsAsync(Guid userId, Guid mealLogId, CancellationToken ct = default);
@@ -54,6 +55,15 @@ public interface ITableStore
     Task<List<RefreshToken>> GetActiveRefreshTokensAsync(Guid userId, CancellationToken ct = default);
     Task UpsertRefreshTokenAsync(RefreshToken token, CancellationToken ct = default);
     Task DeleteRefreshTokensForUserAsync(Guid userId, CancellationToken ct = default);
+
+    // AI-consumer linking: pairing codes (single-use, short-lived) and personal access tokens
+    Task<PairingCode?> GetPairingCodeByHashAsync(string codeHash, CancellationToken ct = default);
+    Task UpsertPairingCodeAsync(PairingCode code, CancellationToken ct = default);
+    Task DeletePairingCodesForUserAsync(Guid userId, CancellationToken ct = default);
+    Task<PersonalAccessToken?> GetPersonalAccessTokenByHashAsync(string tokenHash, CancellationToken ct = default);
+    Task<List<PersonalAccessToken>> GetActivePersonalAccessTokensAsync(Guid userId, CancellationToken ct = default);
+    Task UpsertPersonalAccessTokenAsync(PersonalAccessToken token, CancellationToken ct = default);
+    Task DeletePersonalAccessTokensForUserAsync(Guid userId, CancellationToken ct = default);
 
     Task<DailyNutritionSummary?> GetDailyNutritionSummaryAsync(Guid userId, DateOnly date, CancellationToken ct = default);
     Task UpsertDailyNutritionSummaryAsync(DailyNutritionSummary summary, CancellationToken ct = default);

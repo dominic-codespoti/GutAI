@@ -44,10 +44,10 @@ public static class MealScanEndpoints
 
             logger.LogInformation("Meal scan started for user {UserId}, original size {Size} bytes.", uid, file.Length);
 
-            // Reuse the label-flow preprocessor: EXIF strip, edge cap 2000px, JPEG q80 —
-            // cuts vision tokens ~40% and removes GPS metadata before upload to the model.
+            // Meal-specific preprocessing: EXIF strip, 2000px cap, JPEG q85.
+            // Preserve color — grayscale is label-OCR-only and destroys food identity.
             using var originalStream = file.OpenReadStream();
-            using var preprocessed = await GutAI.Api.Imaging.NutritionLabelImagePreprocessor.PreprocessAsync(originalStream);
+            using var preprocessed = await GutAI.Api.Imaging.MealPhotoPreprocessor.PreprocessAsync(originalStream);
 
             var draft = await scanService.ScanMealImageAsync(uid, preprocessed.Stream, preprocessed.ContentType);
             return Results.Ok(draft);
@@ -126,28 +126,86 @@ public static class MealScanEndpoints
             if (string.IsNullOrWhiteSpace(i.Name)) continue;
             if (i.Grams <= 0 || i.Grams > 5000m) continue;
 
-            // Prefer the stored draft row (server-authoritative macros + provenance);
-            // fall back to the client echo only when no draft row exists.
-            MealScanItemDto src = i.ItemId != Guid.Empty && drafts.TryGetValue(i.ItemId, out var d)
-                ? d with { Grams = i.Grams }
-                : new MealScanItemDto
+            MealScanItemDto src;
+            if (i.ItemId != Guid.Empty && drafts.TryGetValue(i.ItemId, out var draftItem))
+            {
+                var selectedCandidate = FindSelectedCandidate(draftItem, i);
+                if (selectedCandidate is null)
                 {
-                    ItemId = Guid.NewGuid(), Name = i.Name, Source = i.Source,
+                    src = draftItem with { Grams = i.Grams };
+                }
+                else
+                {
+                    var candidateDto = ToFoodProductDto(selectedCandidate);
+                    var selectedId = await FoodProductPersistence.ResolveOrPersistAsync(candidateDto, store);
+                    var factor = i.Grams / 100m;
+                    src = draftItem with
+                    {
+                        Name = candidateDto.Name,
+                        CanonicalName = candidateDto.Name,
+                        FoodProductId = selectedId,
+                        Source = selectedCandidate.Source,
+                        SourceUrl = candidateDto.SourceUrl ?? draftItem.SourceUrl,
+                        Grams = i.Grams,
+                        Calories = candidateDto.Calories100g is { } calories
+                            ? decimal.Round(calories * factor)
+                            : null,
+                        ProteinG = candidateDto.Protein100g is { } protein
+                            ? decimal.Round(protein * factor, 1)
+                            : null,
+                        CarbsG = candidateDto.Carbs100g is { } carbs
+                            ? decimal.Round(carbs * factor, 1)
+                            : null,
+                        FatG = candidateDto.Fat100g is { } fat
+                            ? decimal.Round(fat * factor, 1)
+                            : null,
+                        FiberG = candidateDto.Fiber100g is { } fiber
+                            ? decimal.Round(fiber * factor, 1)
+                            : null,
+                        SugarG = candidateDto.Sugar100g is { } sugar
+                            ? decimal.Round(sugar * factor, 1)
+                            : null,
+                        SodiumMg = candidateDto.SodiumMg100g is { } sodium
+                            ? decimal.Round(sodium * factor)
+                            : null,
+                        MatchConfidence = selectedCandidate.MatchConfidence,
+                        Grounding = draftItem.Grounding is { } grounding
+                            ? grounding with
+                            {
+                                ResolutionStatus = "user_selected",
+                                AutoSelected = false,
+                                SelectedFoodProductId = selectedId,
+                                CanonicalName = candidateDto.Name,
+                                MatchConfidence = selectedCandidate.MatchConfidence,
+                                Method = "user_selection",
+                            }
+                            : null,
+                    };
+                }
+            }
+            else
+            {
+                src = new MealScanItemDto
+                {
+                    ItemId = Guid.NewGuid(), Name = FoodDisplayNameFormatter.ToTitleCase(i.Name), Source = i.Source,
                     SourceUrl = i.SourceUrl, Grams = i.Grams, FoodProductId = i.FoodProductId,
                     Calories = i.Calories, ProteinG = i.ProteinG, CarbsG = i.CarbsG,
                     FatG = i.FatG, FiberG = i.FiberG, SugarG = i.SugarG, SodiumMg = i.SodiumMg,
                     MatchConfidence = i.MatchConfidence, VisionConfidence = i.VisionConfidence,
                 };
-
+            }
             items.Add(new MealItem
             {
                 Id = Guid.NewGuid(),
                 MealLogId = mealId,
-                FoodName = src.Name.Trim(),
+                FoodName = FoodDisplayNameFormatter.ToTitleCase(src.Name),
                 FoodProductId = src.FoodProductId,
                 Servings = 1,
                 ServingUnit = "g",
                 ServingWeightG = src.Grams,
+                ServingHintUnit = src.ServingHintUnit,
+                ServingHintUnitPlural = src.ServingHintUnitPlural,
+                ServingHintUnitGrams = src.ServingHintUnitGrams,
                 Calories = Math.Round(src.Calories ?? 0),
                 ProteinG = src.ProteinG ?? 0,
                 CarbsG = src.CarbsG ?? 0,
@@ -186,12 +244,51 @@ public static class MealScanEndpoints
         return Results.Ok(new { mealId = meal.Id });
     }
 
+    private static GroundingCandidateDto? FindSelectedCandidate(
+        MealScanItemDto draftItem,
+        ConfirmItem input)
+    {
+        var candidates = draftItem.Grounding?.Candidates ?? [];
+        if (input.FoodProductId is { } id && id != Guid.Empty)
+            return candidates.FirstOrDefault(c => c.FoodProductId == id);
+
+        if (string.Equals(input.Name.Trim(), draftItem.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(input.Source, draftItem.Source, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return candidates.FirstOrDefault(c =>
+            string.Equals(c.Name.Trim(), input.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(c.Source, input.Source, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static FoodProductDto ToFoodProductDto(GroundingCandidateDto candidate) => new()
+    {
+        Name = FoodDisplayNameFormatter.ToTitleCase(candidate.Name),
+        Brand = candidate.Brand,
+        DataSource = candidate.Source switch
+        {
+            "usda" => "USDA",
+            "off" => "OpenFoodFacts",
+            "au" => "AUSNUT",
+            var source => source,
+        },
+        ExternalId = candidate.ExternalId,
+        SourceUrl = candidate.SourceUrl,
+        Calories100g = candidate.Calories100g,
+        Protein100g = candidate.Protein100g,
+        Carbs100g = candidate.Carbs100g,
+        Fat100g = candidate.Fat100g,
+        Fiber100g = candidate.Fiber100g,
+        Sugar100g = candidate.Sugar100g,
+        SodiumMg100g = candidate.SodiumMg100g,
+        MatchConfidence = candidate.MatchConfidence,
+    };
+
     private sealed record ConfirmRequest(string? MealType, DateTimeOffset? LoggedAt, List<ConfirmItem> Items);
     private sealed record ConfirmItem(Guid ItemId, string Name, decimal Grams, Guid? FoodProductId,
         string Source, string? SourceUrl, decimal MatchConfidence, decimal VisionConfidence,
         decimal? Calories, decimal? ProteinG, decimal? CarbsG, decimal? FatG,
         decimal? FiberG, decimal? SugarG, decimal? SodiumMg);
-
     private static MealType ParseMealType(string? s) =>
         Enum.TryParse<MealType>(s, ignoreCase: true, out var mt) ? mt : MealType.Snack;
 }

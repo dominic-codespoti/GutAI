@@ -10,6 +10,10 @@ public class MealItem
     public decimal Servings { get; set; } = 1.0m;
     public string ServingUnit { get; set; } = "serving";
     public decimal? ServingWeightG { get; set; }
+    /// <summary>Optional model-supplied household unit retained only for display.</summary>
+    public string? ServingHintUnit { get; set; }
+    public string? ServingHintUnitPlural { get; set; }
+    public decimal? ServingHintUnitGrams { get; set; }
     public decimal Calories { get; set; }
     public decimal ProteinG { get; set; }
     public decimal CarbsG { get; set; }

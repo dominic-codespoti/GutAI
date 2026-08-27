@@ -6,6 +6,7 @@ using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
+using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -41,17 +42,19 @@ public class MealSymptomTools
     }
 
     [McpServerTool(Name = "gutai_log_meal")]
+    [Authorize]
     [Description("Log a meal with one or more food items. For each item, first call gutai_search_foods to find its food_product_id, then include that ID here for accurate nutrition data. Items without a food_product_id will fall back to natural language nutrition estimation (less accurate). Use the description field as a last resort when items array is impractical.")]
     public async Task<string> LogMeal(
-        HttpContext httpContext,
+        ClaimsPrincipal? user,
         [Description("Meal type: Breakfast, Lunch, Dinner, or Snack (required)")] string mealType,
-        [Description("JSON array of items: [{\"food_product_id\":\"GUID\",\"name\":\"food name\",\"servings\":1}]. Strongly prefer including food_product_id from gutai_search_foods results for each item.")] string? items,
-        [Description("Fallback: natural language description of the meal. Only use when items array cannot capture the meal (e.g. 'a bowl of chicken soup and a glass of water').")] string? description,
-        CancellationToken ct)
+        [Description("JSON array of items: [{\"food_product_id\":\"GUID\",\"name\":\"food name\",\"servings\":1}]. Strongly prefer including food_product_id from gutai_search_foods results for each item.")] string? items = null,
+        [Description("Fallback: natural language description of the meal. Only use when items array cannot capture the meal (e.g. 'a bowl of chicken soup and a glass of water').")] string? description = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var userId = GetUserId(httpContext);
+            McpAccess.EnsureWrite(user!);
+            var userId = GetUserId(user!);
             if (!Enum.TryParse<MealType>(mealType, true, out var mt))
                 throw new McpException($"Invalid meal type '{mealType}'. Must be one of: Breakfast, Lunch, Dinner, Snack.");
             var mealId = Guid.NewGuid();
@@ -222,17 +225,19 @@ public class MealSymptomTools
     }
 
     [McpServerTool(Name = "gutai_log_symptom")]
+    [Authorize]
     [Description("Record a symptom the user is experiencing. Severity must be 1 (mild) to 10 (severe). Common symptom names include: Bloating, Nausea, Gas, Headache, Fatigue, Stomach Pain, Diarrhea, Constipation, Heartburn, Cramps.")]
     public async Task<string> LogSymptom(
-        HttpContext httpContext,
+        ClaimsPrincipal? user,
         [Description("Name of the symptom, e.g. 'Bloating', 'Nausea', 'Gas', 'Headache', 'Fatigue', 'Stomach Pain'")] string symptomName,
         [Description("Severity from 1 (mild) to 10 (severe). Required.")] int severity,
-        [Description("Optional notes about the symptom — e.g. timing, triggers, duration.")] string? notes,
-        CancellationToken ct)
+        [Description("Optional notes about the symptom — e.g. timing, triggers, duration.")] string? notes = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var userId = GetUserId(httpContext);
+            McpAccess.EnsureWrite(user!);
+            var userId = GetUserId(user!);
             var types = await _store.GetAllSymptomTypesAsync(ct);
             var type = types.FirstOrDefault(t => t.Name.Equals(symptomName, StringComparison.OrdinalIgnoreCase));
             if (type is null)
@@ -259,16 +264,17 @@ public class MealSymptomTools
     }
 
     [McpServerTool(Name = "gutai_get_todays_meals", ReadOnly = true)]
+    [Authorize]
     [Description("Get all meals the user logged today with per-item and per-meal nutrition info. 'Today' is determined by the user's timezone. Use this to answer questions about what the user has eaten today.")]
     public async Task<string> GetTodaysMeals(
-        HttpContext httpContext,
+        ClaimsPrincipal? user,
         CancellationToken ct)
     {
         try
         {
-            var userId = GetUserId(httpContext);
-            var user = await _store.GetUserAsync(userId, ct);
-            var (rangeStart, rangeEnd) = TimeZoneHelper.GetUserTodayUtcRange(user);
+            var userId = GetUserId(user!);
+            var appUser = await _store.GetUserAsync(userId, ct);
+            var (rangeStart, rangeEnd) = TimeZoneHelper.GetUserTodayUtcRange(appUser);
 
             var meals = await _store.GetMealLogsByDateRangeAsync(userId,
                 DateOnly.FromDateTime(rangeStart), DateOnly.FromDateTime(rangeEnd), ct);
@@ -295,16 +301,17 @@ public class MealSymptomTools
     }
 
     [McpServerTool(Name = "gutai_get_nutrition_summary", ReadOnly = true)]
+    [Authorize]
     [Description("Get today's nutrition totals (calories, protein, carbs, fat, fiber) compared against the user's daily goals. 'Today' is determined by the user's timezone. Use this before making dietary recommendations to understand what the user has already consumed today.")]
     public async Task<string> GetNutritionSummary(
-        HttpContext httpContext,
+        ClaimsPrincipal? user,
         CancellationToken ct)
     {
         try
         {
-            var userId = GetUserId(httpContext);
-            var user = await _store.GetUserAsync(userId, ct);
-            var (rangeStart, rangeEnd) = TimeZoneHelper.GetUserTodayUtcRange(user);
+            var userId = GetUserId(user!);
+            var appUser = await _store.GetUserAsync(userId, ct);
+            var (rangeStart, rangeEnd) = TimeZoneHelper.GetUserTodayUtcRange(appUser);
 
             var meals = await _store.GetMealLogsByDateRangeAsync(userId,
                 DateOnly.FromDateTime(rangeStart), DateOnly.FromDateTime(rangeEnd), ct);
@@ -321,11 +328,11 @@ public class MealSymptomTools
                 mealCount = meals.Count,
                 goals = new
                 {
-                    calories = user?.DailyCalorieGoal ?? 2000,
-                    proteinG = user?.DailyProteinGoalG ?? 50,
-                    carbsG = user?.DailyCarbGoalG ?? 250,
-                    fatG = user?.DailyFatGoalG ?? 65,
-                    fiberG = user?.DailyFiberGoalG ?? 25
+                    calories = appUser?.DailyCalorieGoal ?? 2000,
+                    proteinG = appUser?.DailyProteinGoalG ?? 50,
+                    carbsG = appUser?.DailyCarbGoalG ?? 250,
+                    fatG = appUser?.DailyFatGoalG ?? 65,
+                    fiberG = appUser?.DailyFiberGoalG ?? 25
                 }
             }, JsonOpts);
         }
@@ -337,20 +344,23 @@ public class MealSymptomTools
     }
 
     [McpServerTool(Name = "gutai_get_trigger_foods", ReadOnly = true)]
+    [Authorize]
     [Description("Get the user's trigger foods — foods most associated with their symptoms based on statistical correlation analysis. Only returns correlations that occurred 2+ times with average severity of 4+. Uses the user's timezone for date range calculation.")]
     public async Task<string> GetTriggerFoods(
-        HttpContext httpContext,
-        [Description("Number of days to look back for correlation data. Default 30.")] int? days,
-        CancellationToken ct)
+        ClaimsPrincipal? user,
+        [Description("Number of days to look back for correlation data. Default 30.")] int? days = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var userId = GetUserId(httpContext);
-            var user = await _store.GetUserAsync(userId, ct);
-            var (_, utcEnd) = TimeZoneHelper.GetUserTodayUtcRange(user);
-            var from = DateOnly.FromDateTime(utcEnd.AddDays(-(days ?? 30)));
-            var to = DateOnly.FromDateTime(utcEnd);
-            var correlations = await _correlationEngine.ComputeCorrelationsAsync(userId, from, to, ct);
+            var userId = GetUserId(user!);
+            var appUser = await _store.GetUserAsync(userId, ct);
+            var timezone = TimeZoneHelper.ResolveTimeZone(appUser, null);
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone));
+            var from = today.AddDays(-(days ?? 30));
+            var to = today;
+            var correlations = await _correlationEngine.ComputeCorrelationsAsync(
+                userId, from, to, ct, appUser?.TimezoneId);
 
             var triggers = correlations
                 .Where(c => c.Occurrences >= 2 && c.AverageSeverity >= 4)
@@ -371,22 +381,30 @@ public class MealSymptomTools
             throw new McpException("Could not get trigger foods. Please try again.");
         }
     }
-
     [McpServerTool(Name = "gutai_get_symptom_history", ReadOnly = true)]
+    [Authorize]
     [Description("Get the user's recent symptom logs. Returns up to 20 of the most recent entries with symptom name, severity, timestamp, and notes. Uses the user's timezone for date range.")]
     public async Task<string> GetSymptomHistory(
-        HttpContext httpContext,
-        [Description("Number of days to look back. Default 7.")] int? days,
-        CancellationToken ct)
+        ClaimsPrincipal? user,
+        [Description("Number of days to look back. Default 7.")] int? days = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var userId = GetUserId(httpContext);
-            var user = await _store.GetUserAsync(userId, ct);
-            var (_, utcEnd) = TimeZoneHelper.GetUserTodayUtcRange(user);
-            var from = DateOnly.FromDateTime(utcEnd.AddDays(-(days ?? 7)));
-            var to = DateOnly.FromDateTime(utcEnd);
-            var symptoms = await _store.GetSymptomLogsByDateRangeAsync(userId, from, to, ct);
+            var userId = GetUserId(user!);
+            var appUser = await _store.GetUserAsync(userId, ct);
+            var timezone = TimeZoneHelper.ResolveTimeZone(appUser, null);
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezone));
+            var from = today.AddDays(-(days ?? 7));
+            var to = today;
+            var (utcStart, utcEnd) = TimeZoneHelper.GetUtcRangeForLocalDateRange(
+                appUser, from, to, appUser?.TimezoneId);
+            var symptoms = await _store.GetSymptomLogsByDateRangeAsync(
+                userId,
+                DateOnly.FromDateTime(utcStart),
+                DateOnly.FromDateTime(utcEnd),
+                ct);
+            symptoms = symptoms.Where(s => s.OccurredAt >= utcStart && s.OccurredAt <= utcEnd).ToList();
             foreach (var s in symptoms)
                 s.SymptomType = await _store.GetSymptomTypeAsync(s.SymptomTypeId, ct) ?? new SymptomType { Name = "Unknown" };
 
@@ -406,15 +424,17 @@ public class MealSymptomTools
     }
 
     [McpServerTool(Name = "gutai_get_elimination_diet_status", ReadOnly = true)]
+    [Authorize]
     [Description("Get the user's current elimination diet phase, foods to eliminate, safe foods, reintroduction results, and recommendations. Use this when the user asks about their elimination diet progress or what foods are safe during their current phase.")]
     public async Task<string> GetEliminationDietStatus(
-        HttpContext httpContext,
+        ClaimsPrincipal? user,
         CancellationToken ct)
     {
         try
         {
-            var userId = GetUserId(httpContext);
-            var result = await _diaryService.GetEliminationStatusAsync(userId, _store);
+            var userId = GetUserId(user!);
+            var appUser = await _store.GetUserAsync(userId, ct);
+            var result = await _diaryService.GetEliminationStatusAsync(userId, _store, appUser?.TimezoneId);
             return JsonSerializer.Serialize(new
             {
                 result.Phase,
@@ -431,6 +451,6 @@ public class MealSymptomTools
         }
     }
 
-    private static Guid GetUserId(HttpContext httpContext) =>
-        Guid.Parse(httpContext.User.FindFirstValue("sub")!);
+    private static Guid GetUserId(ClaimsPrincipal? user) =>
+        Guid.Parse(user!.FindFirstValue("sub")!);
 }

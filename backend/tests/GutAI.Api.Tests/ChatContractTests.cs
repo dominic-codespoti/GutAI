@@ -38,6 +38,19 @@ public class ChatContractTests(GutAiWebFactory factory)
     }
 
     [Fact]
+    public async Task Stream_OversizedTimezoneId_Returns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/chat/stream", new
+        {
+            message = "How's my nutrition today?",
+            timezoneId = new string('x', 101),
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task GetHistory_Unauthenticated_Returns401()
     {
         var client = factory.CreateClient();

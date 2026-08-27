@@ -104,7 +104,7 @@ file static class Storage
 
         var client = new TableServiceClient(connectionString);
         services.AddSingleton(client);
-        services.AddSingleton<ITableStore>(new TableStorageStore(client));
+        services.AddSingleton<ITableStore>(sp => new FoodSearchFaultToleranceTests.FaultInjectionTableStore(new TableStorageStore(client)));
     }
 }
 
@@ -138,7 +138,11 @@ file static class ChatStub
 
     private sealed class Stub : IChatService
     {
-        public async IAsyncEnumerable<ChatStreamEvent> StreamResponseAsync(Guid userId, string message, [EnumeratorCancellation] CancellationToken ct = default)
+        public async IAsyncEnumerable<ChatStreamEvent> StreamResponseAsync(
+            Guid userId,
+            string message,
+            [EnumeratorCancellation] CancellationToken ct = default,
+            string? timezoneId = null)
         {
             await Task.CompletedTask;
             yield break;

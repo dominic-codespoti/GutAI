@@ -49,13 +49,7 @@ This prints a **project ID** (UUID). Update `frontend/app.json`:
 "owner": "your-expo-username"  // ← your Expo account name
 ```
 
-Also update the OTA updates URL:
-
-```jsonc
-"updates": {
-  "url": "https://u.expo.dev/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-}
-```
+OTA updates are intentionally not configured for this release. Use a new store build for native or JavaScript changes.
 
 ---
 
@@ -70,6 +64,7 @@ If you prefer manual management:
 ```bash
 eas credentials --platform ios
 ```
+For non-interactive production builds, configure an App Store Connect API key in EAS credentials before running the build; the expired provisioning profile cannot be refreshed non-interactively with only an Apple ID login.
 
 ### Android
 
@@ -100,13 +95,13 @@ For iOS submissions, update `eas.json`:
 
 The API URL is set per build profile in `eas.json`:
 
-| Profile       | `EXPO_PUBLIC_API_URL`           | Purpose           |
-| ------------- | ------------------------------- | ----------------- |
-| `development` | `http://localhost:5000`         | Local dev         |
-| `preview`     | `https://api-staging.gutai.app` | Internal testing  |
-| `production`  | `https://api.gutai.app`         | App Store release |
+| Profile       | `EXPO_PUBLIC_API_URL`                                                                  | Purpose                                      |
+| ------------- | -------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `development` | `http://localhost:5000`                                                                | Local dev                                    |
+| `preview`     | `https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io`        | Internal testing against the deployed API   |
+| `production`  | `https://gutai-prod-api.jollysand-125c64d0.australiaeast.azurecontainerapps.io`        | App Store release                            |
 
-**You must deploy the backend to a public URL before submitting.** The localhost URLs won't work on real devices in production builds.
+**You must deploy the backend to a public URL before submitting.** The production profile already points at the Azure Container Apps URL above.
 
 ---
 
@@ -185,19 +180,7 @@ make eas-submit
 
 ## Step 6 — Over-the-Air (OTA) Updates
 
-For JS-only changes (no native module changes), push updates instantly without going through app review:
-
-```bash
-# Production channel
-make eas-update
-# or
-cd frontend && npm run update
-
-# Preview channel
-cd frontend && npm run update:preview
-```
-
-OTA updates are picked up on next app launch. This is configured via the `runtimeVersion` and `updates.url` in `app.json`.
+OTA updates are intentionally out of scope for this release. Do not run `eas update` or `make eas-update` for production; ship changes through a new EAS store build.
 
 ---
 
@@ -239,21 +222,22 @@ Before your first submission, make sure you have:
 - [ ] Screenshots (phone + 7" tablet if supporting)
 - [ ] Content rating questionnaire completed
 - [ ] Data safety form completed
+- [x] Health apps declaration for Health Connect permissions completed
 - [ ] Service account key for automated submission
 
 ---
 
 ## Versioning
 
-Versions are managed in `app.json`:
+The user-visible version is managed in `app.json`; native build counters are managed remotely by EAS:
 
 ```jsonc
-"version": "1.0.0",          // User-visible version (both platforms)
-"ios.buildNumber": "1",       // iOS build number (auto-incremented by EAS in production)
-"android.versionCode": 1      // Android version code (auto-incremented by EAS in production)
+"version": "1.0.0" // User-visible version (both platforms)
+// Native buildNumber/versionCode fields are intentionally omitted;
+// production counters are managed remotely by EAS.
 ```
 
-The `production` profile in `eas.json` has `"autoIncrement": true`, so build numbers increase automatically on each production build.
+The `production` profile in `eas.json` has `"autoIncrement": true`, and `cli.appVersionSource` is `"remote"`, so native counters increase monotonically across clean checkouts.
 
 ---
 
@@ -264,13 +248,15 @@ The `production` profile in `eas.json` has `"autoIncrement": true`, so build num
 make eas-prod          # Build for both platforms
 make eas-submit        # Submit to both stores
 
-# Hot-fix a JS bug without app review
-make eas-update        # OTA update to production
+# Hot-fixes require a new store build for this release.
 ```
 
 ---
 
 ## Troubleshooting
+
+**Local-day data looks different between screens**
+→ Restart the frontend and API after deployment so both use the timezone-aware date contract. User-local ranges send an IANA timezone; stored meal and symptom timestamps remain UTC instants. Data exports report the selected local date range while preserving UTC timestamps in each record.
 
 **"Expo project not found"**
 → Run `eas init` and update the `projectId` in `app.json`
@@ -281,8 +267,8 @@ make eas-update        # OTA update to production
 **Android submit fails**
 → Check that `google-services-key.json` exists and the service account has "Release manager" role
 
-**OTA update not appearing**
-→ The `runtimeVersion` must match between the build and the update. If you changed native modules, you need a new build.
+**Native build fails after a dependency or plugin change**
+→ Run `npx expo-doctor`, then regenerate the managed native project with `npx expo prebuild --clean --platform android` or `--platform ios` and inspect the generated native files before retrying EAS.
 
 ---
 
@@ -328,26 +314,21 @@ The backend API deploys to **Azure Container Apps** with **Azure Table Storage**
 
 ## Quick Start (Fully Automated)
 
-A single script handles **everything** — Azure AD app registration, service principal, OIDC federation, resource group creation, and GitHub secrets:
+A single script handles Azure setup and production deployment:
 
 ```bash
-# Setup staging (creates Azure infra + sets GitHub secrets)
+# Setup only
 make azure-setup
 
-# Setup production
-make azure-setup-prod
-
-# Setup + first deploy (builds, pushes image, runs Bicep)
-make azure-deploy-staging
-make azure-deploy-prod
+# Setup + first production deploy
+make azure-deploy
 ```
 
-Or run the script directly with options:
+Or run the script directly:
 
 ```bash
-./scripts/azure-setup.sh --env staging              # Setup only
-./scripts/azure-setup.sh --env prod --deploy         # Setup + deploy
-./scripts/azure-setup.sh --env prod --location eastus # Custom region
+./scripts/azure-setup.sh          # Setup only
+./scripts/azure-setup.sh --deploy # Setup + production deploy
 ```
 
 The script will:

@@ -144,13 +144,13 @@ public class SubstitutionService
     [
         // ── Dairy / Lactose ──
         ("milk", [
-            new() { Original = "Milk", Substitute = "Oat milk or lactose-free milk", Reason = "Lactose in regular milk is a known FODMAP that may cause gas, bloating, or diarrhea in lactose-sensitive individuals.", Category = "Dairy", GutBenefit = "Eliminates lactose fermentation", Confidence = "High" },
+            new() { Original = "Milk", Substitute = "Oat milk or lactose-free milk", Reason = "Lactose in regular milk is a known FODMAP that may cause gas, bloating, or diarrhea in lactose-sensitive individuals. Note: oat milk is FODMAP portion-dependent (roughly half a cup or less); for strict elimination prefer certified low-FODMAP oat milk or lactose-free dairy milk.", Category = "Dairy", GutBenefit = "Eliminates lactose fermentation", Confidence = "High" },
         ]),
         ("cream cheese", [
             new() { Original = "Cream cheese", Substitute = "Cashew cream cheese or lactose-free cream cheese", Reason = "Cream cheese contains lactose. Plant-based or lactose-free versions eliminate this FODMAP trigger.", Category = "Dairy", GutBenefit = "Eliminates lactose trigger", Confidence = "High" },
         ]),
         ("cream", [
-            new() { Original = "Cream", Substitute = "Coconut cream or oat cream", Reason = "Heavy cream contains lactose. Coconut cream is naturally lactose-free.", Category = "Dairy", GutBenefit = "Eliminates lactose, adds MCTs", Confidence = "High" },
+            new() { Original = "Cream", Substitute = "Coconut cream or oat cream", Reason = "Heavy cream contains lactose. Coconut cream is naturally lactose-free. Note: coconut cream has a low-FODMAP serving limit of roughly 2 tablespoons (60g), as larger servings contain excess sorbitol.", Category = "Dairy", GutBenefit = "Eliminates lactose, adds MCTs", Confidence = "High" },
         ]),
         ("butter", [
             new() { Original = "Butter", Substitute = "Ghee (clarified butter) or olive oil", Reason = "Butter contains trace lactose and casein. Ghee has these largely removed during clarification. Olive oil is rich in oleic acid.", Category = "Dairy", GutBenefit = "Removes lactose/casein", Confidence = "Medium" },
@@ -162,7 +162,7 @@ public class SubstitutionService
             new() { Original = "Yogurt", Substitute = "Coconut yogurt or lactose-free yogurt", Reason = "Regular yogurt contains lactose, though less than milk due to fermentation. Coconut yogurt is fully lactose-free.", Category = "Dairy", GutBenefit = "Eliminates lactose while keeping probiotics", Confidence = "Medium" },
         ]),
         ("whey", [
-            new() { Original = "Whey protein", Substitute = "Pea protein or rice protein isolate", Reason = "Whey contains lactose and can cause bloating. Plant proteins are lactose-free and often easier to digest.", Category = "Dairy", GutBenefit = "Eliminates lactose, often better tolerated", Confidence = "High" },
+            new() { Original = "Whey protein", Substitute = "Pea protein or rice protein isolate", Reason = "Whey concentrate contains lactose and can cause bloating, whereas whey protein isolate is processed to remove nearly all lactose. Plant proteins are naturally lactose-free and often easier to digest.", Category = "Dairy", GutBenefit = "Eliminates lactose, often better tolerated", Confidence = "High" },
         ]),
         ("casein", [
             new() { Original = "Casein", Substitute = "Pea protein or hemp protein", Reason = "Casein is slow-digesting and can cause bloating in sensitive individuals. Plant alternatives are easier on the gut.", Category = "Dairy", GutBenefit = "Easier digestion, no dairy sensitivity", Confidence = "Medium" },
@@ -170,22 +170,22 @@ public class SubstitutionService
 
         // ── Gluten / Wheat ──
         ("wheat flour", [
-            new() { Original = "Wheat flour", Substitute = "Rice flour, oat flour, or sourdough wheat", Reason = "Wheat contains fructans (a FODMAP) and gluten. Sourdough fermentation reduces fructan content by ~90%.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans, easier digestion", Confidence = "High" },
+            new() { Original = "Wheat flour", Substitute = "Rice flour, oat flour, or sourdough wheat", Reason = "Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease). Sourdough fermentation reduces fructan content by ~90%.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans, easier digestion", Confidence = "High" },
         ]),
         ("wheat starch", [
-            new() { Original = "Wheat starch", Substitute = "Tapioca starch or potato starch", Reason = "Wheat starch may contain residual fructans. Tapioca and potato starch are naturally FODMAP-free.", Category = "Gluten/Wheat", GutBenefit = "Eliminates fructan exposure", Confidence = "High" },
+            new() { Original = "Wheat starch", Substitute = "Tapioca starch or potato starch", Reason = "Wheat starch may contain residual fructans. Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease). Tapioca and potato starch are naturally FODMAP-free.", Category = "Gluten/Wheat", GutBenefit = "Eliminates fructan exposure", Confidence = "High" },
         ]),
         ("wheat", [
-            new() { Original = "Wheat", Substitute = "Rice, quinoa, or sourdough wheat", Reason = "Wheat is high in fructans (a FODMAP). Sourdough reduces fructans by ~90%; rice and quinoa are naturally FODMAP-free.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans", Confidence = "High" },
+            new() { Original = "Wheat", Substitute = "Rice, quinoa, or sourdough wheat", Reason = "Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease). Sourdough reduces fructans by ~90%; rice and quinoa are naturally FODMAP-free.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans", Confidence = "High" },
         ]),
         ("gluten", [
-            new() { Original = "Gluten", Substitute = "Gluten-free alternative (rice, corn, buckwheat)", Reason = "Gluten may cause discomfort in some sensitive individuals. Research on its broader effects is ongoing.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "Medium" },
+            new() { Original = "Gluten", Substitute = "Gluten-free alternative (rice, corn, buckwheat)", Reason = "Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease). Research on non-coeliac sensitivity is ongoing.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "Medium" },
         ]),
         ("barley", [
-            new() { Original = "Barley", Substitute = "Brown rice or quinoa", Reason = "Barley contains both gluten and fructans. Rice and quinoa are free of both.", Category = "Gluten/Wheat", GutBenefit = "Eliminates fructans and gluten", Confidence = "High" },
+            new() { Original = "Barley", Substitute = "Brown rice or quinoa", Reason = "Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease). Barley contains both fructans and gluten; rice and quinoa are naturally free of both.", Category = "Gluten/Wheat", GutBenefit = "Eliminates fructans and gluten", Confidence = "High" },
         ]),
         ("rye", [
-            new() { Original = "Rye", Substitute = "Sourdough rye (reduced FODMAP) or rice bread", Reason = "Rye is very high in fructans. Sourdough fermentation significantly reduces fructan content.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans through fermentation", Confidence = "High" },
+            new() { Original = "Rye", Substitute = "Sourdough rye (reduced FODMAP) or rice bread", Reason = "Rye is very high in fructans. Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease). Sourdough fermentation significantly reduces fructan content.", Category = "Gluten/Wheat", GutBenefit = "Reduced fructans through fermentation", Confidence = "High" },
         ]),
 
         // ── FODMAP Triggers ──
@@ -264,10 +264,10 @@ public class SubstitutionService
 
         // ── Fiber & Digestion ──
         ("soy protein", [
-            new() { Original = "Soy protein", Substitute = "Pea protein or hemp protein", Reason = "Soy contains GOS (galacto-oligosaccharides), a FODMAP. Pea protein is lower in FODMAPs.", Category = "FODMAP", GutBenefit = "Lower GOS content, less gas", Confidence = "Medium" },
+            new() { Original = "Soy protein", Substitute = "Pea protein or hemp protein", Reason = "Whole-soy products are high in GOS (galacto-oligosaccharides, a FODMAP), whereas soy protein isolate is generally low FODMAP as water-soluble carbohydrates are removed during processing. Pea protein is also lower in FODMAPs.", Category = "FODMAP", GutBenefit = "Lower GOS content, less gas", Confidence = "Medium" },
         ]),
         ("soy", [
-            new() { Original = "Soy / soybean", Substitute = "Firm tofu (drained) or tempeh", Reason = "Whole soy is high in GOS. Firm tofu has most GOS drained out; tempeh's fermentation reduces GOS.", Category = "FODMAP", GutBenefit = "Reduced GOS through processing/fermentation", Confidence = "Medium" },
+            new() { Original = "Soy / soybean", Substitute = "Firm tofu (drained) or tempeh", Reason = "Whole-soy products and whole soybeans are high in GOS, while soy protein isolate and drained firm tofu have most GOS removed; tempeh's fermentation also reduces GOS.", Category = "FODMAP", GutBenefit = "Reduced GOS through processing/fermentation", Confidence = "Medium" },
         ]),
 
         // ── Cooking Oils ──
@@ -298,13 +298,22 @@ public class SubstitutionService
     static readonly Dictionary<string, SubstitutionDto[]> AllergenSubstitutions = new(StringComparer.OrdinalIgnoreCase)
     {
         ["gluten"] = [
-            new() { Original = "Gluten-containing ingredients", Substitute = "Gluten-free grains (rice, quinoa, buckwheat, millet)", Reason = "Gluten may cause discomfort in some sensitive individuals. Research on its broader effects is ongoing.", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "High" },
+            new() { Original = "Gluten-containing ingredients", Substitute = "Gluten-free grains (rice, quinoa, buckwheat, millet)", Reason = "Wheat also contains fructans (a FODMAP); a gluten-free choice reduces fructans but gluten itself is a separate concern (coeliac disease).", Category = "Gluten/Wheat", GutBenefit = "Reduced intestinal inflammation", Confidence = "High" },
         ],
         ["milk"] = [
             new() { Original = "Dairy ingredients", Substitute = "Plant-based dairy alternatives (oat, coconut, almond)", Reason = "Dairy contains lactose (a FODMAP) and casein, which some people find may contribute to digestive symptoms.", Category = "Dairy", GutBenefit = "Eliminates lactose and casein triggers", Confidence = "High" },
         ],
         ["soybeans"] = [
-            new() { Original = "Soy ingredients", Substitute = "Firm tofu (drained) or alternative legumes", Reason = "Soy contains GOS (galacto-oligosaccharides). Firm tofu has most GOS removed during processing.", Category = "FODMAP", GutBenefit = "Reduced GOS exposure", Confidence = "Medium" },
+            new() { Original = "Soy ingredients", Substitute = "Firm tofu (drained) or alternative legumes", Reason = "Whole-soy products are high in GOS (galacto-oligosaccharides), while soy protein isolate and firm tofu have most GOS removed during processing.", Category = "FODMAP", GutBenefit = "Reduced GOS exposure", Confidence = "Medium" },
+        ],
+        ["sesame"] = [
+            new() { Original = "Sesame ingredients (tahini, sesame oil, seeds)", Substitute = "Sunflower seed butter or olive oil (depending on use)", Reason = "Sesame is a major allergen (US FASTER Act, EU list) and tahini is common in hummus — a high-GOS food.", Category = "Allergen", GutBenefit = "Avoids allergen exposure and a common hidden GOS source", Confidence = "Medium" },
+        ],
+        ["mustard"] = [
+            new() { Original = "Mustard flour, seeds or condiments", Substitute = "Horseradish, wasabi or vinegar-based seasonings (as tolerated)", Reason = "Mustard is on the EU mandatory allergen list; prepared mustard also often contains sulfite preservatives.", Category = "Allergen", GutBenefit = "Avoids allergen exposure and sulfite co-exposure", Confidence = "Medium" },
+        ],
+        ["lupin"] = [
+            new() { Original = "Lupin flour and lupin-seed products", Substitute = "Soy-free, peanut-safe flours (rice, buckwheat)", Reason = "Lupin is an EU mandatory allergen that cross-reacts with peanut and is also a concentrated GOS source.", Category = "FODMAP", GutBenefit = "Avoids both allergen risk and a high-GOS trigger", Confidence = "High" },
         ],
     };
 }
