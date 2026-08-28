@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { spacing, radius } from "../src/utils/theme";
 import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 
@@ -13,6 +14,7 @@ type PageTitleProps = {
 export function PageTitle({ title, eyebrow, subtitle }: PageTitleProps) {
   const colors = useThemeColors();
   const fonts = useThemeFonts();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   return (
@@ -22,6 +24,7 @@ export function PageTitle({ title, eyebrow, subtitle }: PageTitleProps) {
         alignItems: "flex-start",
         justifyContent: "space-between",
         marginBottom: spacing.lg,
+        paddingTop: insets.top,
       }}
     >
       <View style={{ flex: 1, paddingRight: spacing.md }}>

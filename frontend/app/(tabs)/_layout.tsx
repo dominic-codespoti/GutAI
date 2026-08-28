@@ -376,6 +376,7 @@ export default function TabLayout() {
       <LogMealSheet />
       <EditMealSheet />
       <CopyMealSheet />
+      <ItemSwapSheet />
       <CelebrationOverlay />
       <ShareCardPortal />
     </>

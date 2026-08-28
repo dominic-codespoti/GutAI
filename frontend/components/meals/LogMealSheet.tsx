@@ -66,9 +66,11 @@ const MAX_SODIUM_MG = 50000;
 const MAX_SERVINGS = 100;
 
 const sheetScrollStyle = {
-  flex: 1,
+  flex: Platform.OS === "web" ? 1 : 0,
   minHeight: 0,
 } as const;
+const sheetContentRootStyle =
+  Platform.OS === "web" ? ({ flex: 1 } as const) : undefined;
 const sanitizeInt = (text: string): string => text.replace(/[^0-9]/g, "");
 const sanitizeDecimal = (text: string): string => {
   const cleaned = text.replace(/[^0-9.]/g, "");
@@ -988,6 +990,7 @@ export function LogMealSheet() {
       >
         {subView === "swap" ? (
           <SwapSearchContent
+            fitContent
             initialSearch={
               swapIndex !== null ? (parsedItems[swapIndex]?.name ?? "") : ""
             }
@@ -995,7 +998,7 @@ export function LogMealSheet() {
             onBack={() => setSubView("menu")}
           />
         ) : subView === "add-to-meal" && addToMealProduct ? (
-          <View style={{ flex: 1 }}>
+          <View style={sheetContentRootStyle}>
             <TouchableOpacity
               onPress={() => setSubView("menu")}
               style={{
@@ -1107,7 +1110,7 @@ export function LogMealSheet() {
             </View>
           </View>
         ) : (
-          <View style={{ flex: 1 }}>
+          <View style={sheetContentRootStyle}>
             {/* ── Shared header: meal type · date · time ── */}
             <View
               style={{
@@ -1895,7 +1898,7 @@ export function LogMealSheet() {
              SEARCH TAB
              ════════════════════════════════════════ */}
             {activeTab === "search" && (
-              <View style={{ flex: 1 }}>
+              <View style={sheetContentRootStyle}>
                 <TextInput
                   placeholder="Search by name..."
                   value={searchText}
@@ -2635,7 +2638,7 @@ export function LogMealSheet() {
              ════════════════════════════════════════ */}
             {activeTab === "manual" && (
               <ScrollView
-                style={sheetScrollStyle}
+                style={[sheetScrollStyle, { maxHeight: scrollMaxHeight }]}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >

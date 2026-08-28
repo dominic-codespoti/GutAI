@@ -20,14 +20,16 @@ interface Props {
   initialSearch?: string;
   onSelect: (food: FoodProduct) => void;
   onBack: () => void;
+  fitContent?: boolean;
 }
 export function SwapSearchContent({
   initialSearch = "",
   onSelect,
   onBack,
+  fitContent = false,
 }: Props) {
-  const colors = useThemeColors();
   const router = useRouter();
+  const colors = useThemeColors();
   const [search, setSearch] = useState(initialSearch);
   const [debounced, setDebounced] = useState(initialSearch);
 
@@ -36,17 +38,18 @@ export function SwapSearchContent({
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["swap-food-search", debounced],
     queryFn: ({ signal }) =>
       foodApi.search(debounced, signal).then((r) => r.data),
     enabled: debounced.length >= 2,
+    retry: false,
     staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={fitContent ? undefined : { flex: 1 }}>
       <View
         style={{
           flexDirection: "row",
@@ -102,6 +105,36 @@ export function SwapSearchContent({
             style={{ marginVertical: spacing.lg }}
           />
         )}
+        {isError && (
+          <View style={{ alignItems: "center", padding: spacing.lg }}>
+            <Text
+              style={{
+                textAlign: "center",
+                color: colors.textMuted,
+                marginBottom: spacing.sm,
+              }}
+            >
+              Search unavailable. Check your connection and try again.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                void refetch();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Retry food search"
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: radius.full,
+                paddingHorizontal: spacing.lg,
+                paddingVertical: spacing.sm,
+              }}
+            >
+              <Text style={{ color: colors.textOnPrimary, fontWeight: "700" }}>
+                Retry
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {data?.map((food) => (
           <FoodSearchResult
             key={food.id || food.name}
@@ -118,7 +151,7 @@ export function SwapSearchContent({
             style={{ marginHorizontal: spacing.md, marginTop: spacing.sm }}
           />
         ))}
-        {debounced.length >= 2 && !isLoading && data?.length === 0 && (
+        {debounced.length >= 2 && !isLoading && !isError && data?.length === 0 && (
           <Text
             style={{
               textAlign: "center",
