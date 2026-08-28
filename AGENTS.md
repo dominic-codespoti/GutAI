@@ -148,6 +148,14 @@ Every `DateTime` written through `TableStorageStore` MUST have
 `DateTimeKind.Utc`. API clients MAY send ISO-8601 offsets; the persistence
 boundary normalizes Local/Unspecified values before Azure Table serialization.
 
+## 12. Reanimated Runtime Boundaries
+
+Callbacks passed to `useAnimatedReaction`, `useAnimatedStyle`, `useAnimatedProps`,
+and other automatically workletized APIs run on the UI runtime. Never call React
+state setters or ordinary JavaScript functions directly from those callbacks.
+Use `scheduleOnRN` from `react-native-worklets` for RN-runtime calls; `runOnJS`
+is deprecated in Reanimated 4.
+
 ---
 
 ## ⚙️ Development Workflow & Commands

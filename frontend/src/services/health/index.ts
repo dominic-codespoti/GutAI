@@ -102,7 +102,7 @@ export async function syncHealthImport(
         targetPlatform === "health-connect" &&
         (await getSdkAvailability()) === "provider-update-required"
       ) {
-        toast.error("Google Health Connect needs an update before GutAI can sync");
+        toast.error("Google Health Connect needs an update before GutLens can sync");
         Linking.openURL(PLAY_STORE_HEALTH_CONNECT_URL).catch(() => {});
         return null;
       }

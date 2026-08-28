@@ -1,8 +1,8 @@
 import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useThemeColors } from "../src/stores/theme";
-import { radius, spacing } from "../src/utils/theme";
+import { useThemeColors, useThemeFonts } from "../src/stores/theme";
+import { radius, spacing, fontFamilies } from "../src/utils/theme";
 
 type EmptyStateProps = {
   /** Icon shown inside the disc when no illustration is given */
@@ -31,6 +31,7 @@ export function EmptyState({
   compact = false,
 }: EmptyStateProps) {
   const c = useThemeColors();
+  const f = useThemeFonts();
   const pad = compact ? spacing.lg : spacing.xxl;
 
   return (
@@ -75,9 +76,8 @@ export function EmptyState({
       )}
       <Text
         style={{
+          ...f.h3,
           fontSize: compact ? 15 : 17,
-          fontWeight: "700",
-          color: c.text,
           textAlign: "center",
         }}
       >
@@ -86,8 +86,7 @@ export function EmptyState({
       {body ? (
         <Text
           style={{
-            fontSize: 13,
-            color: c.textMuted,
+            ...f.caption,
             textAlign: "center",
             marginTop: spacing.xs,
             maxWidth: 280,
@@ -104,15 +103,15 @@ export function EmptyState({
           style={{
             marginTop: spacing.md,
             backgroundColor: c.primary,
-            borderRadius: radius.md,
+            borderRadius: radius.full,
             paddingHorizontal: spacing.lg,
             paddingVertical: spacing.sm + 2,
           }}
         >
           <Text
             style={{
+              fontFamily: fontFamilies.bodyBold,
               color: c.textOnPrimary,
-              fontWeight: "700",
               fontSize: 14,
             }}
           >

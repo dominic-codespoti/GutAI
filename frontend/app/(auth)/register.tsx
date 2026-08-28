@@ -13,13 +13,14 @@ import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../../src/stores/auth";
 import { toast } from "../../src/stores/toast";
-import { radius, spacing } from "../../src/utils/theme";
+import { radius, spacing, fontFamilies } from "../../src/utils/theme";
 import {
   useThemeColors,
   useThemeFonts,
   useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
+import { GutLensMark } from "../../components/GutLensMark";
 import * as haptics from "../../src/utils/haptics";
 
 const isValidEmail = (email: string) =>
@@ -104,28 +105,22 @@ export default function RegisterScreen() {
         >
           {/* Header */}
           <View style={{ alignItems: "center", marginBottom: spacing.xxxl }}>
-            <View
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: radius.lg,
-                backgroundColor: colors.primaryBg,
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: spacing.md,
-                borderWidth: 2,
-                borderColor: colors.primaryBorder,
-                ...shadowMd,
-              }}
-            >
-              <Text style={{ fontSize: 30 }}>🌱</Text>
-            </View>
+            <GutLensMark size={64} style={{ marginBottom: spacing.md }} />
             <Text
               style={{
-                fontSize: 28,
-                fontWeight: "800",
+                fontFamily: fontFamilies.bodyBold,
+                fontSize: 18,
+                color: colors.primary,
+                letterSpacing: -0.2,
+                marginBottom: spacing.xs,
+              }}
+            >
+              GutLens
+            </Text>
+            <Text
+              style={{
+                ...fonts.h2,
                 color: colors.text,
-                letterSpacing: -0.5,
               }}
             >
               Create Account
@@ -178,6 +173,7 @@ export default function RegisterScreen() {
                 style={{
                   flex: 1,
                   padding: 14,
+                  fontFamily: fontFamilies.body,
                   fontSize: 16,
                   color: colors.text,
                 }}
@@ -220,6 +216,7 @@ export default function RegisterScreen() {
                 style={{
                   flex: 1,
                   padding: 14,
+                  fontFamily: fontFamilies.body,
                   fontSize: 16,
                   color: colors.text,
                 }}
@@ -265,6 +262,7 @@ export default function RegisterScreen() {
                 style={{
                   flex: 1,
                   padding: 14,
+                  fontFamily: fontFamilies.body,
                   fontSize: 16,
                   color: colors.text,
                 }}
@@ -319,6 +317,7 @@ export default function RegisterScreen() {
                 style={{
                   flex: 1,
                   padding: 14,
+                  fontFamily: fontFamilies.body,
                   fontSize: 16,
                   color: colors.text,
                 }}
@@ -347,7 +346,7 @@ export default function RegisterScreen() {
               accessibilityLabel="Create account"
               style={{
                 backgroundColor: colors.primary,
-                borderRadius: radius.md,
+                borderRadius: radius.full,
                 padding: 16,
                 alignItems: "center",
                 ...shadowMd,
@@ -358,9 +357,9 @@ export default function RegisterScreen() {
               ) : (
                 <Text
                   style={{
+                    fontFamily: fontFamilies.bodyBold,
                     color: colors.textOnPrimary,
                     fontSize: 16,
-                    fontWeight: "700",
                   }}
                 >
                   Create Account

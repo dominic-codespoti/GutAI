@@ -12,6 +12,7 @@ import {
   Easing,
   Keyboard,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   StyleProp,
@@ -38,6 +39,8 @@ interface BottomSheetProps extends PropsWithChildren {
   paddingBottom?: number;
 
   fillHeight?: boolean;
+  /** Size the sheet to its content up to maxHeight instead of filling the viewport. */
+  fitContent?: boolean;
 
   dismissOnBackdropPress?: boolean;
   dismissOnHardwareBackPress?: boolean;
@@ -63,6 +66,7 @@ export function BottomSheet({
   paddingHorizontal = spacing.xxl,
   paddingBottom = spacing.lg,
   fillHeight = false,
+  fitContent = false,
   dismissOnBackdropPress = true,
   dismissOnHardwareBackPress = true,
   respectTopInset = true,
@@ -92,6 +96,54 @@ export function BottomSheet({
   const availableHeight = useMemo(() => {
     return Math.max(windowHeight - topInset, 0);
   }, [windowHeight, topInset]);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          Math.abs(gestureState.dy) > 4,
+        onPanResponderGrant: () => {
+          translateY.stopAnimation();
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          translateY.setValue(Math.max(0, gestureState.dy));
+        },
+        onPanResponderRelease: (_event, gestureState) => {
+          const dismissDistance = Math.min(
+            160,
+            Math.max(96, availableHeight * 0.18),
+          );
+          const shouldDismiss =
+            gestureState.dy > dismissDistance || gestureState.vy > 1.2;
+
+          if (shouldDismiss) {
+            closeSheet();
+            return;
+          }
+
+          Animated.spring(translateY, {
+            toValue: 0,
+            damping: 30,
+            stiffness: 320,
+            mass: 0.9,
+            overshootClamping: true,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            damping: 30,
+            stiffness: 320,
+            mass: 0.9,
+            overshootClamping: true,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
+        },
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [availableHeight, closeSheet, translateY],
+  );
 
   const resolvedMaxHeight = useMemo(() => {
     if (fillHeight) {
@@ -322,19 +374,35 @@ export function BottomSheet({
 
   const sheetContent = (
     <Animated.View style={animatedSheetStyle}>
-      <View style={sheetContainerStyle}>
+      <View testID={`${testID}-surface`} style={sheetContainerStyle}>
+        <View
+          {...panResponder.panHandlers}
+          testID={`${testID}-handle`}
+          style={styles.handleHitArea}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Drag to close bottom sheet"
+          accessibilityHint="Swipe down to dismiss"
+        >
+          <View
+            style={[
+              styles.handle,
+              {
+                backgroundColor: colors.borderLight,
+              },
+            ]}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+        </View>
+
         <View
           style={[
-            styles.handle,
-            {
-              backgroundColor: colors.borderLight,
-            },
+            fillHeight && styles.contentFill,
+            fitContent && !fillHeight && styles.contentFit,
+            contentStyle,
           ]}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-
-        <View style={[fillHeight && styles.contentFill, contentStyle]}>
+        >
           {children}
         </View>
       </View>
@@ -405,16 +473,26 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
+  handleHitArea: {
+    height: 28,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+  },
+
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: spacing.lg,
   },
 
   contentFill: {
     flex: 1,
     minHeight: 0,
+  },
+
+  contentFit: {
+    flexGrow: 0,
   },
 });

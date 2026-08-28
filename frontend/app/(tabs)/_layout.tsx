@@ -265,17 +265,6 @@ export default function TabLayout() {
     }
   };
 
-  const headerRight = () => (
-    <TouchableOpacity
-      onPress={() => router.push("/(tabs)/profile")}
-      style={{ marginRight: 14, padding: 8 }}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel="Profile settings"
-    >
-      <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
-    </TouchableOpacity>
-  );
 
   return (
     <>
@@ -285,12 +274,9 @@ export default function TabLayout() {
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
-          headerShown: true,
+          headerShown: false,
           headerStyle: { backgroundColor: colors.bg },
           headerShadowVisible: false,
-          headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: "700" as const, fontSize: 17 },
-          headerRight,
           sceneStyle: {
             paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
             backgroundColor: colors.bg,
@@ -365,6 +351,7 @@ export default function TabLayout() {
           options={{
             href: null,
             title: "Profile",
+            headerShown: true,
             headerRight: () => null,
           }}
         />
@@ -373,6 +360,7 @@ export default function TabLayout() {
           options={{
             href: null,
             title: "Food Search",
+            headerShown: true,
             headerLeft: () => (
               <TouchableOpacity
                 onPress={handleBack}

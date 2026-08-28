@@ -979,7 +979,8 @@ export function LogMealSheet() {
       <BottomSheet
         visible={visible}
         onClose={handleClose}
-        fillHeight
+        fitContent
+        maxHeight="85%"
         paddingTop={spacing.lg}
         paddingHorizontal={spacing.lg}
         paddingBottom={0}

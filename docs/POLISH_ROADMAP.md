@@ -26,16 +26,17 @@ that build.
 
 Fixes the consistency debt that quietly undermines everything above it.
 
-1. **Trust copy fixes** — `frontend/app/privacy.tsx`: brand "GutLens" → "GutAI", replace
-   `support@workoutquestapp.com` contact, correct "processed locally" claim (insights are
-   server-computed).
+1. **Trust copy fixes** — `frontend/app/privacy.tsx` and user-facing surfaces keep
+   **GutLens** as the product brand; technical `GutAI` identifiers may remain internal.
+   Replace `support@workoutquestapp.com` contact, correct "processed locally" claim
+   (insights are server-computed).
 2. **Theme token leaks** — route hardcoded colors through `useThemeColors()` /
    `src/utils/theme.ts`: `components/Toast.tsx` (duplicate light/dark literals),
    camera overlays in `app/(tabs)/scan.tsx` + `components/meals/LogMealSheet.tsx`
    (`#000/#fff/rgba`), `MealScanReviewSheet.tsx` source-chip literals, PRO badge `#fff`.
    Add an explicit `cameraOverlay` token pair rather than inline hex.
-3. **Contrast** — bump dark-mode `textMuted` (#64748b on #0f172a fails AA for body text);
-   audit palette pairs used for body-size text.
+3. **Contrast** — preserve body-readable muted text in dark mode while adapting the
+   palette toward the GutLens forest surfaces; audit all body-size color pairs.
 4. **Haptics consolidation** — every direct `expo-haptics` import outside
    `src/utils/haptics.ts` moves behind the util; wire the currently-unused
    `success/warning/error` wrappers at meal-save / validation-failure / error-retry sites;
@@ -168,6 +169,5 @@ Phase 4A M · Phase 5 M-L · Phase 6 S.
 
 ## Backlog (explicitly deferred)
 
-Custom brand font · app-icon refresh · universal links / quick actions · i18n string
-extraction · home-screen widget · Apple Watch target · server push (Phase 4B) ·
-onboarding illustrations.
+App-icon refresh · universal links / quick actions · i18n string extraction ·
+home-screen widget · Apple Watch target · server push (Phase 4B) · onboarding illustrations.

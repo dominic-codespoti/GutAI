@@ -5,6 +5,7 @@ import Animated, {
   useAnimatedReaction,
   useReducedMotion,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import {
   CartesianChart,
   Line,
@@ -63,16 +64,17 @@ export function TrendChart({
     date: d.date,
     value: Number(d[metric]) || 0,
   }));
-  if (points.length < 2) return null;
 
   useAnimatedReaction(
     () => (isActive ? String(state.x.value.value) : ""),
     (current, previous) => {
       if (current !== previous) {
-        setPressedDate(current === "" ? null : current);
+        scheduleOnRN(setPressedDate, current === "" ? null : current);
       }
     },
   );
+
+  if (points.length < 2) return null;
 
   const unit = metric === "calories" ? "kcal" : "g";
   const pressedIdx = pressedDate

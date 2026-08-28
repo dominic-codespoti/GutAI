@@ -2,7 +2,21 @@
 
 # ── Start everything (fresh build) ──
 up:
-	docker compose up -d --build
+	@AZURITE_BLOB_PORT="$${AZURITE_BLOB_PORT:-10000}"; \
+	AZURITE_QUEUE_PORT="$${AZURITE_QUEUE_PORT:-10001}"; \
+	AZURITE_TABLE_PORT="$${AZURITE_TABLE_PORT:-10002}"; \
+	if fuser -s "$$AZURITE_BLOB_PORT/tcp" || \
+		fuser -s "$$AZURITE_QUEUE_PORT/tcp" || \
+		fuser -s "$$AZURITE_TABLE_PORT/tcp"; then \
+		echo "⚠️  Azurite default ports are busy; using 11000-11002."; \
+		AZURITE_BLOB_PORT="$${AZURITE_BLOB_FALLBACK_PORT:-11000}"; \
+		AZURITE_QUEUE_PORT="$${AZURITE_QUEUE_FALLBACK_PORT:-11001}"; \
+		AZURITE_TABLE_PORT="$${AZURITE_TABLE_FALLBACK_PORT:-11002}"; \
+	fi; \
+	AZURITE_BLOB_PORT="$$AZURITE_BLOB_PORT" \
+	AZURITE_QUEUE_PORT="$$AZURITE_QUEUE_PORT" \
+	AZURITE_TABLE_PORT="$$AZURITE_TABLE_PORT" \
+		docker compose up -d --build
 	cd frontend && npm install
 	@echo "🔍 Ensuring port 8081 is free..." && sudo fuser -k 8081/tcp 2>/dev/null || true && sleep 1
 	@setsid sh -c 'cd frontend && npx expo start --web --port 8081' > /tmp/gutai-frontend.log 2>&1 & echo $$! > /tmp/gutai-frontend.pid
@@ -11,7 +25,7 @@ up:
 	@echo "   API:       http://localhost:5000"
 	@echo "   Scalar UI: http://localhost:5000/scalar/v1"
 	@echo "   Frontend:  http://localhost:8081"
-	@echo "   Azurite:   http://localhost:10002 (Table Storage)"
+	@echo "   Azurite:   $$(docker compose port azurite 10002) (Table Storage)"
 	@echo ""
 
 # ── Start frontend against production API ──

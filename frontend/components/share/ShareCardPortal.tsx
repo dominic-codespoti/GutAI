@@ -76,7 +76,7 @@ export function ShareCardPortal() {
         }
         await Sharing.shareAsync(uri, {
           mimeType: "image/png",
-          dialogTitle: `GutAI · ${TITLES[request.template]}`,
+          dialogTitle: `GutLens · ${TITLES[request.template]}`,
           UTI: "public.png",
         });
       } catch (err) {

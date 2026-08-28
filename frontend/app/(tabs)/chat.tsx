@@ -331,7 +331,7 @@ export default function ChatScreen() {
                   color={colors.textOnPrimary}
                 />
               </View>
-              <Text style={styles.avatarLabel}>GutAI Coach</Text>
+              <Text style={styles.avatarLabel}>GutLens Coach</Text>
             </View>
           )}
           {item.toolStatus && (
@@ -383,7 +383,7 @@ export default function ChatScreen() {
             </View>
             <View>
               <Text style={styles.headerTitle}>AI Health Coach</Text>
-              <Text style={styles.headerSubtitle}>Powered by GutAI</Text>
+              <Text style={styles.headerSubtitle}>Powered by GutLens</Text>
             </View>
           </View>
         </View>
@@ -404,7 +404,7 @@ export default function ChatScreen() {
             </View>
             <View>
               <Text style={styles.headerTitle}>AI Health Coach</Text>
-              <Text style={styles.headerSubtitle}>Powered by GutAI</Text>
+              <Text style={styles.headerSubtitle}>Powered by GutLens</Text>
             </View>
           </View>
         </View>
@@ -450,7 +450,7 @@ export default function ChatScreen() {
           </View>
           <View>
             <Text style={styles.headerTitle}>AI Health Coach</Text>
-            <Text style={styles.headerSubtitle}>Powered by GutAI</Text>
+            <Text style={styles.headerSubtitle}>Powered by GutLens</Text>
           </View>
         </View>
         <TouchableOpacity

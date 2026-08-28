@@ -44,7 +44,7 @@ This means Playwright can **inject auth tokens directly** via `page.evaluate()` 
 | ------------------------ | --------------------------------------------------------------------------------- |
 | **Base URL (local dev)** | `http://localhost:5000`                                                           |
 | **Docker service**       | `api` container, maps `5000:8080`                                                 |
-| **Storage**              | Azurite (local Azure Table Storage emulator) on ports 10000-10002                 |
+| **Storage**              | Azurite (local Azure Table Storage emulator) on ports 10000-10002; `make up` falls back to 11000-11002 when those ports are occupied |
 | **Auth**                 | JWT Bearer — secret: `local-dev-secret-key-that-is-at-least-32-characters-long!!` |
 | **JWT issuer/audience**  | `GutAI` / `GutAI`                                                                 |
 | **Token expiry**         | 60 minutes                                                                        |

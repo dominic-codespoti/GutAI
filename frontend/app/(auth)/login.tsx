@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   View,
+  Linking,
   Text,
   TextInput,
   TouchableOpacity,
@@ -13,14 +14,16 @@ import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../../src/stores/auth";
 import { toast } from "../../src/stores/toast";
-import { radius, spacing } from "../../src/utils/theme";
+import { radius, spacing, fontFamilies } from "../../src/utils/theme";
 import {
   useThemeColors,
   useThemeFonts,
   useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
+import { GutLensMark } from "../../components/GutLensMark";
 import * as haptics from "../../src/utils/haptics";
+import { PRIVACY_POLICY_URL } from "../../src/utils/constants";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -83,31 +86,16 @@ export default function LoginScreen() {
         >
           {/* Logo Area */}
           <View style={{ alignItems: "center", marginBottom: spacing.xxxl }}>
-            <View
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: radius.lg,
-                backgroundColor: colors.primaryBg,
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: spacing.lg,
-                borderWidth: 2,
-                borderColor: colors.primaryBorder,
-                ...shadowMd,
-              }}
-            >
-              <Ionicons name="leaf" size={36} color={colors.primary} />
-            </View>
+            <GutLensMark size={72} style={{ marginBottom: spacing.lg }} />
             <Text
               style={{
+                fontFamily: fontFamilies.bodyExtraBold,
                 fontSize: 36,
-                fontWeight: "800",
                 color: colors.primary,
                 letterSpacing: -1,
               }}
             >
-              GutAI
+              GutLens
             </Text>
             <Text style={{ ...fonts.body, marginTop: 4 }}>
               Track your meals & gut health
@@ -158,6 +146,7 @@ export default function LoginScreen() {
                 style={{
                   flex: 1,
                   padding: 14,
+                  fontFamily: fontFamilies.body,
                   fontSize: 16,
                   color: colors.text,
                 }}
@@ -199,6 +188,7 @@ export default function LoginScreen() {
                 style={{
                   flex: 1,
                   padding: 14,
+                  fontFamily: fontFamilies.body,
                   fontSize: 16,
                   color: colors.text,
                 }}
@@ -225,7 +215,7 @@ export default function LoginScreen() {
               accessibilityLabel="Log in"
               style={{
                 backgroundColor: colors.primary,
-                borderRadius: radius.md,
+                borderRadius: radius.full,
                 padding: 16,
                 alignItems: "center",
                 ...shadowMd,
@@ -236,9 +226,9 @@ export default function LoginScreen() {
               ) : (
                 <Text
                   style={{
+                    fontFamily: fontFamilies.bodyBold,
                     color: colors.textOnPrimary,
                     fontSize: 16,
-                    fontWeight: "700",
                   }}
                 >
                   Log In
@@ -300,8 +290,10 @@ export default function LoginScreen() {
                 </Text>
               </View>
             </Link>
-            <Link
-              href="/privacy"
+            <TouchableOpacity
+              onPress={() => {
+                Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
+              }}
               style={{ flexDirection: "row", alignItems: "center" }}
               accessibilityRole="link"
               accessibilityLabel="Privacy policy"
@@ -322,7 +314,7 @@ export default function LoginScreen() {
                   Privacy Policy
                 </Text>
               </View>
-            </Link>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

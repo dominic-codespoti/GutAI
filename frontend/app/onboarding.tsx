@@ -21,7 +21,7 @@ import {
   DIET_OPTIONS,
   GUT_CONDITION_OPTIONS,
 } from "../src/utils/options";
-import { radius, spacing } from "../src/utils/theme";
+import { radius, spacing, fontFamilies } from "../src/utils/theme";
 import { useThemeColors, useThemeFonts } from "../src/stores/theme";
 import * as haptics from "../src/utils/haptics";
 import { SafeScreen } from "../components/SafeScreen";
@@ -122,7 +122,7 @@ export default function OnboardingScreen() {
 
       const { data } = await userApi.getProfile();
       setUser(data);
-      toast.success("Welcome to GutAI! 🎉");
+      toast.success("Welcome to GutLens! 🎉");
       router.replace("/(tabs)");
     } catch {
       toast.error("Setup failed, you can update later in Profile");
@@ -159,7 +159,7 @@ export default function OnboardingScreen() {
         }}
         accessibilityRole="header"
       >
-        Welcome to GutAI
+        Welcome to GutLens
       </Text>
       <Text
         style={{
@@ -482,18 +482,18 @@ export default function OnboardingScreen() {
                   setStep(step + 1);
                 }}
                 style={{
-                  backgroundColor: colors.primaryLight,
+                  backgroundColor: colors.primary,
                   paddingHorizontal: 28,
                   paddingVertical: spacing.md,
-                  borderRadius: radius.md,
+                  borderRadius: radius.full,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="Next"
               >
                 <Text
                   style={{
+                    fontFamily: fontFamilies.bodyBold,
                     color: colors.textOnPrimary,
-                    fontWeight: "700",
                     fontSize: 16,
                   }}
                 >
@@ -508,10 +508,10 @@ export default function OnboardingScreen() {
                 }}
                 disabled={saving}
                 style={{
-                  backgroundColor: colors.primaryLight,
+                  backgroundColor: colors.primary,
                   paddingHorizontal: 28,
                   paddingVertical: spacing.md,
-                  borderRadius: radius.md,
+                  borderRadius: radius.full,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="Get Started"
@@ -521,8 +521,8 @@ export default function OnboardingScreen() {
                 ) : (
                   <Text
                     style={{
+                      fontFamily: fontFamilies.bodyBold,
                       color: colors.textOnPrimary,
-                      fontWeight: "700",
                       fontSize: 16,
                     }}
                   >

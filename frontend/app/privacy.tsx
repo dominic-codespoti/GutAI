@@ -37,7 +37,7 @@ export default function PrivacyPolicyScreen() {
         </Text>
 
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          GutAI ("we", "us", "our") is a gut-health food diary app that helps
+          GutLens ("we", "us", "our") is a gut-health food diary app that helps
           you track meals, monitor symptoms, and discover food-related patterns.
           This privacy policy explains what data we collect, how we use it, and
           your rights.
@@ -184,7 +184,7 @@ export default function PrivacyPolicyScreen() {
 
         <SectionHeading>8. Children's Privacy</SectionHeading>
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          GutAI is not directed at children under 13 (or 16 in the EU/EEA). We
+          GutLens is not directed at children under 13 (or 16 in the EU/EEA). We
           do not knowingly collect data from children. If you believe a child
           has provided us with personal data, please contact us and we will
           delete it.

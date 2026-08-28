@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Linking,
   Switch,
   Share,
 } from "react-native";
@@ -30,6 +31,7 @@ import {
   useThemeStore,
 } from "../src/stores/theme";
 import { radius, spacing } from "../src/utils/theme";
+import { PRIVACY_POLICY_URL } from "../src/utils/constants";
 import * as haptics from "../src/utils/haptics";
 import {
   activeHealthBridge,
@@ -397,7 +399,7 @@ export default function SettingsScreen() {
     try {
       const res = await mealApi.export();
       await Share.share({
-        title: "GutAI data export",
+        title: "GutLens data export",
         message: JSON.stringify(res.data, null, 2),
       });
       haptics.success();
@@ -518,7 +520,7 @@ export default function SettingsScreen() {
                       marginLeft: 12,
                     }}
                   >
-                    GutAI Pro
+                    GutLens Pro
                   </Text>
                 </View>
                 {!subLoaded ? (
@@ -574,7 +576,7 @@ export default function SettingsScreen() {
                 }}
               >
                 {isPro
-                  ? "All AI features unlocked — thanks for supporting GutAI."
+                  ? "All AI features unlocked — thanks for supporting GutLens."
                   : "AI meal photo scans, nutrition-label parsing, Describe-with-AI and your AI Coach."}
               </Text>
               {!subLoaded ? null : !isPro ? (
@@ -582,10 +584,10 @@ export default function SettingsScreen() {
                   onPress={async () => {
                     haptics.light();
                     const ok = await presentPaywall();
-                    if (ok) toast.success("Welcome to GutAI Pro!");
+                    if (ok) toast.success("Welcome to GutLens Pro!");
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Upgrade to GutAI Pro"
+                  accessibilityLabel="Upgrade to GutLens Pro"
                   style={{
                     marginTop: 12,
                     backgroundColor: colors.accent,
@@ -739,8 +741,9 @@ export default function SettingsScreen() {
                   }}
                 >
                   {Platform.OS === "android"
-                    ? "Sync meals with Google Health Connect to import nutrition history or automatically export meals logged in GutAI."
-                    : "Sync meals with Apple HealthKit to import nutrition history or automatically export meals logged in GutAI."}
+                    ? "Sync meals with Google Health Connect to import nutrition history or automatically export meals logged in GutLens."
+                    : "Sync meals with Apple HealthKit to import nutrition history or automatically export meals logged in GutLens."
+                  }
                 </Text>
 
                 {healthAvailable !== false && (
@@ -1595,7 +1598,9 @@ export default function SettingsScreen() {
                 />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => router.push("/privacy")}
+                onPress={() => {
+                  Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
+                }}
                 accessibilityRole="link"
                 accessibilityLabel="Privacy Policy"
                 style={{

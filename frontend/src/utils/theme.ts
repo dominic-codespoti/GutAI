@@ -1,12 +1,17 @@
-import { Platform } from "react-native";
+import { Platform, type ViewStyle } from "react-native";
 
 /* ── Color palettes ── */
 
 export const lightColors = {
   primary: "#16a34a",
   primaryLight: "#22c55e",
-  primaryBg: "#f0fdf4",
+  primaryHover: "#15803d",
+  primaryBg: "#f1faf3",
   primaryBorder: "#bbf7d0",
+  brandInk: "#17351f",
+  brandDark: "#0f2417",
+  mintSoft: "#f1faf3",
+  mintWash: "#dcfce7",
 
   secondary: "#0ea5e9",
   secondaryBg: "#f0f9ff",
@@ -21,27 +26,28 @@ export const lightColors = {
   danger: "#ef4444",
   dangerBg: "#fef2f2",
   dangerBorder: "#fecaca",
+  coral: "#ea7a5a",
 
-  bg: "#f8fafc",
+  bg: "#ffffff",
   card: "#ffffff",
-  cardHover: "#f8fafc",
+  cardHover: "#f1faf3",
   tabBar: "#ffffff",
 
-  text: "#0f172a",
-  textSecondary: "#475569",
-  textMuted: "#94a3b8",
-  textLight: "#cbd5e1",
+  text: "#17351f",
+  textSecondary: "#66736a",
+  textMuted: "#8c978f",
+  textLight: "#8c978f",
 
-  border: "#e2e8f0",
-  borderLight: "#f1f5f9",
-  divider: "#f1f5f9",
+  border: "#e4eae5",
+  borderLight: "#f1f5f2",
+  divider: "#f1f5f2",
 
   textOnPrimary: "#ffffff",
-  overlay: "rgba(0,0,0,0.3)",
+  overlay: "rgba(15,36,23,0.3)",
 
   protein: "#3b82f6",
   carbs: "#f59e0b",
-  fat: "#ef4444",
+  fat: "#ea7a5a",
   fiber: "#8b5cf6",
   sugar: "#f97316",
   sodium: "#06b6d4",
@@ -83,11 +89,11 @@ export const toastColors = {
  */
 export const shareCardColors = {
   bg: "#ffffff",
-  bgAccent: "#f0fdf4",
-  text: "#0f172a",
-  textMuted: "#64748b",
+  bgAccent: "#f1faf3",
+  text: "#17351f",
+  textMuted: "#66736a",
   primary: "#16a34a",
-  border: "#e2e8f0",
+  border: "#e4eae5",
   warning: "#f59e0b",
   danger: "#ef4444",
 } as const;
@@ -95,8 +101,13 @@ export const shareCardColors = {
 export const darkColors: typeof lightColors = {
   primary: "#22c55e",
   primaryLight: "#4ade80",
-  primaryBg: "#052e16",
-  primaryBorder: "#166534",
+  primaryHover: "#86efac",
+  primaryBg: "#0d2a18",
+  primaryBorder: "#2f7444",
+  brandInk: "#e7f5ea",
+  brandDark: "#0b1d12",
+  mintSoft: "#0f2a18",
+  mintWash: "#164a26",
 
   secondary: "#38bdf8",
   secondaryBg: "#0c1929",
@@ -111,27 +122,28 @@ export const darkColors: typeof lightColors = {
   danger: "#f87171",
   dangerBg: "#1f0a0a",
   dangerBorder: "#991b1b",
+  coral: "#fb8b70",
 
-  bg: "#0f172a",
-  card: "#1e293b",
-  cardHover: "#253349",
-  tabBar: "#0b1426",
+  bg: "#0f2417",
+  card: "#172b1e",
+  cardHover: "#203a29",
+  tabBar: "#0b1d12",
 
-  text: "#f1f5f9",
-  textSecondary: "#cbd5e1",
-  textMuted: "#94a3b8",
-  textLight: "#475569",
+  text: "#f1f8f3",
+  textSecondary: "#c6d5ca",
+  textMuted: "#91a499",
+  textLight: "#8fae9a",
 
-  border: "#334155",
-  borderLight: "#293548",
-  divider: "#253349",
+  border: "#304b38",
+  borderLight: "#253c2d",
+  divider: "#253c2d",
 
   textOnPrimary: "#ffffff",
   overlay: "rgba(0,0,0,0.5)",
 
   protein: "#60a5fa",
   carbs: "#fbbf24",
-  fat: "#f87171",
+  fat: "#fb8b70",
   fiber: "#a78bfa",
   sugar: "#fb923c",
   sodium: "#22d3ee",
@@ -142,7 +154,6 @@ export const darkColors: typeof lightColors = {
   cameraOnScrim: "#ffffff",
   cameraOnScrimMuted: "rgba(255,255,255,0.88)",
 };
-
 /** Backward-compatible export — defaults to light. Use `useThemeColors()` for reactive dark mode. */
 export const colors = lightColors;
 
@@ -162,49 +173,87 @@ export const radius = {
   sm: 8,
   md: 12,
   lg: 16,
-  xl: 20,
+  xl: 24,
   full: 999,
 };
 
+const webShadow = (boxShadow: string): ViewStyle =>
+  // React Native versions before CSS box-shadow support need this narrow boundary cast.
+  ({ boxShadow } as unknown as ViewStyle);
+
 export const shadow =
   Platform.OS === "web"
-    ? ({
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-      } as any)
+    ? webShadow("0 4px 16px rgba(15,50,25,0.06)")
     : {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-        elevation: 2,
+        shadowColor: "#0f3219",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 3,
       };
 
 export const shadowMd =
   Platform.OS === "web"
-    ? ({
-        boxShadow: "0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04)",
-      } as any)
+    ? webShadow("0 12px 36px rgba(15,50,25,0.09)")
     : {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-        elevation: 3,
+        shadowColor: "#0f3219",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.09,
+        shadowRadius: 10,
+        elevation: 4,
       };
+
+export const fontFamilies = {
+  body: "DMSans_400Regular",
+  bodyMedium: "DMSans_500Medium",
+  bodySemiBold: "DMSans_600SemiBold",
+  bodyBold: "DMSans_700Bold",
+  bodyExtraBold: "DMSans_800ExtraBold",
+  display: "Fraunces_600SemiBold",
+  displayBold: "Fraunces_700Bold",
+  displayItalic: "Fraunces_700Bold_Italic",
+} as const;
 
 export const fonts = {
   h1: {
-    fontSize: 28,
-    fontWeight: "800" as const,
+    fontFamily: fontFamilies.display,
+    fontSize: 30,
+    lineHeight: 35,
     color: colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
-  h2: { fontSize: 22, fontWeight: "700" as const, color: colors.text },
-  h3: { fontSize: 18, fontWeight: "700" as const, color: colors.text },
-  h4: { fontSize: 16, fontWeight: "600" as const, color: colors.textSecondary },
-  body: { fontSize: 15, color: colors.textSecondary },
-  caption: { fontSize: 13, color: colors.textMuted },
-  small: { fontSize: 11, color: colors.textMuted },
+  h2: {
+    fontFamily: fontFamilies.display,
+    fontSize: 24,
+    lineHeight: 29,
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  h3: {
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 18,
+    color: colors.text,
+  },
+  h4: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  body: {
+    fontFamily: fontFamilies.body,
+    fontSize: 15,
+    color: colors.textSecondary,
+  },
+  caption: {
+    fontFamily: fontFamilies.body,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  small: {
+    fontFamily: fontFamilies.body,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
 };
 
 export const mealTypeEmoji: Record<string, string> = {

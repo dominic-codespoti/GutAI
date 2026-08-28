@@ -33,11 +33,21 @@ import {
   configurePurchases,
 } from "../src/stores/subscription";
 import * as haptics from "../src/utils/haptics";
+import { fontFamilies } from "../src/utils/theme";
+import { useFonts } from "expo-font";
+import { DMSans_400Regular } from "@expo-google-fonts/dm-sans/400Regular";
+import { DMSans_500Medium } from "@expo-google-fonts/dm-sans/500Medium";
+import { DMSans_600SemiBold } from "@expo-google-fonts/dm-sans/600SemiBold";
+import { DMSans_700Bold } from "@expo-google-fonts/dm-sans/700Bold";
+import { DMSans_800ExtraBold } from "@expo-google-fonts/dm-sans/800ExtraBold";
+import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces/600SemiBold";
+import { Fraunces_700Bold } from "@expo-google-fonts/fraunces/700Bold";
+import { Fraunces_700Bold_Italic } from "@expo-google-fonts/fraunces/700Bold_Italic";
 
 // Hold the native splash visible until AuthGate hides it post-hydration.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-function AuthGate() {
+function AuthGate({ fontsReady }: { fontsReady: boolean }) {
   const { isAuthenticated, isLoading, isReconnecting, hydrate, connect, user } = useAuthStore();
   const c = useThemeColors();
   const segments = useSegments();
@@ -61,10 +71,10 @@ function AuthGate() {
   // no content flash behind the splash graphic.
   const splashHidden = useRef(false);
   useEffect(() => {
-    if (isLoading || splashHidden.current) return;
+    if (isLoading || !fontsReady || splashHidden.current) return;
     splashHidden.current = true;
     SplashScreen.hideAsync().catch(() => {});
-  }, [isLoading]);
+  }, [isLoading, fontsReady]);
 
   // Local reminder housekeeping and day/timezone refresh: re-sync the streak nudge
   // and refresh date-sensitive queries whenever the app comes to foreground or day boundaries cross.
@@ -216,7 +226,7 @@ function AuthGate() {
           headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
           headerTintColor: c.text,
-          headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerTitleStyle: { fontFamily: fontFamilies.bodyBold, fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
@@ -240,7 +250,7 @@ function AuthGate() {
           headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
           headerTintColor: c.text,
-          headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerTitleStyle: { fontFamily: fontFamilies.bodyBold, fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
@@ -264,7 +274,7 @@ function AuthGate() {
           headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
           headerTintColor: c.text,
-          headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerTitleStyle: { fontFamily: fontFamilies.bodyBold, fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
@@ -288,7 +298,7 @@ function AuthGate() {
           headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
           headerTintColor: c.text,
-          headerTitleStyle: { fontWeight: "700", fontSize: 17 },
+          headerTitleStyle: { fontFamily: fontFamilies.bodyBold, fontSize: 17 },
           headerLeft: () => (
             <TouchableOpacity
               onPress={safeBack}
@@ -361,9 +371,19 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+    DMSans_800ExtraBold,
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
+    Fraunces_700Bold_Italic,
+  });
+  const fontsReady = fontsLoaded || fontError !== null;
   const resolved = useThemeStore((s) => s.resolved);
   const c = useThemeColors();
-
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     document.documentElement.style.backgroundColor = c.bg;
@@ -374,9 +394,8 @@ export default function RootLayout() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style={resolved === "dark" ? "light" : "dark"} />
           <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.bg }}>
-            <AuthGate />
+            <AuthGate fontsReady={fontsReady} />
             <ToastContainer />
           </GestureHandlerRootView>
         </QueryClientProvider>

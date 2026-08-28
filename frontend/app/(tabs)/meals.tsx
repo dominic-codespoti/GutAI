@@ -19,10 +19,11 @@ import { useThemeColors } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
 import { MealCardSkeleton } from "../../components/SkeletonLoader";
 import { MealDateNav } from "../../components/meals/MealDateNav";
+import { PageTitle } from "../../components/PageTitle";
+import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { EmptyState } from "../../components/EmptyState";
 import DiaryArt from "../../assets/onboarding/empty-diary.svg";
 import { DailySummary } from "../../components/meals/DailySummary";
-import { QuickAddRow } from "../../components/meals/QuickAddRow";
 import { SwipeHint } from "../../components/meals/SwipeHint";
 import { MealGroup } from "../../components/meals/MealGroup";
 import { MealFab } from "../../components/meals/MealFab";
@@ -120,6 +121,7 @@ export default function MealsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ padding: spacing.xl }}>
+          <PageTitle title="Meals" />
           <MealDateNav />
 
           {dailySummary && <DailySummary summary={dailySummary} />}

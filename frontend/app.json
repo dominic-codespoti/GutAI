@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GutAI",
+    "name": "GutLens",
     "slug": "gut-ai",
     "scheme": "gutai",
     "version": "1.0.10",
@@ -16,10 +16,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "gut.ai",
       "infoPlist": {
-        "NSCameraUsageDescription": "GutAI uses the camera to scan food barcodes",
+        "NSCameraUsageDescription": "GutLens uses the camera to scan food barcodes",
         "ITSAppUsesNonExemptEncryption": false,
-        "NSHealthShareUsageDescription": "GutAI reads dietary nutrition data to sync your meal history and correlate food intake with gut health symptoms.",
-        "NSHealthUpdateUsageDescription": "GutAI saves logged meals and nutrition data to Apple Health."
+        "NSHealthShareUsageDescription": "GutLens reads dietary nutrition data to sync your meal history and correlate food intake with gut health symptoms.",
+        "NSHealthUpdateUsageDescription": "GutLens saves logged meals and nutrition data to Apple Health."
       },
       "entitlements": {
         "com.apple.developer.healthkit": true
@@ -43,7 +43,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "GutAI uses the camera to scan food barcodes"
+          "cameraPermission": "GutLens uses the camera to scan food barcodes"
         }
       ],
       "expo-secure-store",

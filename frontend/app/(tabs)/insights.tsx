@@ -44,6 +44,7 @@ import {
   useThemeShadow,
 } from "../../src/stores/theme";
 import { SafeScreen } from "../../components/SafeScreen";
+import { PageTitle } from "../../components/PageTitle";
 import { useRouter } from "expo-router";
 import { useShareCard } from "../../components/share/ShareCardPortal";
 
@@ -199,16 +200,10 @@ export default function InsightsScreen() {
         }
       >
         <View style={{ padding: spacing.xl }}>
-          {/* Header */}
-          <Text
-            style={{ ...fonts.h1, marginBottom: 4 }}
-            accessibilityRole="header"
-          >
-            Insights
-          </Text>
-          <Text style={{ ...fonts.caption, marginBottom: spacing.lg }}>
-            {`Food ↔ symptom patterns from the last ${period} days`}
-          </Text>
+          <PageTitle
+            title="Insights"
+            subtitle={`Food ↔ symptom patterns from the last ${period} days`}
+          />
 
           {/* Period Selector */}
           <View

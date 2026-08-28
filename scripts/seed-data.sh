@@ -7,6 +7,7 @@ set -euo pipefail
 #
 # Usage:  ./scripts/seed-data.sh [email] [password]
 #   Defaults: seed-demo@test.com / Test123!
+#   API:       ${GUTAI_API_URL:-http://localhost:5000}
 #
 # The script will:
 #   1. Register or login the account
@@ -16,7 +17,7 @@ set -euo pipefail
 #   5. Verify the insights/correlations endpoint returns data
 # ──────────────────────────────────────────────────────────────────────────────
 
-API="http://localhost:5093"
+API="${GUTAI_API_URL:-http://localhost:5000}"
 EMAIL="${1:-seed-demo@test.com}"
 PASSWORD="${2:-Test123!}"
 DISPLAY_NAME="Demo User"

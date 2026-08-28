@@ -7,6 +7,7 @@ import {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 
 type CountUpTextProps = {
   value: number;
@@ -48,7 +49,7 @@ export function CountUpText({
     () => Math.round(progress.value * value),
     (current, previous) => {
       if (current !== previous && Number.isFinite(current)) {
-        setDisplay(current);
+        scheduleOnRN(setDisplay, current);
       }
     },
   );

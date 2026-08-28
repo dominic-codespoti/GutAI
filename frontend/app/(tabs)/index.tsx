@@ -27,8 +27,9 @@ import Animated, {
 } from "react-native-reanimated";
 import { SafeScreen } from "../../components/SafeScreen";
 import { CountUpText } from "../../components/CountUpText";
-import { useShareCard } from "../../components/share/ShareCardPortal";
+import { PageTitle } from "../../components/PageTitle";
 import { StreakCalendar } from "../../components/StreakCalendar";
+import { useShareCard } from "../../components/share/ShareCardPortal";
 import {
   useThemeColors,
   useThemeFonts,
@@ -323,15 +324,10 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ padding: spacing.xl }}>
-          {/* Header */}
-          <View style={{ marginBottom: spacing.lg }}>
-            <Text style={{ fontSize: 15, color: c.textMuted }}>
-              {greeting},
-            </Text>
-            <Text style={f.h1} accessibilityRole="header">
-              {user?.displayName ?? "there"} 👋
-            </Text>
-          </View>
+          <PageTitle
+            title={`${user?.displayName ?? "there"} 👋`}
+            eyebrow={`${greeting},`}
+          />
 
           {/* Alerts */}
           {alerts && alerts.length > 0 && (

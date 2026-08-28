@@ -1,14 +1,12 @@
 import { create } from "zustand";
-import { Appearance, Platform } from "react-native";
+import { Appearance, Platform, type ViewStyle } from "react-native";
 import { getItem, setItem } from "../utils/storage";
 import {
   lightColors,
   darkColors,
   spacing,
   radius,
-  shadow,
-  shadowMd,
-  fonts,
+  fontFamilies,
   type ThemeColors,
 } from "../utils/theme";
 
@@ -88,17 +86,44 @@ export function useThemeFonts() {
   const c = useThemeColors();
   return {
     h1: {
-      fontSize: 28,
-      fontWeight: "800" as const,
+      fontFamily: fontFamilies.display,
+      fontSize: 30,
+      lineHeight: 35,
       color: c.text,
-      letterSpacing: -0.5,
+      letterSpacing: -0.3,
     },
-    h2: { fontSize: 22, fontWeight: "700" as const, color: c.text },
-    h3: { fontSize: 18, fontWeight: "700" as const, color: c.text },
-    h4: { fontSize: 16, fontWeight: "600" as const, color: c.textSecondary },
-    body: { fontSize: 15, color: c.textSecondary },
-    caption: { fontSize: 13, color: c.textMuted },
-    small: { fontSize: 11, color: c.textMuted },
+    h2: {
+      fontFamily: fontFamilies.display,
+      fontSize: 24,
+      lineHeight: 29,
+      color: c.text,
+      letterSpacing: -0.2,
+    },
+    h3: {
+      fontFamily: fontFamilies.bodyBold,
+      fontSize: 18,
+      color: c.text,
+    },
+    h4: {
+      fontFamily: fontFamilies.bodySemiBold,
+      fontSize: 16,
+      color: c.textSecondary,
+    },
+    body: {
+      fontFamily: fontFamilies.body,
+      fontSize: 15,
+      color: c.textSecondary,
+    },
+    caption: {
+      fontFamily: fontFamilies.body,
+      fontSize: 13,
+      color: c.textMuted,
+    },
+    small: {
+      fontFamily: fontFamilies.body,
+      fontSize: 11,
+      color: c.textMuted,
+    },
   };
 }
 
@@ -106,35 +131,38 @@ export function useThemeFonts() {
 export function useThemeShadow() {
   const c = useThemeColors();
   const isDark = useThemeStore((s) => s.resolved) === "dark";
+  const webShadowStyle = (boxShadow: string): ViewStyle =>
+    // React Native versions before CSS box-shadow support need this narrow boundary cast.
+    ({ boxShadow } as unknown as ViewStyle);
 
   const base =
     Platform.OS === "web"
-      ? ({
-          boxShadow: isDark
+      ? webShadowStyle(
+          isDark
             ? "0 1px 3px rgba(0,0,0,0.3)"
-            : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-        } as any)
+            : "0 4px 16px rgba(15,50,25,0.06)",
+        )
       : {
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: isDark ? 0.3 : 0.05,
-          shadowRadius: 3,
-          elevation: 2,
+          shadowColor: isDark ? "#000" : "#0f3219",
+          shadowOffset: { width: 0, height: isDark ? 1 : 2 },
+          shadowOpacity: isDark ? 0.3 : 0.06,
+          shadowRadius: isDark ? 3 : 8,
+          elevation: isDark ? 2 : 3,
         };
 
   const md =
     Platform.OS === "web"
-      ? ({
-          boxShadow: isDark
+      ? webShadowStyle(
+          isDark
             ? "0 4px 6px rgba(0,0,0,0.4)"
-            : "0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04)",
-        } as any)
+            : "0 12px 36px rgba(15,50,25,0.09)",
+        )
       : {
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: isDark ? 0.4 : 0.08,
-          shadowRadius: 6,
-          elevation: 3,
+          shadowColor: isDark ? "#000" : "#0f3219",
+          shadowOffset: { width: 0, height: isDark ? 2 : 4 },
+          shadowOpacity: isDark ? 0.4 : 0.09,
+          shadowRadius: isDark ? 6 : 10,
+          elevation: isDark ? 3 : 4,
         };
 
   return { shadow: base, shadowMd: md };

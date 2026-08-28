@@ -1,6 +1,5 @@
 import { View, Text, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { shareCardColors as sc, spacing, radius } from "../../src/utils/theme";
+import { shareCardColors as sc, spacing, radius, fontFamilies } from "../../src/utils/theme";
 import type {
   TriggerFoodCardData,
   SafetyReportCardData,
@@ -24,16 +23,16 @@ export function CardShell({
     <View style={[styles.card, { width: CARD_WIDTH }]}>
       <View style={styles.header}>
         <View style={styles.logoDisc}>
-          <Ionicons name="nutrition" size={18} color={sc.primary} />
+          <Text style={styles.logoMark}>G</Text>
         </View>
-        <Text style={styles.wordmark}>GutAI</Text>
+        <Text style={styles.wordmark}>GutLens</Text>
         <View style={{ flex: 1 }} />
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       <Text style={styles.title}>{title}</Text>
       {children}
       <View style={[styles.footer, { borderTopColor: sc.border }]}>
-        <Text style={styles.footerText}>Not medical advice · GutAI</Text>
+        <Text style={styles.footerText}>Not medical advice · GutLens</Text>
       </View>
     </View>
   );
@@ -199,14 +198,28 @@ const styles = StyleSheet.create({
   logoDisc: {
     width: 28,
     height: 28,
-    borderRadius: 14,
-    backgroundColor: sc.bgAccent,
+    borderRadius: 10,
+    backgroundColor: sc.primary,
     alignItems: "center",
     justifyContent: "center",
   },
-  wordmark: { fontSize: 16, fontWeight: "800", color: sc.text },
-  subtitle: { fontSize: 11, color: sc.textMuted },
-  title: { fontSize: 12, fontWeight: "700", color: sc.textMuted, marginBottom: 2 },
+  logoMark: {
+    fontFamily: fontFamilies.displayItalic,
+    fontSize: 17,
+    color: sc.bg,
+  },
+  wordmark: {
+    fontFamily: fontFamilies.bodyExtraBold,
+    fontSize: 16,
+    color: sc.text,
+  },
+  subtitle: { fontFamily: fontFamilies.body, fontSize: 11, color: sc.textMuted },
+  title: {
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 12,
+    color: sc.textMuted,
+    marginBottom: 2,
+  },
   statTitle: {
     fontSize: 20,
     fontWeight: "800",

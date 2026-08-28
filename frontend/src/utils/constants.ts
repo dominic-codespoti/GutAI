@@ -1,3 +1,4 @@
+export const PRIVACY_POLICY_URL = 'https://gutlens.fit/privacy/';
 export const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const;
 
 export function getMealTypeForTime(hour: number): typeof MEAL_TYPES[number] {

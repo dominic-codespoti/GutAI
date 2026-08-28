@@ -21,6 +21,8 @@
     "test:auth-reconnect": "npx tsx --test src/stores/__tests__/auth-reconnect.test.ts"
   },
   "dependencies": {
+    "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "@kingstinct/react-native-healthkit": "^14.0.2",
@@ -74,7 +76,9 @@
   "private": true,
   "expo": {
     "install": {
-      "exclude": ["@shopify/react-native-skia"]
+      "exclude": [
+        "@shopify/react-native-skia"
+      ]
     }
   }
 }

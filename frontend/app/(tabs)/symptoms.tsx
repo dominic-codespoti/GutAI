@@ -40,13 +40,14 @@ import {
   useThemeFonts,
   useThemeShadow,
 } from "../../src/stores/theme";
+import { PageTitle } from "../../components/PageTitle";
+import { SafeScreen } from "../../components/SafeScreen";
 import type {
   SymptomType,
   SymptomLog,
   MealLog,
   CreateSymptomRequest,
 } from "../../src/types";
-import { SafeScreen } from "../../components/SafeScreen";
 import { SeverityTimeline } from "../../src/components/charts/SeverityTimeline";
 
 function SeverityDot({
@@ -418,6 +419,7 @@ export default function SymptomsScreen() {
           }
         >
           <View style={{ padding: spacing.xl }}>
+            <PageTitle title="Symptoms" />
             {/* View Mode Toggle */}
             <View
               style={{
