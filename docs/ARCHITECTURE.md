@@ -105,12 +105,11 @@ device-side abstraction, not a third-party aggregator:
 - **HealthBridge (`frontend/src/services/health/`)** — one TypeScript interface
   (`isAvailable` / `requestPermissions` / `readNutrition` / `writeMeal` / `deleteMeal`)
   with platform files over per-platform libraries: `react-native-health-connect`
-  (Android) and `@kingstinct/react-native-healthkit` (iOS, Nitro module — swapped in
-  because the legacy ObjC `react-native-health` bridge cannot return saved UUIDs,
-  cannot delete correlations, and hides sample sources, which made correct
-  write/update/delete semantics impossible). No unified wrapper library — pairing the
-  two best-of-breed platform bridges plus a thin shared interface is the settled
-  industry pattern.
+  (Android) and `@kingstinct/react-native-healthkit` **14.1.0+** (iOS, Nitro module —
+  the minimum version catches synchronous Objective-C authorization exceptions instead
+  of allowing them to escape Swift concurrency and trap iOS 26). No unified wrapper
+  library — pairing the two best-of-breed platform bridges plus a thin shared interface
+  is the settled industry pattern.
 - **Import path:** incremental watermark reads → normalized rows → `POST /api/meals/import`
   (JWT, ≤2000 items/request). The endpoint derives meal type from local hour when absent,
   clamps values via `MealValidation`, persists with `NutritionProvenance="Estimated"`
