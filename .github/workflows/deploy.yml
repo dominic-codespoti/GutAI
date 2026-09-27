@@ -110,7 +110,9 @@ jobs:
               ghcrPassword='${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}' \
               azureOpenAIEndpoint='https://ai-misc-proj-resource.openai.azure.com/' \
               azureContentUnderstandingEndpoint='https://ai-misc-proj-resource.services.ai.azure.com/' \
-              azureOpenAIDeploymentName='gpt-4o-mini' \
+              azureOpenAIDeploymentName='gpt-5.4-mini' \
+              azureOpenAIInputPer1M='0.20' \
+              azureOpenAIOutputPer1M='1.20' \
               foundryProjectEndpoint='https://ai-misc-proj-resource.services.ai.azure.com/api/projects/ai-misc-proj'
 
           API_URL=$(az deployment group show \

@@ -425,33 +425,11 @@ Then update `frontend/eas.json` → `build.production.env.EXPO_PUBLIC_API_URL` w
 
 ## Production AI Configuration
 
-Set these production API settings on the Container App. The deploy workflow and `infra/main.bicep` configure the shared `AzureOpenAI` endpoint/deployment but do not set per-workload deployment/reasoning choices or deployment prices. Azure App Configuration keys map to environment variables by replacing `:` with `__`:
+Production's shared AI deployment is `gpt-5.4-mini`, and its deployment name and input/output prices are Bicep parameters passed explicitly by `.github/workflows/deploy.yml` (`0.20` and `1.20` USD per 1M tokens). The workflow deploys `infra/main.bicep` on every push to `main`; manual `az containerapp update --set-env-vars` changes to these values are overwritten by the next deploy.
 
-- `AzureOpenAI__Workloads__<workload>__Deployment` and `AzureOpenAI__Workloads__<workload>__ReasoningEffort` for each of `vision`, `selection`, `extraction`, `coach`, `describe`, and `suggestion`.
-- `AzureOpenAI__Pricing__<deployment>__InputPer1M` and `AzureOpenAI__Pricing__<deployment>__OutputPer1M` for each deployment's actual input/output price per one million tokens.
-- Coach's optional limits are `AzureOpenAI__Workloads__coach__MaxToolIterations` and `AzureOpenAI__Workloads__coach__MaxConsecutiveToolErrors`.
+Before changing the deployment, update both prices and run `make evals` plus the photo re-baseline required by AGENTS.md §18. Per-workload deployments would need new Bicep parameters; none are used today, so all workloads use the shared deployment. Per-workload reasoning effort and the Coach limits (`MaxToolIterations`, `MaxConsecutiveToolErrors`) come from `AzureOpenAI:Workloads` in `backend/src/GutAI.Api/appsettings.json`, the same values `make evals` evaluates.
 
-For the resource group and Container App created by the production deployment (`rg-gutai-prod` and `gutai-prod-api`), set the following example values, replacing the example deployment and price values with deployments available in your Azure OpenAI resource and their current prices. Repeat both pricing variables for every deployment you configure:
-
-```bash
-az containerapp update --resource-group rg-gutai-prod --name gutai-prod-api --set-env-vars \
-  AzureOpenAI__Workloads__vision__Deployment=gpt-5.4-mini \
-  AzureOpenAI__Workloads__vision__ReasoningEffort=medium \
-  AzureOpenAI__Workloads__selection__Deployment=gpt-5.4-mini \
-  AzureOpenAI__Workloads__selection__ReasoningEffort=low \
-  AzureOpenAI__Workloads__extraction__Deployment=gpt-5.4-mini \
-  AzureOpenAI__Workloads__extraction__ReasoningEffort=low \
-  AzureOpenAI__Workloads__coach__Deployment=gpt-5.4-mini \
-  AzureOpenAI__Workloads__coach__ReasoningEffort=medium \
-  AzureOpenAI__Workloads__describe__Deployment=gpt-5.4-mini \
-  AzureOpenAI__Workloads__describe__ReasoningEffort=medium \
-  AzureOpenAI__Workloads__suggestion__Deployment=gpt-5.4-mini \
-  AzureOpenAI__Workloads__suggestion__ReasoningEffort=medium \
-  AzureOpenAI__Pricing__gpt-5.4-mini__InputPer1M=<input-price-usd> \
-  AzureOpenAI__Pricing__gpt-5.4-mini__OutputPer1M=<output-price-usd>
-```
-
-Replace the angle-bracket price placeholders with numeric USD rates before running the command. Without pricing for a deployment, estimated cost is `null`; the p95 cost alert has no priced scan values to evaluate and cannot fire.
+Without pricing for a deployment, estimated cost is `null`; the p95 cost alert has no priced scan values to evaluate and cannot fire.
 
 The following feature flags default to `false` in `Features`: `HiddenCalories`, `PortionCalibration`, `MealSuggestions`, and `WebGrounding`. `MealScan:RequireCompatibilityAgreement` and `MealScan:MultiQueryAutoSelect` also default to `false`.
 
@@ -491,7 +469,7 @@ The optional scan alerts are deployed only when `alertEmailAddress` is non-empty
 | `scanCostP95ThresholdUsd` | `0.05` | Alert when p95 estimated AI cost per `meal_scan` exceeds this USD value |
 | `scanLatencyP95BudgetMs` | `45000` | Alert when p95 `POST /api/meals/scan/image` duration exceeds this many milliseconds (75% of the 60-second scan deadline) |
 
-Pass these parameters to `az deployment group create` (or set them in `infra/main.bicepparam`) to enable and tune notifications. Cost calculations require the per-deployment pricing configuration above.
+Pass these parameters to `az deployment group create` (or set them in `infra/main.bicepparam`) to enable and tune notifications. Cost calculations require non-empty Bicep pricing parameters for the deployment.
 
 The `Logging:OpenTelemetry:LogLevel` provider filter is the one used by the OpenTelemetry logger exported through Application Insights 3.x. Production sets the `GutAI.Infrastructure.Services.MealScanService` category to `Information` while the broader production default remains `Error`, so the structured per-scan usage trace can drive the cost query.
 

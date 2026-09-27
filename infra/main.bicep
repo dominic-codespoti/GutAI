@@ -98,8 +98,14 @@ param azureOpenAIEndpoint string = ''
 @description('Azure Content Understanding endpoint URL')
 param azureContentUnderstandingEndpoint string = ''
 
-@description('Azure OpenAI deployment name')
-param azureOpenAIDeploymentName string = 'gpt-4o-mini'
+@description('Azure OpenAI deployment evaluated by `make evals` as required by AGENTS.md §18')
+param azureOpenAIDeploymentName string = 'gpt-5.4-mini'
+
+@description('USD per 1M tokens for this deployment (gpt-5.6-luna list price for gpt-5.4-mini); empty disables cost estimation and the cost alert.')
+param azureOpenAIInputPer1M string = '0.20'
+
+@description('USD per 1M tokens for this deployment (gpt-5.6-luna list price for gpt-5.4-mini); empty disables cost estimation and the cost alert.')
+param azureOpenAIOutputPer1M string = '1.20'
 
 @description('Azure AI Foundry project endpoint URL')
 param foundryProjectEndpoint string = ''
@@ -150,7 +156,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: [
+          env: concat([
             { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
             { name: 'ASPNETCORE_URLS', value: 'http://+:8080' }
             { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
@@ -167,7 +173,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AzureOpenAI__ContentUnderstandingEndpoint', value: azureContentUnderstandingEndpoint }
             { name: 'AzureOpenAI__DeploymentName', value: azureOpenAIDeploymentName }
             { name: 'Foundry__ProjectEndpoint', value: foundryProjectEndpoint }
-          ]
+          ], empty(azureOpenAIInputPer1M) || empty(azureOpenAIOutputPer1M) ? [] : [
+            { name: 'AzureOpenAI__Pricing__${azureOpenAIDeploymentName}__InputPer1M', value: azureOpenAIInputPer1M }
+            { name: 'AzureOpenAI__Pricing__${azureOpenAIDeploymentName}__OutputPer1M', value: azureOpenAIOutputPer1M }
+          ])
           probes: [
             {
               type: 'Startup'

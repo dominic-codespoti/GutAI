@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "2031038177595535246"
+      "templateHash": "3774434011269984491"
     }
   },
   "parameters": {
@@ -65,9 +65,23 @@
     },
     "azureOpenAIDeploymentName": {
       "type": "string",
-      "defaultValue": "gpt-4o-mini",
+      "defaultValue": "gpt-5.4-mini",
       "metadata": {
-        "description": "Azure OpenAI deployment name"
+        "description": "Azure OpenAI deployment evaluated by `make evals` as required by AGENTS.md §18"
+      }
+    },
+    "azureOpenAIInputPer1M": {
+      "type": "string",
+      "defaultValue": "0.20",
+      "metadata": {
+        "description": "USD per 1M tokens for this deployment (gpt-5.6-luna list price for gpt-5.4-mini); empty disables cost estimation and the cost alert."
+      }
+    },
+    "azureOpenAIOutputPer1M": {
+      "type": "string",
+      "defaultValue": "1.20",
+      "metadata": {
+        "description": "USD per 1M tokens for this deployment (gpt-5.6-luna list price for gpt-5.4-mini); empty disables cost estimation and the cost alert."
       }
     },
     "foundryProjectEndpoint": {
@@ -247,72 +261,7 @@
                 "cpu": "[json('0.5')]",
                 "memory": "1Gi"
               },
-              "env": [
-                {
-                  "name": "ASPNETCORE_ENVIRONMENT",
-                  "value": "Production"
-                },
-                {
-                  "name": "ASPNETCORE_URLS",
-                  "value": "http://+:8080"
-                },
-                {
-                  "name": "ASPNETCORE_HTTP_PORTS",
-                  "value": "8080"
-                },
-                {
-                  "name": "DOTNET_RUNNING_IN_CONTAINER",
-                  "value": "true"
-                },
-                {
-                  "name": "DOTNET_GCServer",
-                  "value": "0"
-                },
-                {
-                  "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
-                  "secretRef": "appinsights-connection"
-                },
-                {
-                  "name": "ConnectionStrings__AzureStorage",
-                  "secretRef": "storage-connection"
-                },
-                {
-                  "name": "Jwt__Secret",
-                  "secretRef": "jwt-secret"
-                },
-                {
-                  "name": "Jwt__Issuer",
-                  "value": "GutAI"
-                },
-                {
-                  "name": "Jwt__Audience",
-                  "value": "GutAI"
-                },
-                {
-                  "name": "Jwt__ExpiryMinutes",
-                  "value": "60"
-                },
-                {
-                  "name": "ExternalApis__UsdaApiKey",
-                  "secretRef": "usda-api-key"
-                },
-                {
-                  "name": "AzureOpenAI__Endpoint",
-                  "value": "[parameters('azureOpenAIEndpoint')]"
-                },
-                {
-                  "name": "AzureOpenAI__ContentUnderstandingEndpoint",
-                  "value": "[parameters('azureContentUnderstandingEndpoint')]"
-                },
-                {
-                  "name": "AzureOpenAI__DeploymentName",
-                  "value": "[parameters('azureOpenAIDeploymentName')]"
-                },
-                {
-                  "name": "Foundry__ProjectEndpoint",
-                  "value": "[parameters('foundryProjectEndpoint')]"
-                }
-              ],
+              "env": "[concat(createArray(createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Production'), createObject('name', 'ASPNETCORE_URLS', 'value', 'http://+:8080'), createObject('name', 'ASPNETCORE_HTTP_PORTS', 'value', '8080'), createObject('name', 'DOTNET_RUNNING_IN_CONTAINER', 'value', 'true'), createObject('name', 'DOTNET_GCServer', 'value', '0'), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'secretRef', 'appinsights-connection'), createObject('name', 'ConnectionStrings__AzureStorage', 'secretRef', 'storage-connection'), createObject('name', 'Jwt__Secret', 'secretRef', 'jwt-secret'), createObject('name', 'Jwt__Issuer', 'value', 'GutAI'), createObject('name', 'Jwt__Audience', 'value', 'GutAI'), createObject('name', 'Jwt__ExpiryMinutes', 'value', '60'), createObject('name', 'ExternalApis__UsdaApiKey', 'secretRef', 'usda-api-key'), createObject('name', 'AzureOpenAI__Endpoint', 'value', parameters('azureOpenAIEndpoint')), createObject('name', 'AzureOpenAI__ContentUnderstandingEndpoint', 'value', parameters('azureContentUnderstandingEndpoint')), createObject('name', 'AzureOpenAI__DeploymentName', 'value', parameters('azureOpenAIDeploymentName')), createObject('name', 'Foundry__ProjectEndpoint', 'value', parameters('foundryProjectEndpoint'))), if(or(empty(parameters('azureOpenAIInputPer1M')), empty(parameters('azureOpenAIOutputPer1M'))), createArray(), createArray(createObject('name', format('AzureOpenAI__Pricing__{0}__InputPer1M', parameters('azureOpenAIDeploymentName')), 'value', parameters('azureOpenAIInputPer1M')), createObject('name', format('AzureOpenAI__Pricing__{0}__OutputPer1M', parameters('azureOpenAIDeploymentName')), 'value', parameters('azureOpenAIOutputPer1M')))))]",
               "probes": [
                 {
                   "type": "Startup",
