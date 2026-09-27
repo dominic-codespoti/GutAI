@@ -213,7 +213,7 @@ is deprecated in Reanimated 4.
 ## 18. Measured Before Shipped (N5)
 
 - **Symptom:** an unmeasured or unverified AI behavior is described or treated as production-ready because a configured gate appears to pass.
-- **Rule:** Scan (`GoldenScanHarness`) and agent (`AgentEvalHarness`) gates MUST be run manually against the live deployment (e.g. `make evals`) before shipping any change to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools, and the report MUST be reviewed. Current thresholds are provisional baselines from 5 live refreshed runs of the unweighed 12-case set (plan decision D7), not measured production baselines. If a metric with a configured threshold is unmeasured, the harness MUST fail the gate or report it as not evaluated according to its rules; it MUST NOT be treated as passing.
+- **Rule:** Scan (`GoldenScanHarness`) and agent (`AgentEvalHarness`) gates MUST be run manually against the live deployment (e.g. `make evals`) before shipping any change to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools, and the report MUST be reviewed. Current thresholds are provisional baselines from 6 live refreshed runs of the unweighed 12-case set (plan decision D7), not measured production baselines. If a metric with a configured threshold is unmeasured, the harness MUST fail the gate or report it as not evaluated according to its rules; it MUST NOT be treated as passing.
 
 ---
 

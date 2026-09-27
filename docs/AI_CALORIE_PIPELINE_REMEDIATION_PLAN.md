@@ -46,7 +46,7 @@ but the plan's data, review, or rollout condition remains open.
 | 4.6 Draft TTL and cleanup | Implemented | `MealDraftService.cs`, `MealDraftCleanupService.cs`; `MealDraftServiceTests.cs`, `MealDraftCleanupServiceTests.cs`, `MealDraftRoundtripTests.cs` purge |
 | 5.1 Golden manifest v2 and data collection | Partial | `GoldenScanHarness/GoldenManifest.cs`, `golden-images/manifest.json`, `GoldenMetricsTests.cs`; manifest remains the cached 12-case set, not the planned weighed dataset. |
 | 5.2 Golden metrics | Implemented | `GoldenMetrics.cs`, `ProductionGoldenE2e.cs`; `GoldenMetricsTests.cs` |
-| 5.3 Gate and cache policy | Partial | `GoldenScanHarness/Program.cs`, `VisionResultCache.cs`, `golden-images/manifest.json`; `GoldenMetricsTests.cs`; thresholds are live-baselined from 5 refreshed runs (2026-09-26), including latency/cost thresholds, and remain provisional pending weighed data (D7). |
+| 5.3 Gate and cache policy | Partial | `GoldenScanHarness/Program.cs`, `VisionResultCache.cs`, `golden-images/manifest.json`; `GoldenMetricsTests.cs`; thresholds are live-baselined from 6 refreshed runs (2026-09-26/27), including latency/cost thresholds, and remain provisional pending weighed data (D7). |
 | 5.4 Scheduled CI evaluation | Superseded: manual runs | Evaluations run manually on demand per the product-owner decision of 2026-09-27; the scheduled GitHub workflow was removed. |
 | 5.5 Correction analytics | Implemented | `CorrectionAnalytics.cs`, `backend/tools/CorrectionAnalytics/` |
 | 5.6 Coach, describe-food and label evals | Implemented | `backend/tools/AgentEvalHarness/`, evaluation graders in `Infrastructure/Services/Evaluation`; `AgentEvalGraderTests.cs`; manual live runs |
@@ -68,7 +68,7 @@ but the plan's data, review, or rollout condition remains open.
   (`ITableStore.TryReplaceMealDraftAsync`), not read-then-upsert.
 - Hidden calories use a separate `inferred_components` list and prompt-version suffix;
   when disabled, the v11 Stage-A schema remains byte-identical.
-- Golden quality thresholds are live-baselined from 5 refreshed runs (2026-09-26),
+- Golden quality thresholds are live-baselined from 6 refreshed runs (2026-09-26/27),
   pending weighed-meal data (D7); the planned ≥50-case weighed dataset is not yet available.
   Latency and cost thresholds are set from the same live baseline and remain provisional
   pending weighed data (D7). Evaluations are run manually by product-owner decision
@@ -519,7 +519,7 @@ deterministic grounding, as `SearchQualityTests` does.
 
 ### 5.3 Gate and cache policy
 
-Thresholds are the live baseline from 5 refreshed runs (2026-09-26) of the unweighed
+Thresholds are the live baseline from 6 refreshed runs (2026-09-26/27) of the unweighed
 12-case set pending weighed data (D7), and remain provisional. Live gate runs use
 `--refresh`; the gitignored local cache is for iteration, not evidence.
 

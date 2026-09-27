@@ -167,7 +167,25 @@ azure-deploy:
 	./scripts/azure-setup.sh --deploy
 
 # ── Golden-image regression harness (meal scan Stage A) ──
-.PHONY: golden-run golden-gate golden-inprocess golden-e2e
+.PHONY: golden-build golden-run golden-gate golden-inprocess golden-e2e
+
+GOLDEN_HARNESS_DLL := tools/GoldenScanHarness/bin/Release/net10.0/GutAI.GoldenScanHarness.dll
+
+# Avoid dotnet run: shims injecting MSBuild flags would pass them through as program arguments.
+golden-build:
+	cd backend && dotnet build tools/GoldenScanHarness/GutAI.GoldenScanHarness.csproj -c Release --verbosity quiet
+
+golden-run: golden-build
+	cd backend && dotnet $(GOLDEN_HARNESS_DLL) --images ../golden-images --mode stage-a
+
+golden-gate: golden-build
+	cd backend && dotnet $(GOLDEN_HARNESS_DLL) --images ../golden-images --mode stage-a --gate
+
+golden-inprocess: golden-build
+	cd backend && dotnet $(GOLDEN_HARNESS_DLL) --images ../golden-images --mode in-process
+
+golden-e2e: golden-build
+	cd backend && dotnet $(GOLDEN_HARNESS_DLL) --images ../golden-images --mode e2e
 
 # AI evaluation targets make live, paid model calls.
 .PHONY: evals evals-photo evals-agents
@@ -181,14 +199,3 @@ evals-photo:
 evals-agents:
 	@EVAL_SUITE="$(EVAL_SUITE)" EVAL_REPEAT="$(EVAL_REPEAT)" GUTAI_EVAL_STORAGE="$(GUTAI_EVAL_STORAGE)" ./scripts/run-ai-evals.sh agents
 
-golden-run:
-	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode stage-a
-
-golden-gate:
-	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode stage-a --gate
-
-golden-inprocess:
-	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode in-process
-
-golden-e2e:
-	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode e2e

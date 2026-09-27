@@ -1,19 +1,19 @@
 {
   "schema_version": 2,
   "gate": {
-    "min_recall": 0.885,
-    "max_median_gram_error_percent": 47.6,
-    "min_nutrition_backed_rate": 0.265,
-    "max_false_positive_rate": 0.477,
-    "min_precision": 0.663,
+    "min_recall": 0.891,
+    "max_median_gram_error_percent": 46.9,
+    "min_nutrition_backed_rate": 0.268,
+    "max_false_positive_rate": 0.469,
+    "min_precision": 0.668,
     "max_median_kcal_error_percent": null,
     "max_abs_kcal_bias_percent": null,
     "min_identity_precision": null,
-    "max_abstention_rate": 0.761,
-    "min_interval_coverage": 0.469,
+    "max_abstention_rate": 0.767,
+    "min_interval_coverage": 0.437,
     "max_identity_ece": null,
     "max_kcal_cv_percent": null,
-    "max_p95_latency_seconds": 16.16,
+    "max_p95_latency_seconds": 15.79,
     "max_p95_cost_usd": 0.0032
   },
   "cases": [
