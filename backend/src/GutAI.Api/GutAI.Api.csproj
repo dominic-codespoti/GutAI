@@ -9,7 +9,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+    <!-- 10.0.12 depends on Microsoft.OpenApi >= 2.12.0 (GHSA-v5pm-xwqc-g5wc fixed in 2.7.5). -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <!-- 1.2.0 keeps MCP's M.E.AI.Abstractions dependency on the 10.4 ABI used by Responses/Agent Framework. -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.12.46" />
