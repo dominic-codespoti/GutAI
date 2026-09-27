@@ -20,6 +20,14 @@ public class MealVisionValidatorTests
             PreparationNote = "",
         };
 
+    private static ScannedComponent ValidInferred(
+        string name, decimal low = 2m, decimal mid = 5m, decimal high = 8m)
+    {
+        var component = ValidComponent(name, low, mid, high);
+        component.PreparationNote = "glossy";
+        return component;
+    }
+
     [Fact]
     public void Validate_ValidSingleComponent_PassesThrough()
     {
@@ -163,5 +171,48 @@ public class MealVisionValidatorTests
 
         act.Should().Throw<MealScanValidationException>()
             .WithMessage("*none had usable*");
+    }
+
+    [Fact]
+    public void Validate_InferredComponents_EnforcesOrderingAndPerMealMassCap()
+    {
+        var result = MealVisionValidator.Validate(
+            new MealVisionResult { Components = [ValidComponent()] },
+            maxComponents: 12,
+            inferredComponents:
+            [
+                ValidInferred("cooking oil", low: 10m, mid: 25m, high: 30m),
+                ValidInferred("butter", low: 15m, mid: 20m, high: 25m),
+                ValidInferred("glaze", low: 2m, mid: 5m, high: 4m),
+                ValidInferred("dressing", low: 10m, mid: 15m, high: 20m),
+            ],
+            maxInferredComponents: 3,
+            maxInferredGramsPerMeal: 40m);
+
+        result.InferredComponents.Select(item => item.Name).Should().Equal("cooking oil", "dressing");
+        result.InferredComponents.Sum(item => item.EstimatedGramsMidpoint).Should().Be(40m);
+        result.DroppedNotes.Should().Contain(note => note.Contains("inferred mass exceeds 40 g"));
+        result.DroppedNotes.Should().Contain(note => note.Contains("implausible portion range"));
+    }
+
+    [Fact]
+    public void Validate_InferredComponents_EnforcesCountAndFiveKilogramCeiling()
+    {
+        var result = MealVisionValidator.Validate(
+            new MealVisionResult { Components = [ValidComponent()] },
+            maxComponents: 12,
+            inferredComponents:
+            [
+                ValidInferred("oil", low: 1m, mid: 2m, high: 3m),
+                ValidInferred("sauce", low: 5000m, mid: 5000m, high: 5001m),
+                ValidInferred("butter", low: 1m, mid: 2m, high: 3m),
+                ValidInferred("dressing", low: 1m, mid: 2m, high: 3m),
+            ],
+            maxInferredComponents: 2,
+            maxInferredGramsPerMeal: 40m);
+
+        result.InferredComponents.Select(item => item.Name).Should().Equal("oil", "butter");
+        result.DroppedNotes.Should().Contain(note => note.Contains("5 kg"));
+        result.DroppedNotes.Should().Contain(note => note.Contains("Inferred component limit"));
     }
 }

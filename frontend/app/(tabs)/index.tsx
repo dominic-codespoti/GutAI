@@ -8,7 +8,10 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "../../src/stores/auth";
-import { mealApi, symptomApi, userApi, insightApi } from "../../src/api";
+import { mealApi, mealDraftApi, mealSuggestionApi, symptomApi, userApi, insightApi } from "../../src/api";
+import type { MealDraft } from "../../src/types";
+import { MealDraftReviewSheet } from "../../components/meals/MealDraftReviewSheet";
+import { MealSuggestionsSheet } from "../../components/meals/MealSuggestionsSheet";
 import { Ionicons } from "@expo/vector-icons";
 import { DashboardSkeleton } from "../../components/SkeletonLoader";
 import { ErrorState } from "../../components/ErrorState";
@@ -40,6 +43,13 @@ import { toLocalDateStr } from "../../src/utils/date";
 import { getDeviceTimezoneId } from "../../src/utils/timezone";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const draftOriginLabels: Record<string, string> = {
+  photo: "Photo scan",
+  coach: "Coach",
+  mcp: "Connected app",
+  nlp: "Text log",
+  suggestion: "Suggestion",
+};
 const AnimatedView = Animated.createAnimatedComponent(View);
 
 function CalorieRing({
@@ -224,6 +234,19 @@ export default function DashboardScreen() {
     queryFn: () => mealApi.dailySummary(today).then((r) => r.data),
   });
 
+  const [selectedDraft, setSelectedDraft] = useState<MealDraft | null>(null);
+  const [suggestionsVisible, setSuggestionsVisible] = useState(false);
+  const { data: suggestionStatus } = useQuery({
+    queryKey: ["meal-suggestions-status"],
+    queryFn: () => mealSuggestionApi.status().then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: pendingDrafts, refetch: refetchDrafts } = useQuery({
+    queryKey: ["meal-drafts"],
+    queryFn: () => mealDraftApi.listPending().then((r) => r.data),
+  });
+  const nonSuggestionDrafts = pendingDrafts?.filter((draft) => draft.origin !== "suggestion");
+
   const {
     data: todaysSymptoms,
     isLoading: loadingSymptoms,
@@ -261,12 +284,12 @@ export default function DashboardScreen() {
       await Promise.all([
         refetchMeals(), refetchSummary(), refetchSymptoms(),
         refetchAlerts(), refetchTriggerFoods(), refetchStreak(),
-        refetchTrends(),
+        refetchTrends(), refetchDrafts(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchMeals, refetchSummary, refetchSymptoms, refetchAlerts, refetchTriggerFoods, refetchStreak, refetchTrends]);
+  }, [refetchMeals, refetchSummary, refetchSymptoms, refetchAlerts, refetchTriggerFoods, refetchStreak, refetchTrends, refetchDrafts]);
 
   const isLoading = loadingMeals || loadingSummary;
 
@@ -300,6 +323,7 @@ export default function DashboardScreen() {
     summary?.calorieGoal ?? user?.dailyCalorieGoal ?? 2000,
   );
   const caloriesRemaining = Math.max(calorieGoal - caloriesEaten, 0);
+  const itemsWithoutNutrition = summary?.itemsWithoutNutrition ?? 0;
   const mealCount = meals?.length ?? 0;
   const symptomCount = todaysSymptoms?.length ?? 0;
 
@@ -361,6 +385,60 @@ export default function DashboardScreen() {
               </Text>
               <Ionicons name="chevron-forward" size={16} color={c.danger} />
             </TouchableOpacity>
+          )}
+
+          {nonSuggestionDrafts && nonSuggestionDrafts.length > 0 && (
+            <View
+              style={{
+                backgroundColor: c.card,
+                borderRadius: radius.lg,
+                padding: spacing.lg,
+                marginBottom: spacing.lg,
+                ...sh,
+              }}
+            >
+              <Text
+                style={{ ...f.h4, marginBottom: spacing.sm }}
+                accessibilityRole="header"
+              >
+                {nonSuggestionDrafts.length} meal
+                {nonSuggestionDrafts.length !== 1 ? "s" : ""} waiting for your confirmation
+              </Text>
+              {nonSuggestionDrafts.map((draft) => (
+                <TouchableOpacity
+                  key={draft.draftId}
+                  onPress={() => setSelectedDraft(draft)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Review ${draft.mealType ?? "meal"} draft from ${
+                    draftOriginLabels[draft.origin] ?? "Meal"
+                  }, ${Math.round(draft.totals.calories)} kilocalories`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: spacing.md,
+                    borderTopWidth: 1,
+                    borderTopColor: c.divider,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: c.text }}>
+                      {draftOriginLabels[draft.origin] ?? "Meal"}
+                      {" · "}
+                      {draft.mealType ?? "Meal"}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: c.text }}>
+                    {Math.round(draft.totals.calories)} kcal
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={c.textMuted}
+                    style={{ marginLeft: spacing.sm }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
 
           {/* Stats Row */}
@@ -601,6 +679,39 @@ export default function DashboardScreen() {
                 <Text style={f.caption}>remaining</Text>
               </View>
             </View>
+            {itemsWithoutNutrition > 0 && (
+              <Text
+                style={{
+                  color: c.textMuted,
+                  fontSize: 12,
+                  textAlign: "center",
+                  marginTop: spacing.md,
+                }}
+              >
+                +{itemsWithoutNutrition} item
+                {itemsWithoutNutrition !== 1 ? "s" : ""} without calories — totals are a lower bound
+              </Text>
+            )}
+            {suggestionStatus?.enabled && (
+              <TouchableOpacity
+                onPress={() => setSuggestionsVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel="What should I eat? Get meal suggestions based on your remaining budget."
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: spacing.sm,
+                  backgroundColor: c.primaryBg,
+                  borderRadius: radius.md,
+                  paddingVertical: spacing.md,
+                  marginTop: spacing.lg,
+                }}
+              >
+                <Ionicons name="sparkles" size={17} color={c.primary} />
+                <Text style={{ color: c.primary, fontSize: 14, fontWeight: "700" }}>What should I eat?</Text>
+              </TouchableOpacity>
+            )}
           </Animated.View>
 
           {/* Macros Card */}
@@ -1119,6 +1230,17 @@ export default function DashboardScreen() {
       </ScrollView>
 
       <MealFab actions={fabActions} />
+      <MealDraftReviewSheet
+        draft={selectedDraft}
+        visible={selectedDraft !== null}
+        onClose={() => setSelectedDraft(null)}
+        onCommitted={() => setSelectedDraft(null)}
+        onDiscarded={() => setSelectedDraft(null)}
+      />
+      <MealSuggestionsSheet
+        visible={suggestionsVisible}
+        onClose={() => setSuggestionsVisible(false)}
+      />
     </SafeScreen>
   );
 }

@@ -33,7 +33,7 @@ export default function PrivacyPolicyScreen() {
           Privacy Policy
         </Text>
         <Text style={{ ...fonts.caption, marginBottom: spacing.xl }}>
-          Effective Date: February 24, 2026 · Last Updated: August 26, 2026
+          Effective Date: February 24, 2026 · Last Updated: September 25, 2026
         </Text>
 
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
@@ -71,6 +71,7 @@ export default function PrivacyPolicyScreen() {
             "Timestamps of when meals were logged",
             'Free-text notes and natural language meal descriptions (e.g., "ate 2 eggs and toast")',
             "Optional photo URLs",
+            "Meal drafts created from photos, Coach or connected AI assistant suggestions, text logging, or meal suggestions, including your edits and corrections",
           ]}
         />
 
@@ -92,9 +93,16 @@ export default function PrivacyPolicyScreen() {
           ]}
         />
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          These insights are computed on our servers from your diary data, are
-          not shared externally, and are not used to train AI models.
+          We generate personalized insights on our servers from your diary
+          data and do not use them to train AI models. When you request meal
+          suggestions, we send the screened candidate food list described below.
         </Text>
+        <SubHeading>Operational Telemetry</SubHeading>
+        <BulletList
+          items={[
+            "For each photo scan, the AI usage summary log records the operation name, scan correlation/draft ID, stage names, model-call counts, deployment names, input and output token counts, model time, and estimated cost. This includes usage for photo analysis, candidate selection, agent review, and web-nutrition extraction. Operation-tagged metrics report token counts, model time, and estimated cost when available. Telemetry is sent to Application Insights; its Log Analytics workspace is configured for 30-day retention. Estimated cost can be unavailable when deployment pricing is not configured.",
+          ]}
+        />
 
         <SectionHeading>2. Data We Do NOT Collect</SectionHeading>
         <BulletList
@@ -102,8 +110,9 @@ export default function PrivacyPolicyScreen() {
             "Location or GPS data",
             "Device identifiers or advertising IDs",
             "Contacts, call logs, or messages",
-            "Analytics or behavioral tracking",
+            "Advertising or behavioral tracking data",
             "Push notification tokens — optional meal reminders are scheduled locally on your device and are never sent through our servers",
+            "Biometric data",
           ]}
         />
 
@@ -112,7 +121,9 @@ export default function PrivacyPolicyScreen() {
           We use your data to provide the core food diary and symptom tracking
           service, generate personalized insights and trigger food analysis,
           look up nutritional information for foods you log, authenticate your
-          account, and track progress toward your nutrition goals.
+          account, track progress toward your nutrition goals, generate meal
+          suggestions when you request them, and monitor AI service operation
+          and usage costs.
         </Text>
         <Text
           style={{
@@ -135,21 +146,61 @@ export default function PrivacyPolicyScreen() {
         <BulletList
           items={[
             "USDA FoodData Central — Nutrition lookup",
-            "Open Food Facts — Barcode-based food lookup",
-            "CalorieNinjas — Fallback nutrition parsing",
-            "Microsoft Azure OpenAI — Meal descriptions, coach chat messages, and meal photos you submit are processed solely to generate your results (parsing, coaching replies, photo analysis)",
+            "Open Food Facts — Food name or barcode for nutrition lookup and barcode-based food lookup",
+            "DuckDuckGo and Jina Reader — Food-name nutrition search query to DuckDuckGo; selected result URL to Jina Reader for optional web nutrition lookup (disabled by default pending review)",
+            "Microsoft Azure OpenAI — Meal descriptions, Coach chat messages, meal photos you submit, and (if web grounding is enabled) selected web-page content are processed solely to generate your results (parsing, coaching replies, photo analysis). Meal-suggestion requests also send your remaining nutrition budget, any preferences you enter for that request, and a candidate food list with food names and nutrition/serving information. The candidate list is built from recent or safe foods and screened against saved allergies and dietary preferences; those saved lists are not sent as a separate list. Photo notes and food descriptions are sent with their request.",
           ]}
         />
         <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
-          No other third-party services receive your data.
+          When Features:WebGrounding is enabled, web nutrition results are
+          cached in Azure Table Storage using the normalized food name and
+          region, not your user ID, and are not linked to your account.
+          Successful results are reused for up to 180 days; not-found results
+          for up to 7 days. Expired entries are not automatically purged; they
+          remain stored unless a later lookup overwrites them.
         </Text>
+        <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
+          Apart from services listed here, AI providers operating connected
+          assistants, and the optional health-platform sync described below,
+          no other third-party services receive your data.
+        </Text>
+
+        <SubHeading>Optional AI Assistant Connections</SubHeading>
+        <Text style={{ ...fonts.body, marginBottom: spacing.sm }}>
+          If you connect an external AI assistant (for example, a chat app that
+          supports MCP), it uses a personal access token (PAT). A PAT without
+          write scope is read-only; a PAT with write scope can use the available
+          write tools. Meals proposed by a connected assistant appear as drafts.
+          They are logged only after you review and confirm them in GutLens or
+          in the assistant chat; they are never logged automatically. The AI
+          provider operating the assistant handles data passed through it under
+          its own privacy policy.
+        </Text>
+        <Text style={{ ...fonts.body, marginBottom: spacing.lg }}>
+          You can see connected assistants and revoke access in Settings →
+          Connected AI Assistants. Access tokens are stored only as
+          cryptographic hashes and cannot be viewed again after creation.
+        </Text>
+        <SubHeading>Optional Health Platform Sync</SubHeading>
+        <Text style={{ ...fonts.body, marginBottom: spacing.sm }}>
+          GutLens can optionally exchange meal data with Apple Health (iOS) and
+          Google Health Connect (Android), with your permission.
+        </Text>
+        <BulletList
+          items={[
+            "Import — When you request an import, GutLens reads nutrition records from your device's health store and sends selected meal details to GutLens's API to create imported meal entries. Imported entries are labeled as estimates and never treated as verified data.",
+            "Export — You can choose to have meals you log in GutLens written to your device's health store. This toggle is off by default.",
+            "Health data is exchanged between the selected platform, your device, and GutLens. GutLens does not send health-sync records to other third-party services. You can revoke permission in iOS/Android system settings.",
+            "GutLens skips records it originally wrote when reading, so enabling both directions never duplicates your meals.",
+          ]}
+        />
 
         <SectionHeading>5. Data Storage & Security</SectionHeading>
         <BulletList
           items={[
             "All data is stored on secured servers hosted on Microsoft Azure",
             "Passwords are hashed using industry-standard algorithms before storage",
-            "Authentication uses short-lived JSON Web Tokens (JWTs) stored securely on your device",
+            "Authentication uses short-lived JSON Web Tokens (JWTs) stored securely on your device (Expo SecureStore on mobile)",
             "API communication is encrypted via HTTPS/TLS",
             "IP addresses are used transiently for rate limiting and are not persisted",
           ]}
@@ -163,7 +214,7 @@ export default function PrivacyPolicyScreen() {
           items={[
             "Access & Export — Export all your meal and health data at any time via the app",
             "Correction — Update your profile, preferences, and logged entries at any time",
-            "Deletion — Delete your account and all associated data permanently (irreversible)",
+            "Deletion — Delete your account in Settings. This is irreversible: account deletion removes your profile and identity, related credentials and alerts, and draft records; meal and symptom records are marked as deleted",
             "Portability — Your exported data is provided in a standard format",
           ]}
         />
@@ -176,9 +227,10 @@ export default function PrivacyPolicyScreen() {
         <SectionHeading>7. Data Retention</SectionHeading>
         <BulletList
           items={[
-            "Your data is retained for as long as your account is active",
-            "When you delete your account, all data is permanently deleted immediately",
-            "Standard infrastructure backups are purged within 30 days",
+            "Your account profile and identity are retained while your account is active",
+            "AI meal drafts from photos, Coach or connected AI assistant suggestions, text logging, and meal suggestions remain pending until you review them. Pending drafts expire after 24 hours if not reviewed.",
+            "Reviewed or otherwise closed drafts, including discarded drafts and your corrections used to improve portion accuracy, are retained for up to 90 days from creation and then purged.",
+            "Drafts and their correction data are deleted when you delete your account. Account deletion also removes related credentials and alerts and marks meal and symptom records as deleted.",
           ]}
         />
 

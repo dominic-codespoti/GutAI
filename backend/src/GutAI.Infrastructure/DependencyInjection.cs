@@ -17,6 +17,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 
@@ -49,6 +50,10 @@ public static class DependencyInjection
             ?? "UseDevelopmentStorage=true";
         services.AddSingleton(new TableServiceClient(storageConn));
         services.AddSingleton<ITableStore, TableStorageStore>();
+        services.TryAddSingleton(TimeProvider.System);
+
+        // Meal drafts: purge expired pending drafts and aged closed drafts (plan §4.6, D8).
+        services.AddHostedService<MealDraftCleanupService>();
 
         // Offline food database — self-constructs its own TableServiceClient using
         // DefaultAzureCredential (az login, managed identity) so it doesn't conflict
@@ -143,6 +148,16 @@ public static class DependencyInjection
         services.AddScoped<INutritionApiService, CompositeNutritionService>();
         services.AddScoped<CompositeNutritionService>();
 
+        // Meal drafts: every AI-originated meal is a draft committed by the user (AGENTS.md N3).
+        services.AddScoped<IMealDraftService, MealDraftService>();
+        // Shared Coach/MCP item builder (plan §2.4): one grounding policy for every agent.
+        services.AddScoped<IAgentMealItemResolver, AgentMealItemResolver>();
+        // Meal-scan helpers: Stage-A dedupe cache (§4.5) and opt-in portion calibration (§6.2).
+        services.AddSingleton<VisionResultCache>();
+        services.AddSingleton<PortionCalibrator>();
+        // Remaining-budget math shared by the Coach and meal suggestions (plan §7.1).
+        services.AddScoped<INutritionBudgetService, NutritionBudgetService>();
+
         services.AddScoped<NaturalLanguageFallbackService>();
         services.AddSingleton<GutRiskService>();
         services.AddSingleton<IGutRiskService>(sp => sp.GetRequiredService<GutRiskService>());
@@ -166,14 +181,15 @@ public static class DependencyInjection
             var config = sp.GetService<IConfiguration>();
             var logger = sp.GetService<ILogger<ContentUnderstandingService>>();
             var projectClient = sp.GetService<AIProjectClient>();
-            var chatClient = sp.GetService<IChatClient>();
-            return new ContentUnderstandingService(client, config, logger, projectClient, chatClient);
+            var extractionChatClient = sp.GetKeyedService<IChatClient>(AiWorkloads.Extraction);
+            var describeChatClient = sp.GetKeyedService<IChatClient>(AiWorkloads.Describe);
+            // Describe-food decomposes and grounds each component through the shared resolver (§6.5).
+            var foodSearch = sp.GetService<IFoodSearchService>();
+            return new ContentUnderstandingService(client, config, logger, projectClient, extractionChatClient, describeChatClient, foodSearch);
         });
 
         // Coach chat (Microsoft.Extensions.AI over Azure OpenAI)
         var aiEndpoint = configuration["AzureOpenAI:Endpoint"];
-        var cuEndpoint = configuration["AzureOpenAI:ContentUnderstandingEndpoint"] ?? configuration["AzureOpenAI:Endpoint"];
-        var aiDeployment = configuration["AzureOpenAI:DeploymentName"] ?? "gpt-5-nano";
 
         services.AddSingleton(sp =>
         {
@@ -198,50 +214,83 @@ public static class DependencyInjection
                 CreateCredential(configuration),
                 clientOptions);
 
-            // All model inference uses the Azure OpenAI Responses transport. Responses
-            // preserves reasoning context and is the supported tool-calling surface for
-            // GPT-5.6 reasoning deployments.
-            services.AddSingleton<IChatClient>(sp =>
+            // AzureOpenAI:Pricing schema: { "<deployment>": { "InputPer1M": USD, "OutputPer1M": USD } }.
+            foreach (var workload in AiWorkloads.All)
             {
-                var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+                services.AddKeyedChatClient(workload, _ =>
+                {
 #pragma warning disable OPENAI001 // experimental Responses surface
-                var inner = azureClient.GetResponsesClient().AsIChatClient(aiDeployment);
+                    var inner = azureClient.GetResponsesClient().AsIChatClient(AiWorkloads.ResolveDeployment(configuration, workload));
 #pragma warning restore OPENAI001
-                return new ChatClientBuilder(inner)
-                    .UseFunctionInvocation(loggerFactory)
-                    .Build();
+                    var loggerFactory = _.GetRequiredService<ILoggerFactory>();
+                    var builder = new ChatClientBuilder(inner);
+
+                    builder.UseFunctionInvocation(loggerFactory, client =>
+                    {
+                        if (workload == AiWorkloads.Coach)
+                        {
+                            client.MaximumIterationsPerRequest = configuration.GetValue(
+                                "AzureOpenAI:Workloads:coach:MaxToolIterations", 8);
+                            client.MaximumConsecutiveErrorsPerRequest = configuration.GetValue(
+                                "AzureOpenAI:Workloads:coach:MaxConsecutiveToolErrors", 2);
+                        }
+                    });
+
+                    return builder
+                        .UseOpenTelemetry(
+                            loggerFactory,
+                            sourceName: "GutAI.AI",
+                            client => client.EnableSensitiveData = configuration.GetValue(
+                                "AzureOpenAI:Telemetry:EnableSensitiveData", false))
+                        .UseLogging(loggerFactory)
+                        .Build(_);
+                });
+            }
+
+            services.AddScoped<IChatService>(sp =>
+            {
+                return new CoachChatService(
+                        sp.GetRequiredKeyedService<IChatClient>(AiWorkloads.Coach),
+                        sp.GetRequiredService<ITableStore>(),
+                        sp.GetRequiredService<ICorrelationEngine>(),
+                        sp.GetRequiredService<IFoodDiaryAnalysisService>(),
+                        sp.GetRequiredService<IFoodSearchService>(),
+                        sp.GetRequiredService<CompositeNutritionService>(),
+                        sp.GetRequiredService<FodmapService>(),
+                        sp.GetRequiredService<GutRiskService>(),
+                        sp.GetRequiredService<PersonalizedScoringService>(),
+                        sp.GetRequiredService<IMealDraftService>(),
+                        sp.GetRequiredService<IAgentMealItemResolver>(),
+                        sp.GetRequiredService<INutritionBudgetService>(),
+                        sp.GetRequiredService<IConfiguration>(),
+                        sp.GetRequiredService<TimeProvider>(),
+                        sp.GetRequiredService<ILogger<CoachChatService>>(),
+                        sp.GetService<IWebNutritionLookup>(),
+                        sp.GetService<IOfflineFoodDatabase>(),
+                        sp.GetService<IExternalFoodAggregator>(),
+                        sp.GetService<IMealSuggestionService>()
+                    );
             });
 
-        services.AddScoped<IChatService>(sp =>
-        {
-            return new CoachChatService(
-                    sp.GetRequiredService<IChatClient>(),
-                    sp.GetRequiredService<ITableStore>(),
-                    sp.GetRequiredService<ICorrelationEngine>(),
-                    sp.GetRequiredService<IFoodDiaryAnalysisService>(),
-                    sp.GetRequiredService<IFoodSearchService>(),
-                    sp.GetRequiredService<CompositeNutritionService>(),
-                    sp.GetRequiredService<FodmapService>(),
-                    sp.GetRequiredService<GutRiskService>(),
-                    sp.GetRequiredService<PersonalizedScoringService>(),
-                    sp.GetRequiredService<ILogger<CoachChatService>>(),
-                    sp.GetService<IWebNutritionLookup>(),
-                    sp.GetService<IOfflineFoodDatabase>(),
-                    sp.GetService<IExternalFoodAggregator>()
-                );
-            });
+            // Grounded meal suggestions (plan Phase 7) on the suggestion workload; each valid
+            // suggestion becomes a pending suggestion-origin draft (AGENTS.md N3).
+            services.AddScoped<IMealSuggestionService, MealSuggestionService>();
 
-            // AI meal photo scanning (P1 skeleton — see docs/meal-scan-detailed-design.md).
-            // Shares the coach's IChatClient pipeline (Responses transport + function middleware);
-            // the scan path itself is non-agentic structured-output inference.
+            // AI meal photo scanning (docs/meal-scan-detailed-design.md): Stage A on the vision
+            // workload, batched B2 + agent review on the selection workload; drafts persist via
+            // IMealDraftService and reach the diary only through a user commit (AGENTS.md N3).
             services.AddScoped<IMealScanService>(sp => new MealScanService(
-                sp.GetRequiredService<IChatClient>(),
+                sp.GetRequiredKeyedService<IChatClient>(AiWorkloads.Vision),
+                sp.GetRequiredKeyedService<IChatClient>(AiWorkloads.Selection),
                 sp.GetRequiredService<ITableStore>(),
                 sp.GetRequiredService<IConfiguration>(),
                 sp.GetRequiredService<IFoodSearchService>(),
                 sp.GetRequiredService<IWebNutritionLookup>(),
                 sp.GetRequiredService<FodmapService>(),
                 sp.GetRequiredService<GutRiskService>(),
+                sp.GetRequiredService<IMealDraftService>(),
+                sp.GetRequiredService<VisionResultCache>(),
+                sp.GetRequiredService<PortionCalibrator>(),
                 sp.GetRequiredService<ILogger<MealScanService>>()
             ));
 
@@ -249,19 +298,8 @@ public static class DependencyInjection
             // Flag-gated (Features:WebGrounding); keyless DDG search + Jina Reader + cheap extraction.
             services.AddHttpClient<WebNutritionCascade>();
             services.AddScoped<IWebNutritionLookup>(sp => sp.GetRequiredService<WebNutritionCascade>());
-
-            // Stage A alone — used by the golden-image regression harness.
-            services.AddSingleton<IMealVisionStage>(sp => new MealScanService(
-                sp.GetRequiredService<IChatClient>(),
-                sp.GetRequiredService<ITableStore>(),
-                sp.GetRequiredService<IConfiguration>(),
-                sp.GetRequiredService<IFoodSearchService>(),
-                sp.GetRequiredService<IWebNutritionLookup>(),
-                sp.GetRequiredService<FodmapService>(),
-                sp.GetRequiredService<GutRiskService>(),
-                sp.GetRequiredService<ILogger<MealScanService>>()
-            ));
         }
+
 
         return services;
     }

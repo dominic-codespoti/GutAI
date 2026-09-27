@@ -92,12 +92,20 @@ public interface ITableStore
     Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct = default);
     Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default);
 
-    // Meal-scan sessions (drafts pending user review)
-    Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default);
-    Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
-    Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
+    // Meal drafts (AGENTS.md N3)
+    Task UpsertMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default);
+    Task<MealDraftRecord?> GetMealDraftAsync(Guid userId, Guid draftId, CancellationToken ct = default);
+    Task<string?> TryReplaceMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default);
+    Task<List<MealDraftRecord>> GetMealDraftsByStatusAsync(Guid userId, string status, CancellationToken ct = default);
+    Task<int> PurgeMealDraftsAsync(DateTimeOffset pendingExpiredBefore, DateTimeOffset closedCreatedBefore, CancellationToken ct = default);
 
-    // Web nutrition cascade cache (keyed by normalized food name)
-    Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default);
+    // Coach session state
+    Task<CoachSessionState?> GetCoachSessionStateAsync(Guid userId, CancellationToken ct = default);
+    Task UpsertCoachSessionStateAsync(Guid userId, CoachSessionState state, CancellationToken ct = default);
+    Task DeleteCoachSessionStateAsync(Guid userId, CancellationToken ct = default);
+
+    // Web nutrition cascade cache (cacheKey = "{normalizedName}|{region}")
+    Task<WebNutritionCacheEntry?> GetWebNutritionCacheEntryAsync(string cacheKey, CancellationToken ct = default);
+    Task UpsertWebNutritionNegativeCacheAsync(string cacheKey, CancellationToken ct = default);
     Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default);
 }

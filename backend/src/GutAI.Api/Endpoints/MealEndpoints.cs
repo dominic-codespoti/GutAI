@@ -27,34 +27,12 @@ public static class MealEndpoints
 
     static async Task<IResult> CreateMeal(CreateMealRequest request, ClaimsPrincipal principal, ITableStore store, ICacheService cache)
     {
-        if (request.Items.Count == 0)
-            return Results.BadRequest(new { error = "A meal must have at least one item" });
-
-        if (request.Items.Count > 50)
-            return Results.BadRequest(new { error = "A meal cannot have more than 50 items" });
-
-        if (request.Notes is not null && request.Notes.Length > 1000)
-            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
-
-        if (request.OriginalText is not null && request.OriginalText.Length > 2000)
-            return Results.BadRequest(new { error = "Original text must not exceed 2000 characters" });
-
-        if (request.Items.Any(i => string.IsNullOrWhiteSpace(i.FoodName) || i.FoodName.Length > 200))
-            return Results.BadRequest(new { error = "Each item must have a food name (max 200 characters)" });
-
-        if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
-            return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
-
-        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0
-            || i.FiberG < 0 || i.SugarG < 0 || i.SodiumMg < 0 || i.CholesterolMg < 0 || i.SaturatedFatG < 0 || i.PotassiumMg < 0))
-            return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
-
-        if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
-            return Results.BadRequest(new { error = "Nutrition values are unrealistically high" });
+        var validationError = ValidateMealRequest(request);
+        if (validationError is not null)
+            return validationError;
 
         var userId = GetUserId(principal);
         var mealType = Enum.TryParse<MealType>(request.MealType, true, out var mt) ? mt : MealType.Snack;
-
         var meal = new MealLog
         {
             Id = Guid.NewGuid(),
@@ -68,32 +46,9 @@ public static class MealEndpoints
             IsDeleted = false
         };
 
-        var items = request.Items.Select(i => new MealItem
-        {
-            Id = Guid.NewGuid(),
-            MealLogId = meal.Id,
-            FoodName = i.FoodName,
-            Barcode = i.Barcode,
-            FoodProductId = i.FoodProductId,
-            Servings = i.Servings,
-            ServingUnit = i.ServingUnit,
-            ServingWeightG = i.ServingWeightG,
-            ServingHintUnit = i.ServingHintUnit,
-            ServingHintUnitPlural = i.ServingHintUnitPlural,
-            ServingHintUnitGrams = i.ServingHintUnitGrams,
-            Calories = i.Calories,
-            ProteinG = i.ProteinG,
-            CarbsG = i.CarbsG,
-            FatG = i.FatG,
-            FiberG = i.FiberG,
-            SugarG = i.SugarG,
-            SodiumMg = i.SodiumMg,
-            CholesterolMg = i.CholesterolMg,
-            SaturatedFatG = i.SaturatedFatG,
-            PotassiumMg = i.PotassiumMg,
-            MatchConfidence = i.MatchConfidence,
-            NutritionProvenance = i.NutritionProvenance
-        }).ToList();
+        var (items, itemError) = await BuildMealItemsAsync(request.Items, meal.Id, store);
+        if (itemError is not null)
+            return itemError;
 
         meal.TotalCalories = items.Sum(i => i.Calories);
         meal.TotalProteinG = items.Sum(i => i.ProteinG);
@@ -102,7 +57,6 @@ public static class MealEndpoints
 
         await store.UpsertMealLogAsync(meal);
         await store.UpsertMealItemsAsync(userId, meal.Id, items);
-
         await InvalidateUserInsightCaches(userId, store, cache);
 
         meal.Items = items;
@@ -113,20 +67,73 @@ public static class MealEndpoints
     static async Task<IResult> LogNatural(
         NaturalLanguageMealRequest request,
         ClaimsPrincipal principal,
-        INutritionApiService nutritionApi)
+        ITableStore store,
+        INutritionApiService nutritionApi,
+        IMealDraftService draftService)
     {
         if (string.IsNullOrWhiteSpace(request.Text) || request.Text.Length > 2000)
             return Results.BadRequest(new { error = "Text is required and must not exceed 2000 characters" });
-
-        var parsed = await nutritionApi.ParseNaturalLanguageAsync(request.Text);
+        MealType? mealType = null;
+        if (request.MealType is not null)
+        {
+            if (!MealValidation.TryParseMealType(request.MealType, out var parsedMealType))
+                return Results.BadRequest(new { error = $"Meal type must be {MealValidation.MealTypeNames}" });
+            mealType = parsedMealType;
+        }
+        var user = await store.GetUserAsync(GetUserId(principal));
+        var parsed = await nutritionApi.ParseNaturalLanguageAsync(
+            request.Text,
+            region: user?.PreferredFoodRegion ?? FoodRegion.Default);
         if (parsed.Count == 0)
             return Results.BadRequest(new { error = "Could not parse any food items from the text." });
+
+        var draftItems = parsed.Select(item => new MealDraftItemDto
+        {
+            ItemId = Guid.NewGuid(),
+            Name = item.Name,
+            FoodProductId = item.FoodProductId,
+            Source = item.NutritionProvenance switch
+            {
+                nameof(NutritionProvenance.Sourced) => "db",
+                nameof(NutritionProvenance.Web) => "web",
+                _ => "estimate",
+            },
+            Grams = item.ServingWeightG,
+            Per100g = item.Per100g,
+            NutritionProvenance = item.NutritionProvenance,
+            MatchConfidence = item.MatchConfidence,
+            PortionConfidence = item.PortionConfidence,
+            NeedsChoice = item.NeedsChoice,
+            Grounding = item.Grounding,
+            PortionMethod = "nlp_estimate",
+            Calories = item.Calories,
+            ProteinG = item.ProteinG,
+            CarbsG = item.CarbsG,
+            FatG = item.FatG,
+            FiberG = item.FiberG,
+            SugarG = item.SugarG,
+            SodiumMg = item.SodiumMg,
+        }).ToList();
+        var draft = await draftService.CreateAsync(GetUserId(principal), new MealDraftCreateRequest
+        {
+            Origin = MealDraftOrigins.Nlp,
+            MealType = mealType?.ToString(),
+            LoggedAt = request.LoggedAt.HasValue
+                ? new DateTimeOffset(TimeZoneHelper.NormalizeUtc(request.LoggedAt.Value))
+                : null,
+            Items = draftItems,
+            Warnings = [],
+            ReferenceObjectVisible = false,
+            OverallConfidence = parsed.Min(item => item.MatchConfidence),
+        });
+        var parsedWithDraftIds = parsed.Select((item, index) => item with { DraftItemId = draftItems[index].ItemId }).ToList();
 
         return Results.Ok(new
         {
             originalText = request.Text,
             mealType = request.MealType,
-            parsedItems = parsed
+            parsedItems = parsedWithDraftIds,
+            draftId = draft.DraftId
         });
     }
 
@@ -182,27 +189,12 @@ public static class MealEndpoints
         var meal = await store.GetMealLogAsync(userId, id);
         if (meal is null) return Results.NotFound();
 
-        if (request.Items.Count == 0)
-            return Results.BadRequest(new { error = "A meal must have at least one item" });
-
-        if (request.Items.Count > 50)
-            return Results.BadRequest(new { error = "A meal cannot have more than 50 items" });
-
-        if (request.Notes is not null && request.Notes.Length > 1000)
-            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
-
-        if (request.Items.Any(i => string.IsNullOrWhiteSpace(i.FoodName) || i.FoodName.Length > 200))
-            return Results.BadRequest(new { error = "Each item must have a food name (max 200 characters)" });
-
-        if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
-            return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
-
-        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0
-            || i.FiberG < 0 || i.SugarG < 0 || i.SodiumMg < 0 || i.CholesterolMg < 0 || i.SaturatedFatG < 0 || i.PotassiumMg < 0))
-            return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
-
-        if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
-            return Results.BadRequest(new { error = "Nutrition values are unrealistically high" });
+        var validationError = ValidateMealRequest(request);
+        if (validationError is not null)
+            return validationError;
+        var (newItems, itemError) = await BuildMealItemsAsync(request.Items, id, store);
+        if (itemError is not null)
+            return itemError;
 
         meal.MealType = Enum.TryParse<MealType>(request.MealType, true, out var mt) ? mt : meal.MealType;
         meal.Notes = request.Notes;
@@ -213,42 +205,12 @@ public static class MealEndpoints
             meal.LoggedAt = TimeZoneHelper.NormalizeUtc(request.LoggedAt.Value);
 
         await store.DeleteMealItemsAsync(userId, id);
-
-        var newItems = request.Items.Select(i => new MealItem
-        {
-            Id = Guid.NewGuid(),
-            MealLogId = meal.Id,
-            FoodName = i.FoodName,
-            Barcode = i.Barcode,
-            FoodProductId = i.FoodProductId,
-            Servings = i.Servings,
-            ServingUnit = i.ServingUnit,
-            ServingWeightG = i.ServingWeightG,
-            ServingHintUnit = i.ServingHintUnit,
-            ServingHintUnitPlural = i.ServingHintUnitPlural,
-            ServingHintUnitGrams = i.ServingHintUnitGrams,
-            Calories = i.Calories,
-            ProteinG = i.ProteinG,
-            CarbsG = i.CarbsG,
-            FatG = i.FatG,
-            FiberG = i.FiberG,
-            SugarG = i.SugarG,
-            SodiumMg = i.SodiumMg,
-            CholesterolMg = i.CholesterolMg,
-            SaturatedFatG = i.SaturatedFatG,
-            PotassiumMg = i.PotassiumMg,
-            MatchConfidence = i.MatchConfidence,
-            NutritionProvenance = i.NutritionProvenance
-        }).ToList();
-
         meal.TotalCalories = newItems.Sum(i => i.Calories);
         meal.TotalProteinG = newItems.Sum(i => i.ProteinG);
         meal.TotalCarbsG = newItems.Sum(i => i.CarbsG);
         meal.TotalFatG = newItems.Sum(i => i.FatG);
-
         await store.UpsertMealLogAsync(meal);
         await store.UpsertMealItemsAsync(userId, id, newItems);
-
         await InvalidateUserInsightCaches(userId, store, cache);
 
         meal.Items = newItems;
@@ -264,9 +226,7 @@ public static class MealEndpoints
 
         meal.IsDeleted = true;
         await store.UpsertMealLogAsync(meal);
-
         await InvalidateUserInsightCaches(userId, store, cache);
-
         return Results.NoContent();
     }
 
@@ -295,6 +255,7 @@ public static class MealEndpoints
         foreach (var m in meals)
             m.Items = await store.GetMealItemsAsync(userId, m.Id);
 
+        var dayItems = meals.SelectMany(m => m.Items ?? []).ToList();
         return Results.Ok(new DailyNutritionSummaryDto
         {
             Date = date,
@@ -302,11 +263,12 @@ public static class MealEndpoints
             TotalProteinG = meals.Sum(m => m.TotalProteinG),
             TotalCarbsG = meals.Sum(m => m.TotalCarbsG),
             TotalFatG = meals.Sum(m => m.TotalFatG),
-            TotalFiberG = meals.SelectMany(m => m.Items).Sum(i => i.FiberG),
-            TotalSugarG = meals.SelectMany(m => m.Items).Sum(i => i.SugarG),
-            TotalSodiumMg = meals.SelectMany(m => m.Items).Sum(i => i.SodiumMg),
+            TotalFiberG = dayItems.Sum(i => i.FiberG),
+            TotalSugarG = dayItems.Sum(i => i.SugarG),
+            TotalSodiumMg = dayItems.Sum(i => i.SodiumMg),
             MealCount = meals.Count,
-            CalorieGoal = user?.DailyCalorieGoal ?? 2000
+            CalorieGoal = user?.DailyCalorieGoal ?? 2000,
+            ItemsWithoutNutrition = dayItems.Count(i => i.NutritionProvenance == nameof(NutritionProvenance.Unknown))
         });
     }
 
@@ -496,6 +458,141 @@ public static class MealEndpoints
         return Results.Ok(export);
     }
 
+    static IResult? ValidateMealRequest(CreateMealRequest request)
+    {
+        if (request.Items is null || request.Items.Count == 0)
+            return Results.BadRequest(new { error = "A meal must have at least one item" });
+        if (request.Items.Count > 50)
+            return Results.BadRequest(new { error = "A meal cannot have more than 50 items" });
+        if (request.Notes is not null && request.Notes.Length > 1000)
+            return Results.BadRequest(new { error = "Notes must not exceed 1000 characters" });
+        if (request.OriginalText is not null && request.OriginalText.Length > 2000)
+            return Results.BadRequest(new { error = "Original text must not exceed 2000 characters" });
+        if (request.Items.Any(i => string.IsNullOrWhiteSpace(i.FoodName) || i.FoodName.Length > 200))
+            return Results.BadRequest(new { error = "Each item must have a food name (max 200 characters)" });
+        if (request.Items.Any(i => i.Servings <= 0 || i.Servings > 1000))
+            return Results.BadRequest(new { error = "Servings must be between 0 and 1000" });
+        if (request.Items.Any(i => i.Calories < 0 || i.ProteinG < 0 || i.CarbsG < 0 || i.FatG < 0
+            || i.FiberG < 0 || i.SugarG < 0 || i.SodiumMg < 0 || i.CholesterolMg < 0 || i.SaturatedFatG < 0 || i.PotassiumMg < 0))
+            return Results.BadRequest(new { error = "Nutrition values cannot be negative" });
+        if (request.Items.Any(i => i.Calories > 50000 || i.ProteinG > 5000 || i.CarbsG > 5000 || i.FatG > 5000))
+            return Results.BadRequest(new { error = "Nutrition values are unrealistically high" });
+        if (request.Items.Any(i => i.ServingWeightG.HasValue
+            && (i.ServingWeightG.Value <= 0m || i.ServingWeightG.Value > 5000m)))
+            return Results.BadRequest(new { error = "servingWeightG must be greater than 0 and no more than 5000 g" });
+        return null;
+    }
+
+    static async Task<(List<MealItem> Items, IResult? Error)> BuildMealItemsAsync(
+        IReadOnlyList<CreateMealItemRequest> requested,
+        Guid mealId,
+        ITableStore store)
+    {
+        var items = new List<MealItem>(requested.Count);
+        foreach (var input in requested)
+        {
+            var servingWeightG = input.ServingWeightG;
+            var calories = input.Calories;
+            var protein = input.ProteinG;
+            var carbs = input.CarbsG;
+            var fat = input.FatG;
+            var fiber = input.FiberG;
+            var sugar = input.SugarG;
+            var sodium = input.SodiumMg;
+            var provenance = input.NutritionProvenance;
+
+            if (input.FoodProductId is { } productId)
+            {
+                var product = await store.GetFoodProductAsync(productId);
+                if (product is null)
+                    return ([], Results.UnprocessableEntity(new { error = $"Food product '{productId}' was not found" }));
+                var grams = servingWeightG is > 0
+                    ? servingWeightG.Value
+                    : product.ServingQuantity is > 0
+                        ? input.Servings * product.ServingQuantity.Value
+                        : (decimal?)null;
+                if (grams is null)
+                    return ([], Results.UnprocessableEntity(new { error = "servingWeightG is required for catalog items" }));
+                if (grams is <= 0m || grams > 5000m)
+                    return ([], Results.BadRequest(new { error = "servingWeightG must be greater than 0 and no more than 5000 g" }));
+                var basis = NutritionCalculator.BasisFrom(product);
+                if (basis is null)
+                    return ([], Results.UnprocessableEntity(new { error = "Catalog item has no nutrition basis" }));
+
+                var amounts = NutritionCalculator.Compute(basis, grams.Value);
+                servingWeightG = grams;
+                calories = amounts.Calories;
+                protein = amounts.ProteinG;
+                carbs = amounts.CarbsG;
+                fat = amounts.FatG;
+                fiber = amounts.FiberG ?? 0m;
+                sugar = amounts.SugarG ?? 0m;
+                sodium = amounts.SodiumMg ?? 0m;
+                // The per-100 g basis intentionally omits cholesterol, saturated fat, and potassium;
+                // preserve these client-supplied values only after applying the normal storage clamps.
+                provenance = nameof(NutritionProvenance.Sourced);
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(provenance))
+                    provenance = nameof(NutritionProvenance.UserEntered);
+                else if (provenance == nameof(NutritionProvenance.Sourced))
+                    provenance = nameof(NutritionProvenance.Estimated);
+                else
+                {
+                    if (!NutritionProvenanceRules.TryParse(provenance, out var parsedProvenance))
+                        return ([], Results.BadRequest(new { error = $"Unknown nutrition provenance '{provenance}'" }));
+                    if (parsedProvenance == NutritionProvenance.Unknown
+                        && (calories != 0m || protein != 0m || carbs != 0m || fat != 0m
+                            || fiber != 0m || sugar != 0m || sodium != 0m
+                            || input.CholesterolMg != 0m || input.SaturatedFatG != 0m || input.PotassiumMg != 0m))
+                        return ([], Results.BadRequest(new { error = "Items with Unknown nutrition provenance cannot include nutrition values" }));
+                }
+
+            }
+
+            var amountsToCheck = new NutritionAmountsDto
+            {
+                Calories = calories,
+                ProteinG = protein,
+                CarbsG = carbs,
+                FatG = fat,
+                FiberG = fiber,
+                SugarG = sugar,
+                SodiumMg = sodium,
+            };
+            if (NutritionSanity.CheckPortion(amountsToCheck, servingWeightG, input.FoodName).HasHardViolation)
+                return ([], Results.UnprocessableEntity(new { error = $"Nutrition values for '{input.FoodName}' are implausible" }));
+
+            items.Add(new MealItem
+            {
+                Id = Guid.NewGuid(),
+                MealLogId = mealId,
+                FoodName = input.FoodName,
+                Barcode = input.Barcode,
+                FoodProductId = input.FoodProductId,
+                Servings = input.Servings,
+                ServingUnit = input.ServingUnit,
+                ServingWeightG = servingWeightG,
+                ServingHintUnit = input.ServingHintUnit,
+                ServingHintUnitPlural = input.ServingHintUnitPlural,
+                ServingHintUnitGrams = input.ServingHintUnitGrams,
+                Calories = MealValidation.ClampNutrient(calories, MealValidation.MaxCalories),
+                ProteinG = MealValidation.ClampNutrient(protein, MealValidation.MaxMacroG),
+                CarbsG = MealValidation.ClampNutrient(carbs, MealValidation.MaxMacroG),
+                FatG = MealValidation.ClampNutrient(fat, MealValidation.MaxMacroG),
+                FiberG = MealValidation.ClampNutrient(fiber, MealValidation.MaxMacroG),
+                SugarG = MealValidation.ClampNutrient(sugar, MealValidation.MaxMacroG),
+                SodiumMg = MealValidation.ClampNutrient(sodium, MealValidation.MaxMacroG),
+                CholesterolMg = MealValidation.ClampNutrient(input.CholesterolMg, MealValidation.MaxMacroG),
+                SaturatedFatG = MealValidation.ClampNutrient(input.SaturatedFatG, MealValidation.MaxMacroG),
+                PotassiumMg = MealValidation.ClampNutrient(input.PotassiumMg, MealValidation.MaxMacroG),
+                MatchConfidence = input.MatchConfidence,
+                NutritionProvenance = provenance,
+            });
+        }
+        return (items, null);
+    }
     static MealLogDto MapToDto(MealLog m, IReadOnlyDictionary<Guid, string?>? safetyRatings = null) => new()
     {
         Id = m.Id,

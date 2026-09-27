@@ -20,10 +20,45 @@ internal static class FoodTextNormalizer
         "ready", "eat",
     };
 
-    /// <summary>Splits on food-name delimiters, lowercases, and drops empty entries. No stop-word removal —
-    /// used for query token extraction where every token (even short/common ones) may matter.</summary>
+    /// <summary>Splits on food-name delimiters, lowercases, and drops empty entries.</summary>
     public static string[] Tokenize(string text) =>
         text.ToLowerInvariant().Split(Delimiters, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    /// <summary>Tokenizes for index matching, additionally retaining joined forms of
+    /// hyphenated words without changing the public tokenization contract.</summary>
+    public static string[] TokenizeForMatching(string text)
+    {
+        var tokens = Tokenize(text);
+        var lower = text.ToLowerInvariant();
+        if (!lower.Contains('-'))
+            return tokens;
+
+        var result = new List<string>(tokens);
+        for (var i = 0; i < lower.Length;)
+        {
+            if (!char.IsLetterOrDigit(lower[i]))
+            {
+                i++;
+                continue;
+            }
+
+            var joined = new System.Text.StringBuilder();
+            var segments = 0;
+            while (i < lower.Length && char.IsLetterOrDigit(lower[i]))
+            {
+                var start = i;
+                while (i < lower.Length && char.IsLetterOrDigit(lower[i])) i++;
+                joined.Append(lower, start, i - start);
+                segments++;
+                if (i >= lower.Length || lower[i] != '-' || i + 1 >= lower.Length || !char.IsLetterOrDigit(lower[i + 1]))
+                    break;
+                i++;
+            }
+            if (segments > 1)
+                result.Add(joined.ToString());
+        }
+        return result.ToArray();
+    }
+
 
     /// <summary>
     /// USDA convention: "PrimaryNoun, descriptor, descriptor" → returns "PrimaryNoun".

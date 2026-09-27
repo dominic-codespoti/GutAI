@@ -1,3 +1,5 @@
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using GutAI.Api.Middleware;
@@ -107,11 +109,14 @@ builder.Services.AddHealthChecks();
 
 // Application Insights (only when configured; local dev should boot without it)
 var appInsightsConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing.AddSource("GutAI.AI"))
+    .WithMetrics(metrics => metrics.AddMeter("GutAI.AI"));
+
 if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
 {
     builder.Services.AddApplicationInsightsTelemetry();
 }
-
 var app = builder.Build();
 
 // Middleware pipeline
@@ -167,6 +172,8 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 // API Endpoints
 app.MapGroup("/api/auth").MapAuthEndpoints().RequireRateLimiting("auth");
 app.MapGroup("/api/meals").MapMealEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
+app.MapGroup("/api/meals/drafts").MapMealDraftEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");
+app.MapGroup("/api/meals/suggestions").MapMealSuggestionEndpoints().RequireAuthorization();
 app.MapGroup("/api/meals/scan").MapMealScanEndpoints().RequireAuthorization().RequireRateLimiting("mealScan");
 app.MapGroup("/api/food").MapFoodEndpoints().RequireAuthorization().RequireRateLimiting("search");
 app.MapGroup("/api/symptoms").MapSymptomEndpoints().RequireAuthorization().RequireRateLimiting("authenticated");

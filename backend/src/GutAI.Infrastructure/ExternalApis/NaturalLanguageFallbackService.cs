@@ -3,6 +3,7 @@ using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
+using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -30,7 +31,8 @@ public partial class NaturalLanguageFallbackService
         _webLookup = webLookup;
     }
 
-    public virtual async Task<List<ParsedFoodItemDto>> ParseAsync(string text, CancellationToken ct = default)
+    public virtual async Task<List<ParsedFoodItemDto>> ParseAsync(
+        string text, FoodRegion region = FoodRegion.Default, CancellationToken ct = default)
     {
         var cleaned = PreprocessText(text);
         var rawSegments = SplitIntoSegmentsWithJoins(cleaned);
@@ -45,35 +47,61 @@ public partial class NaturalLanguageFallbackService
                 var resolution = seg.Precomputed ?? await TryResolveAsync(seg.FoodName, ct)
                     ?? new FoodResolutionDto { OriginalQuery = seg.FoodName };
 
-                if (resolution.Selected is not null)
+                var decision = GroundingPolicy.Decide(resolution);
+                var selected = decision.Selected ?? (resolution.Selected is not null && !decision.AutoSelected
+                    ? resolution.Selected
+                    : null);
+
+                if (selected is not null)
                 {
-                    var match = resolution.Selected;
-                    var unitWeightG = EstimateUnitWeightG(match, seg.Unit, seg.FoodName) * seg.SizeMultiplier;
+                    var unitWeightG = EstimateUnitWeightG(selected, seg.Unit, seg.FoodName) * seg.SizeMultiplier;
                     var totalWeightG = unitWeightG * seg.Quantity;
-                    var scale = totalWeightG / 100m;
-                    var portionConfidence = ServingEstimator.EstimatePortionConfidence(match.ServingQuantity, seg.Unit, seg.FoodName);
+                    var portionConfidence = ServingEstimator.EstimatePortionConfidence(selected.ServingQuantity, seg.Unit, seg.FoodName);
+                    var basis = NutritionCalculator.BasisFrom(selected);
 
                     Guid? foodProductId = null;
                     try
                     {
-                        foodProductId = await FoodProductPersistence.ResolveOrPersistAsync(match, _store, ct);
+                        foodProductId = await FoodProductPersistence.ResolveOrPersistAsync(selected, _store, ct);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to persist FoodProduct for '{Name}'", match.Name);
+                        _logger.LogWarning(ex, "Failed to persist FoodProduct for '{Name}'", selected.Name);
                     }
 
+                    if (basis is null)
+                    {
+                        results.Add(CreateGenericEstimate(seg.FoodName, seg.Quantity, seg.Unit, seg.SizeMultiplier));
+                        continue;
+                    }
+
+                    var amounts = NutritionCalculator.Compute(basis, totalWeightG);
+                    var needsChoice = !decision.AutoSelected;
+                    IReadOnlyList<GroundingCandidateDto> groundingCandidates = needsChoice
+                        ? BuildPreviewCandidates(selected, decision.Candidates, foodProductId)
+                        : [];
+                    var candidateKey = needsChoice ? FoodCandidateIdentity.Of(selected) : null;
+                    var grounding = needsChoice
+                        ? GroundingAttempts.MakeGrounding(
+                            seg.FoodName,
+                            resolution,
+                            false,
+                            null,
+                            null,
+                            groundingCandidates)
+                        : null;
                     results.Add(new ParsedFoodItemDto
                     {
-                        Name = match.Name,
+                        Name = selected.Name,
                         FoodProductId = foodProductId,
-                        Calories = Round(match.Calories100g, scale),
-                        ProteinG = Round(match.Protein100g, scale),
-                        CarbsG = Round(match.Carbs100g, scale),
-                        FatG = Round(match.Fat100g, scale),
-                        FiberG = Round(match.Fiber100g, scale),
-                        SugarG = Round(match.Sugar100g, scale),
-                        SodiumMg = Round(match.SodiumMg100g, scale),
+                        Per100g = basis,
+                        Calories = amounts.Calories,
+                        ProteinG = amounts.ProteinG,
+                        CarbsG = amounts.CarbsG,
+                        FatG = amounts.FatG,
+                        FiberG = amounts.FiberG ?? 0m,
+                        SugarG = amounts.SugarG ?? 0m,
+                        SodiumMg = amounts.SodiumMg ?? 0m,
                         ServingWeightG = totalWeightG,
                         ServingSize = FormatServingSize(seg.Quantity, seg.Unit),
                         ServingQuantity = seg.Quantity,
@@ -81,6 +109,9 @@ public partial class NaturalLanguageFallbackService
                         PortionConfidence = portionConfidence,
                         NutritionProvenance = nameof(NutritionProvenance.Sourced),
                         ResolutionStatus = resolution.Status.ToString(),
+                        NeedsChoice = needsChoice,
+                        Grounding = grounding,
+                        CandidateKey = candidateKey,
                     });
                 }
                 else
@@ -91,7 +122,7 @@ public partial class NaturalLanguageFallbackService
                     {
                         try
                         {
-                            webResult = await _webLookup.LookupAsync(seg.FoodName, ct);
+                            webResult = await _webLookup.LookupAsync(seg.FoodName, region, ct);
                         }
                         catch (Exception ex)
                         {
@@ -103,25 +134,26 @@ public partial class NaturalLanguageFallbackService
                     {
                         var unitWeightG = EstimateUnitWeightG(null, seg.Unit, seg.FoodName) * seg.SizeMultiplier;
                         var totalWeightG = unitWeightG * seg.Quantity;
-                        var scale = totalWeightG / 100m;
-
+                        var basis = NutritionCalculator.BasisFrom(webResult);
+                        var amounts = NutritionCalculator.Compute(basis, totalWeightG);
                         results.Add(new ParsedFoodItemDto
                         {
                             Name = seg.FoodName,
                             FoodProductId = null,
-                            Calories = Round(webResult.CaloriesKcal, scale),
-                            ProteinG = Round(webResult.ProteinG, scale),
-                            CarbsG = Round(webResult.CarbsG, scale),
-                            FatG = Round(webResult.FatG, scale),
-                            FiberG = Round(webResult.FiberG, scale),
-                            SugarG = Round(webResult.SugarG, scale),
-                            SodiumMg = Round(webResult.SodiumMg, scale),
+                            Per100g = basis,
+                            Calories = amounts.Calories,
+                            ProteinG = amounts.ProteinG,
+                            CarbsG = amounts.CarbsG,
+                            FatG = amounts.FatG,
+                            FiberG = amounts.FiberG ?? 0m,
+                            SugarG = amounts.SugarG ?? 0m,
+                            SodiumMg = amounts.SodiumMg ?? 0m,
                             ServingWeightG = totalWeightG,
                             ServingSize = FormatServingSize(seg.Quantity, seg.Unit),
                             ServingQuantity = seg.Quantity,
                             MatchConfidence = 0.85m,
                             PortionConfidence = 0.75m,
-                            NutritionProvenance = nameof(NutritionProvenance.Sourced),
+                            NutritionProvenance = nameof(NutritionProvenance.Web),
                             ResolutionStatus = "ResolvedWeb",
                         });
                     }
@@ -144,6 +176,28 @@ public partial class NaturalLanguageFallbackService
         }
 
         return results;
+    }
+    private static IReadOnlyList<GroundingCandidateDto> BuildPreviewCandidates(
+        FoodProductDto preview,
+        IEnumerable<FoodProductDto> policyCandidates,
+        Guid? persistedProductId)
+    {
+        var previewCandidate = GroundingAttempts.ToCandidates([preview])[0] with
+        {
+            FoodProductId = persistedProductId == Guid.Empty ? null : persistedProductId,
+        };
+        var candidates = new List<GroundingCandidateDto>(GroundingPolicy.MaxCandidates) { previewCandidate };
+        var candidateKeys = new HashSet<string>(StringComparer.Ordinal) { previewCandidate.CandidateKey! };
+
+        foreach (var candidate in GroundingAttempts.ToCandidates(policyCandidates))
+        {
+            if (candidate.CandidateKey is { } key && candidateKeys.Add(key))
+                candidates.Add(candidate);
+            if (candidates.Count == GroundingPolicy.MaxCandidates)
+                break;
+        }
+
+        return candidates;
     }
 
     private async Task<FoodResolutionDto?> TryResolveAsync(string foodName, CancellationToken ct)
@@ -429,19 +483,30 @@ public partial class NaturalLanguageFallbackService
     {
         var servingG = EstimateDefaultServingG(foodName) * sizeMultiplier;
         var totalG = servingG * quantity;
-        var cals = EstimateGenericCaloriesPer100g(foodName);
-        var scale = totalG / 100m;
+        var estimate = EstimateGenericCaloriesPer100g(foodName);
+        var basis = new NutritionPer100gDto
+        {
+            CaloriesKcal = estimate.calories,
+            ProteinG = estimate.protein,
+            CarbsG = estimate.carbs,
+            FatG = estimate.fat,
+            FiberG = 0m,
+            SugarG = 0m,
+            SodiumMg = 0m,
+        };
+        var amounts = NutritionCalculator.Compute(basis, totalG);
 
         return new ParsedFoodItemDto
         {
             Name = foodName,
-            Calories = Math.Round(cals.calories * scale, 1),
-            ProteinG = Math.Round(cals.protein * scale, 1),
-            CarbsG = Math.Round(cals.carbs * scale, 1),
-            FatG = Math.Round(cals.fat * scale, 1),
-            FiberG = 0m,
-            SugarG = 0m,
-            SodiumMg = 0m,
+            Per100g = basis,
+            Calories = amounts.Calories,
+            ProteinG = amounts.ProteinG,
+            CarbsG = amounts.CarbsG,
+            FatG = amounts.FatG,
+            FiberG = amounts.FiberG ?? 0m,
+            SugarG = amounts.SugarG ?? 0m,
+            SodiumMg = amounts.SodiumMg ?? 0m,
             ServingWeightG = totalG,
             ServingSize = FormatServingSize(quantity, unit),
             ServingQuantity = quantity,
@@ -529,8 +594,6 @@ public partial class NaturalLanguageFallbackService
         _ => 1m
     };
 
-    private static decimal Round(decimal? value, decimal scale) =>
-        Math.Round((value ?? 0m) * scale, 1);
 
     // Split on comma, "and", "plus", "with", "&", "+", newline, semicolon, period-followed-by-space, "then" —
     // captured so SplitIntoSegmentsWithJoins can tell which delimiter joined each pair.

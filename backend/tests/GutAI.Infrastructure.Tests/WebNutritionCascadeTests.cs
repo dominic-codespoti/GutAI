@@ -2,11 +2,12 @@ using FluentAssertions;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
-using Microsoft.Extensions.Logging.Abstractions;
+using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -93,18 +94,125 @@ public class WebNutritionCascadeTests
 
     // ── Orchestration (network overridden) ──
 
+    [Fact]
+    public async Task LookupAsync_DifferentRegionsUseDifferentCacheEntries()
+    {
+        var store = new MemoryStore();
+        var cascade = new FakeCascade(store);
+        ConfigureCandidate(cascade, "rice");
+
+        await cascade.LookupAsync("rice", FoodRegion.Us);
+        await cascade.LookupAsync("rice", FoodRegion.Au);
+
+        cascade.Searches.Should().HaveCount(2);
+        store.Cache.Keys.Should().BeEquivalentTo(["rice|us", "rice|au"]);
+    }
+
+    [Fact]
+    public async Task LookupAsync_StalePositiveEntryTriggersRecomputation()
+    {
+        var store = new MemoryStore();
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 9, 24, 0, 0, 0, TimeSpan.Zero));
+        store.Cache["rice|default"] = new WebNutritionCacheEntry
+        {
+            Result = Result(kcal: 100m), CachedAt = time.GetUtcNow().AddDays(-181),
+        };
+        var cascade = new FakeCascade(store, time);
+        ConfigureCandidate(cascade, "rice");
+
+        var result = await cascade.LookupAsync("rice", FoodRegion.Default);
+
+        result.Should().NotBeNull();
+        result!.CaloriesKcal.Should().Be(130m);
+        cascade.Searches.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task LookupAsync_FreshNegativeEntryShortCircuitsSearch()
+    {
+        var store = new MemoryStore();
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 9, 24, 0, 0, 0, TimeSpan.Zero));
+        store.Cache["rice|default"] = new WebNutritionCacheEntry
+        {
+            IsNegative = true, CachedAt = time.GetUtcNow().AddDays(-1),
+        };
+        var cascade = new FakeCascade(store, time);
+
+        var result = await cascade.LookupAsync("rice", FoodRegion.Default);
+
+        result.Should().BeNull();
+        cascade.Searches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LookupAsync_FullMissWritesNegativeMarker()
+    {
+        var store = new MemoryStore();
+        var cascade = new FakeCascade(store);
+        cascade.SearchResults["rice nutrition per 100g"] = [];
+
+        (await cascade.LookupAsync("rice", FoodRegion.Default)).Should().BeNull();
+
+        store.Cache["rice|default"].IsNegative.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LookupAsync_TransientSearchExceptionDoesNotWriteNegativeMarker()
+    {
+        var store = new MemoryStore();
+        var cascade = new FakeCascade(store) { SearchException = new HttpRequestException("temporary failure") };
+
+        (await cascade.LookupAsync("rice", FoodRegion.Default)).Should().BeNull();
+
+        store.Cache.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LookupAsync_CitationUsesFetchedUrlInsteadOfExtractedUrl()
+    {
+        var store = new MemoryStore();
+        var cascade = new FakeCascade(store);
+        const string fetchedUrl = "https://fdc.nal.usda.gov/food-details/rice";
+        ConfigureCandidate(cascade, "rice", fetchedUrl);
+        cascade.Extraction = new WebNutritionExtraction
+        {
+            Found = true, CaloriesKcal = 130m, ProteinG = 27m, CarbsG = 0m, FatG = 1.5m,
+            SourceName = "", SourceUrl = "https://model-invented.example/fake",
+        };
+
+        var result = await cascade.LookupAsync("rice", FoodRegion.Default);
+
+        result!.SourceUrl.Should().Be(fetchedUrl);
+        result.SourceName.Should().Be("fdc.nal.usda.gov");
+    }
+
+    private static void ConfigureCandidate(FakeCascade cascade, string food, string url = "https://fdc.nal.usda.gov/rice")
+    {
+        var query = $"{food} nutrition per 100g";
+        cascade.SearchResults[query] = [("Rice", url)];
+        cascade.Pages[url] = "page content";
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
     private sealed class FakeCascade : WebNutritionCascade
     {
         public List<string> Searches = [];
         public Dictionary<string, List<(string, string)>> SearchResults = new();
         public Dictionary<string, string?> Pages = new();
+        public WebNutritionExtraction? Extraction { get; set; }
+        public Exception? SearchException { get; set; }
 
-        public FakeCascade(ITableStore store) : base(
-            new FakeChatClient(), store, MakeConfig(), new HttpClient(), NullLogger<WebNutritionCascade>.Instance) { }
+        public FakeCascade(ITableStore store, TimeProvider? timeProvider = null) : base(
+            new FakeChatClient(), store, MakeConfig(), new HttpClient(), NullLogger<WebNutritionCascade>.Instance, timeProvider) { }
 
         internal override Task<List<(string Title, string Url)>> SearchDuckDuckGo(string query, CancellationToken ct)
         {
             Searches.Add(query);
+            if (SearchException is not null) throw SearchException;
             return Task.FromResult(SearchResults.GetValueOrDefault(query) ?? []);
         }
 
@@ -112,7 +220,7 @@ public class WebNutritionCascadeTests
             => Task.FromResult(Pages.GetValueOrDefault(url));
 
         internal override Task<WebNutritionExtraction?> ExtractAsync(string foodName, string url, string markdown, CancellationToken ct)
-            => Task.FromResult<WebNutritionExtraction?>(new WebNutritionExtraction
+            => Task.FromResult<WebNutritionExtraction?>(Extraction ?? new WebNutritionExtraction
             {
                 Found = true, CaloriesKcal = 130m, ProteinG = 27m, CarbsG = 0m, FatG = 1.5m,
                 SourceName = "USDA FoodData Central", SourceUrl = url,
@@ -141,12 +249,19 @@ public class WebNutritionCascadeTests
 
     private sealed class MemoryStore : ITableStore
     {
-        public readonly Dictionary<string, WebNutritionResult> Cache = new();
-        public Task<WebNutritionResult?> GetWebNutritionCacheAsync(string key, CancellationToken ct = default)
-            => Task.FromResult(Cache.GetValueOrDefault(key.ToLowerInvariant().Trim()));
+        public readonly Dictionary<string, WebNutritionCacheEntry> Cache = new();
+        public Task<WebNutritionCacheEntry?> GetWebNutritionCacheEntryAsync(string key, CancellationToken ct = default)
+            => Task.FromResult(Cache.GetValueOrDefault(key));
+        public Task UpsertWebNutritionNegativeCacheAsync(string key, CancellationToken ct = default)
+        {
+            Cache[key] = new WebNutritionCacheEntry { IsNegative = true, CachedAt = DateTimeOffset.UtcNow };
+            return Task.CompletedTask;
+        }
         public Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default)
-            => Task.FromResult(Cache.TryAdd(result.CacheKey!, result));
-        // unused members throw
+        {
+            Cache[result.CacheKey!] = new WebNutritionCacheEntry { Result = result, CachedAt = DateTimeOffset.UtcNow };
+            return Task.CompletedTask;
+        }
         public Task<User?> GetUserAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertUserAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeleteUserAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
@@ -205,9 +320,14 @@ public class WebNutritionCascadeTests
         public Task<List<CoachChatMessage>> GetRecentCoachMessagesAsync(Guid userId, int limit, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MealDraftRecord?> GetMealDraftAsync(Guid userId, Guid draftId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<string?> TryReplaceMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task<List<MealDraftRecord>> GetMealDraftsByStatusAsync(Guid userId, string status, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<int> PurgeMealDraftsAsync(DateTimeOffset pendingExpiredBefore, DateTimeOffset closedCreatedBefore, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<CoachSessionState?> GetCoachSessionStateAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertCoachSessionStateAsync(Guid userId, CoachSessionState state, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeleteCoachSessionStateAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<GutAI.Domain.Entities.PairingCode?> GetPairingCodeByHashAsync(string codeHash, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertPairingCodeAsync(GutAI.Domain.Entities.PairingCode code, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeletePairingCodesForUserAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();

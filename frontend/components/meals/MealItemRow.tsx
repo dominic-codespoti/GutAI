@@ -12,6 +12,7 @@ import {
 } from "../../src/utils/foodDisplay";
 import { useThemeColors } from "../../src/stores/theme";
 import { foodApi } from "../../src/api";
+import { useAuthStore } from "../../src/stores/auth";
 import { toast } from "../../src/stores/toast";
 import type { MealItem, MealLog } from "../../src/types";
 
@@ -31,6 +32,9 @@ export function MealItemRow({
   onDelete,
 }: Props) {
   const colors = useThemeColors();
+  const preferredFoodRegion = useAuthStore((state) => state.user?.preferredFoodRegion ?? "Default");
+  const searchRegion =
+    preferredFoodRegion === "Au" ? "AU" : preferredFoodRegion === "Us" ? "US" : undefined;
   const router = useRouter();
   const portionText = formatMealItemPortion(item);
   const portionGuidance = formatServingHint({
@@ -44,7 +48,7 @@ export function MealItemRow({
     }
     // Try to find the product by name
     try {
-      const results = await foodApi.search(item.foodName).then((r) => r.data);
+      const results = await foodApi.search(item.foodName, undefined, searchRegion).then((r) => r.data);
       if (
         results.length > 0 &&
         results[0].id &&

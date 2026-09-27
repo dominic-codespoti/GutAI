@@ -15,30 +15,30 @@ public class FoodProductPersistenceTests
 
     private static FoodProductDto MakeDto(string name, string? barcode = null, string? externalId = null,
         string dataSource = "USDA", string? brand = null) => new()
-    {
-        Name = name,
-        Barcode = barcode,
-        ExternalId = externalId,
-        DataSource = dataSource,
-        Brand = brand,
-        Calories100g = 100,
-    };
+        {
+            Name = name,
+            Barcode = barcode,
+            ExternalId = externalId,
+            DataSource = dataSource,
+            Brand = brand,
+            Calories100g = 100,
+        };
 
     private static FoodProduct MakeExisting(Guid id, string name, string? barcode = null, string? externalId = null,
         string dataSource = "USDA", string? brand = null, int? safetyScore = null,
         SafetyRating? safetyRating = null, List<int>? additiveIds = null, bool isDeleted = false) => new()
-    {
-        Id = id,
-        Name = name,
-        Barcode = barcode,
-        ExternalId = externalId,
-        DataSource = dataSource,
-        Brand = brand,
-        SafetyScore = safetyScore,
-        SafetyRating = safetyRating,
-        FoodProductAdditiveIds = additiveIds ?? [],
-        IsDeleted = isDeleted,
-    };
+        {
+            Id = id,
+            Name = name,
+            Barcode = barcode,
+            ExternalId = externalId,
+            DataSource = dataSource,
+            Brand = brand,
+            SafetyScore = safetyScore,
+            SafetyRating = safetyRating,
+            FoodProductAdditiveIds = additiveIds ?? [],
+            IsDeleted = isDeleted,
+        };
 
     [Fact]
     public async Task ResolveOrPersistAsync_NoExistingIdentity_CreatesNewProduct()
@@ -98,6 +98,48 @@ public class FoodProductPersistenceTests
         var id = await FoodProductPersistence.ResolveOrPersistAsync(dto, _store.Object);
 
         id.Should().Be(existingId);
+    }
+
+    [Fact]
+    public async Task ResolveOrPersistAsync_ExternalIdWithNameAndBrandMatch_DoesNotReuseByName()
+    {
+        var existing = MakeExisting(Guid.NewGuid(), "Oats", externalId: "other-id", dataSource: "OpenFoodFacts", brand: "Brand");
+        _store.Setup(s => s.GetFoodProductBySourceAsync("USDA", "new-id", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FoodProduct?)null);
+        _store.Setup(s => s.SearchFoodProductsAsync("Oats", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([existing]);
+        var dto = MakeDto("Oats", externalId: "new-id", dataSource: "USDA", brand: "Brand");
+
+        var id = await FoodProductPersistence.ResolveOrPersistAsync(dto, _store.Object);
+
+        id.Should().NotBe(existing.Id);
+        _store.Verify(s => s.SearchFoodProductsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _store.Verify(s => s.UpsertFoodProductAsync(It.Is<FoodProduct>(p => p.Id == id), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResolveOrPersistAsync_NameSearchFailure_PersistsIdlessDto()
+    {
+        _store.Setup(s => s.SearchFoodProductsAsync("Oats", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("search unavailable"));
+
+        var id = await FoodProductPersistence.ResolveOrPersistAsync(MakeDto("Oats"), _store.Object);
+
+        id.Should().NotBe(Guid.Empty);
+        _store.Verify(s => s.UpsertFoodProductAsync(It.Is<FoodProduct>(p => p.Id == id), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResolveOrPersistAsync_NameSearchCancellation_Propagates()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _store.Setup(s => s.SearchFoodProductsAsync("Oats", It.IsAny<int>(), cts.Token))
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        var act = () => FoodProductPersistence.ResolveOrPersistAsync(MakeDto("Oats"), _store.Object, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]

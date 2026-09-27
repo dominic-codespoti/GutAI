@@ -13,8 +13,9 @@ DO NOT guess architectural details, domain logic, or test arrangements. If your 
 - **AI Calorie Estimation & Database Research**: `docs/ai-meal-scan-upgrade-research.md`
 - **End-to-End Testing (Playwright)**: `docs/PLAYWRIGHT_E2E_ANALYSIS.md`
 - **FODMAP Database Hardening Plan**: `docs/FODMAP_DATABASE_HARDENING_PLAN.md`
+- **AI Calorie Pipeline Remediation Plan (confirm, drafts, grounding policy, evals, meal generation)**: `docs/AI_CALORIE_PIPELINE_REMEDIATION_PLAN.md`
 - **Deployment & Production Config**: `docs/DEPLOYMENT.md`
-- **UI Polish & Wow-Factor Roadmap**: `docs/POLISH_ROADMAP.md`
+- **Evaluation tooling:** `backend/tools/GoldenScanHarness/README.md`, `backend/tools/AgentEvalHarness/README.md`, `backend/tools/CorrectionAnalytics/README.md`, and `backend/tools/ScanMealRepair/README.md`
 
 ## 📝 Documentation Maintenance
 
@@ -89,13 +90,15 @@ Never use `Lazy<Task<T>>` for faulting resources. A faulted `Lazy` permanently c
 
 Every AI meal scanning feature MUST adhere to the following deterministic boundaries:
 
-- **LLM Never Produces Nutrition Numbers:** The vision model outputs ONLY component identity, gram ranges (low, midpoint, high), and confidence. Nutrition macros (calories, P, C, F, sodium, etc.) are ALWAYS computed deterministically from verified database per-100g values multiplied by detected grams.
+- **Nutrition authority:** Stage A emits identity and gram estimates; inferred components are a separate opt-in list. All persisted nutrition with a basis is computed server-side from per-100 g values × grams (see N1 below).
 - **Semantic Validation Outside the Model:** Structured JSON from LLMs guarantees syntactic shape, not semantic validity. Always run `MealVisionValidator.Validate` to enforce gram ordering ($low \le midpoint \le high$), physiological sanity caps ($\le 5\text{ kg}$ per item), and component count limits.
-- **Grounding Through Existing Resolver:** Every detected component MUST be grounded via `IFoodSearchService.ResolveAsync`. Auto-select only when status is `Exact` or `Probable` AND `MatchConfidence >= 0.85`. Ambiguous items MUST abstain to human review with candidates exposed.
-- **Stage-A Gram Immutability:** Portion estimates attach to the detected component, NEVER to the database product's default serving size. Grounding must not mutate Stage-A grams.
+- **Grounding through the shared policy (N2):** Every surface — scan, NLP, Coach, MCP, and describe-food — MUST use `GroundingPolicy` for automatic selection. Auto-select only when status is `Exact` or `Probable`, `MatchConfidence >= 0.85`, calories are present, `NutritionSanity` passes, and no compatibility or food-form veto applies. Otherwise return candidates with `needs_choice`; draft commit MUST reject a needs-choice item without an explicit candidate key (including the previewed candidate), replacement food, or log-without-calories choice, returning HTTP 422.
+- **Stage-A grams are immutable:** reanalysis may change identity/grounding only and MUST preserve Stage-A grams.
+- **Batched B2 selection:** one selection call handles the batch, but every choice MUST still pass `MealScanCandidateSelector`; when `MealScan:RequireCompatibilityAgreement` is enabled it MUST also agree with the compatibility top candidate.
+- **Hidden calories are opt-in:** inferred items MUST be disabled unless `Features:HiddenCalories` is true. Use its separate inferred-components wire list and prompt-version suffix; the flag-off Stage-A schema MUST remain byte-identical.
 - **Health Signal Isolation (Safety Rule):** `MealScanHealthSignals` (FODMAP status, triggers, gut rating) attach ONLY to items with a verified `FoodProductId`. Web-scraped and AI-estimated items physically cannot receive FODMAP signals.
-- **Regression Gating:** Prompt, schema, or model changes to Stage A MUST be versioned (`VisionPromptVersion`) and pass the `GoldenScanHarness` regression gate (`make golden-gate`).
-
+- **Symptom:** reanalysis silently changes portion estimates; batched selection bypasses item gates; a feature flag changes the default wire contract or introduces inferred items when off.
+- **Regression gate:** Prompt, schema, model or calibration changes MUST use the applicable harness. For Stage-A changes run `make golden-gate`; the nightly refreshed in-process gate is defined in `.github/workflows/golden-nightly.yml`.
 ## 9. Reasoning Model Transport & Prompt Roles
 
 All Azure OpenAI reasoning-model inference MUST use the Responses API. App-owned
@@ -110,6 +113,11 @@ switches are prohibited for production inference.
   delimited user content.
 - Tool-calling workflows MUST remain on Responses; do not set `reasoning_effort`
   to `none` merely to make Chat Completions tools work.
+- Multi-call tool loops (Coach) MUST NOT depend on server-stored responses. Create
+  their options with `MealScanReasoningOptions.Create(effort, storeOutput: false)`, so
+  each call resends its own history with encrypted reasoning content and never chains
+  `previous_response_id`. Chained stored responses intermittently fail with
+  `previous_response_not_found`, and the user gets an empty reply.
 - Model, reasoning effort, prompt/schema version, token usage, latency, and
   repeated-run variance MUST be covered by the applicable regression harness.
 - Agent Framework scan tools MUST be typed, read-only projections of server-owned
@@ -118,6 +126,12 @@ switches are prohibited for production inference.
 - Reanalysis tools MUST have a server-enforced call count and effort cap. Every
   returned candidate still passes deterministic compatibility, confidence, and
   human-review gates.
+- Use keyed per-workload `IChatClient`s and configure reasoning effort per workload.
+  Every workload MUST use function invocation; Coach MUST cap iterations/errors and
+  history size. Emit OpenTelemetry and logging telemetry while keeping sensitive data
+  disabled in production.
+- **Symptom:** workload settings are only labels, a workload bypasses tool safeguards, or
+  Coach loops/history and cost/latency become unbounded.
 
 ## 10. MCP Tool Authorization
 
@@ -156,31 +170,79 @@ state setters or ordinary JavaScript functions directly from those callbacks.
 Use `scheduleOnRN` from `react-native-worklets` for RN-runtime calls; `runOnJS`
 is deprecated in Reanimated 4.
 
+
+## 13. Server-Authoritative Nutrition (N1)
+
+- **Symptom:** client or model values drift from the diary after a portion edit, or linked
+  catalog items persist tampered calories.
+- **Rule:** Derive persisted nutrition only with `NutritionCalculator` from a per-100 g
+  basis × grams whenever a basis exists; never trust client/model nutrition for those items.
+  Validate item grams in `(0, 5000]`. `frontend/src/utils/nutrition.ts` is display parity,
+  not an authority.
+
+## 14. Agent Writes Use MealDraft (N3)
+
+- **Symptom:** an AI tool writes a meal before review, creates and commits it in one turn,
+  or tells the user calorie numbers that do not match the server calculation.
+- **Rule:** AI-originated diary writes MUST go through `IMealDraftService.CommitAsync`.
+  Coach commits MUST pass the turn-start guard; MCP commits MUST pass the minimum-age
+  guard configured by `Mcp:MinCommitDelaySeconds`. Coach prose MUST NOT invent nutrition
+  numbers; the `AgentEvalHarness` grader enforces consistency with server draft/tool data.
+
+## 15. Truthful Nutrition Provenance (N4)
+
+- **Symptom:** unavailable nutrition appears as a measured zero or totals silently treat an
+  unresolved item as zero calories.
+- **Rule:** Use `NutritionProvenance` according to source: `Sourced` for catalog data,
+  `Estimated` for non-model estimates, `Web` for web results, `ModelEstimated` for model
+  estimates, `UserEntered` for user-supplied values, and `Unknown` when no nutrition basis
+  exists. Never fabricate 0 kcal. Count `Unknown`/basis-less items in `itemsWithoutNutrition`.
+
+## 16. Conditional Draft Status Updates
+
+- **Symptom:** concurrent commit, discard, or expiry operations overwrite a newer draft
+  state and create duplicate or inconsistent diary records.
+- **Rule:** Draft/shared-record status transitions MUST use ETag-conditional replace
+  (`TryReplaceMealDraftAsync`); never implement them as read-then-upsert.
+
+## 17. API Test Host and Telemetry Isolation
+
+- **Symptom:** API tests hang or fail on sampled activities because multiple App Insights
+  samplers are registered in one process.
+- **Rule:** The shared test factory explicitly clears `APPLICATIONINSIGHTS_CONNECTION_STRING`, so no shared or derived host registers App Insights. Only `AppInsightsStartupSmokeTests` enables it, in its single keyed host. Derived hosts MUST come from the factory's keyed cache, are created once per fixture, and are disposed with that fixture. Never create hosts per test or mutate a host's `IConfiguration` in tests.
+## 18. Measured Before Shipped (N5)
+
+- **Symptom:** an unmeasured or unverified AI behavior is described or treated as production-ready because a configured gate appears to pass.
+- **Rule:** Scan (`GoldenScanHarness`) and agent (`AgentEvalHarness`) gates and reports MUST run nightly via `.github/workflows/golden-nightly.yml`. Current thresholds are provisional baselines from 5 live refreshed runs of the unweighed 12-case set (plan decision D7), not measured production baselines. If a metric with a configured threshold is unmeasured, the harness MUST fail the gate or report it as not evaluated according to its rules; it MUST NOT be treated as passing.
+
 ---
 
 ## ⚙️ Development Workflow & Commands
 
-### CI Pipeline (`make ci`)
+### CI Pipeline
 
-The full CI pipeline runs these checks in order:
-
-1. `dotnet build` — zero errors
-2. `dotnet test GutAI.Infrastructure.Tests` — 550+ unit tests (services, scoring, FODMAP, GI, substitutions, NLP)
-3. `dotnet test GutAI.Api.Tests` — API contract tests (WebApplicationFactory + Testcontainers Azurite)
-4. `node scripts/check-contracts.js` — frontend↔backend DTO field matching (27 interface↔DTO pairs)
-5. `npx tsc --noEmit` — frontend TypeScript type check
-
-All must pass before merging.
+`make ci` runs backend build, Infrastructure/API/Integration tests, contract checks,
+frontend TypeScript checking, and frontend unit tests (see `Makefile`). GitHub
+`.github/workflows/ci.yml` runs the same backend test groups and contract check, plus
+frontend type/unit tests and a Docker API image build. AI regression gates are separate:
+`.github/workflows/golden-nightly.yml` runs the refreshed in-process GoldenScanHarness
+gate and AgentEvalHarness gate nightly, on manual dispatch, and for relevant same-repo
+pull requests.
 
 ---
 
 ### Test Organization
 
-| Project                      | What it tests                                                    | Framework                                                 |
-| ---------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------- |
-| `GutAI.Infrastructure.Tests` | Services, scoring, correlation, FODMAP, GI, substitutions, NLP   | xUnit v3, Moq                                             |
-| `GutAI.IntegrationTests`     | Table Storage CRUD, end-to-end API flows, food product endpoints | xUnit v2, Testcontainers (Azurite)                        |
-| `GutAI.Api.Tests`            | HTTP endpoint response shapes, validation, auth, roundtrips      | xUnit v2, WebApplicationFactory, Testcontainers (Azurite) |
+| Project / tool | What it tests | Framework / command |
+| --- | --- | --- |
+| `GutAI.Infrastructure.Tests` | Services, scoring, correlation, FODMAP, GI, substitutions, NLP, draft and suggestion behavior | xUnit; `make ci` / `.github/workflows/ci.yml` |
+| `GutAI.IntegrationTests` | Table Storage and end-to-end persistence flows | xUnit, Testcontainers (Azurite); `make ci` / `.github/workflows/ci.yml` |
+| `GutAI.Api.Tests` | HTTP contracts, validation, authorization and roundtrips | xUnit, `WebApplicationFactory`, Testcontainers (Azurite); `make ci` / `.github/workflows/ci.yml` |
+| Frontend tests | Utility and store behavior, plus TypeScript contracts | `tsx --test` and `tsc --noEmit`; `make ci` / `.github/workflows/ci.yml` |
+| `GoldenScanHarness` | Stage-A, in-process and API end-to-end scan evaluation | `make golden-run`, `make golden-gate`, `make golden-inprocess`, `make golden-e2e`; refreshed in-process gate nightly |
+| `AgentEvalHarness` | Coach, describe-food and label evaluation suites | `--suite all --gate`; nightly workflow |
+| `CorrectionAnalytics` | Read-only correction report and calibration snippet | `backend/tools/CorrectionAnalytics/README.md` |
+| `ScanMealRepair` | Dry-run historical scan-meal repair | `backend/tools/ScanMealRepair/README.md` |
 
 ---
 

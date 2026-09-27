@@ -1,0 +1,146 @@
+name: Golden AI Pipeline Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/tools/AgentEvalHarness/**"
+      - "backend/tools/GoldenScanHarness/**"
+      - "backend/src/GutAI.Infrastructure/Services/Evaluation/**"
+      - "backend/src/GutAI.Infrastructure/Services/GoldenMetrics.cs"
+      - "backend/src/GutAI.Infrastructure/Services/GoldenManifest.cs"
+      - "backend/src/GutAI.Infrastructure/Services/VisionResultCache.cs"
+      - "backend/src/GutAI.Infrastructure/Services/MealScanService.cs"
+      - "backend/src/GutAI.Infrastructure/Services/MealScanCandidateSelectionStage.cs"
+      - "backend/src/GutAI.Infrastructure/Services/GroundingPolicy.cs"
+      - "backend/src/GutAI.Infrastructure/Services/CoachChatService.cs"
+      - "backend/src/GutAI.Infrastructure/Services/CoachPrompts.cs"
+      - "backend/src/GutAI.Infrastructure/Services/ContentUnderstandingService.cs"
+      - "golden-images/manifest.json"
+      - "backend/src/GutAI.Application/Common/Helpers/MealVisionValidator.cs"
+      - "backend/src/GutAI.Infrastructure/Services/ComponentGroundingEngine.cs"
+      - "backend/src/GutAI.Infrastructure/Services/PortionCalibrator.cs"
+      - "backend/src/GutAI.Application/Common/DTOs/MealDraftDtos.cs"
+      - "golden-images/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  golden:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      AzureOpenAI__Endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AzureOpenAI__Workloads__vision__Deployment: ${{ vars.AZURE_OPENAI_VISION_DEPLOYMENT }}
+      AzureOpenAI__Workloads__selection__Deployment: ${{ vars.AZURE_OPENAI_SELECTION_DEPLOYMENT }}
+      AzureOpenAI__Workloads__coach__Deployment: ${{ vars.AZURE_OPENAI_COACH_DEPLOYMENT }}
+      AzureOpenAI__Workloads__describe__Deployment: ${{ vars.AZURE_OPENAI_DESCRIBE_DEPLOYMENT }}
+      AzureOpenAI__Workloads__extraction__Deployment: ${{ vars.AZURE_OPENAI_EXTRACTION_DEPLOYMENT }}
+      AzureOpenAI__Workloads__suggestion__Deployment: ${{ vars.AZURE_OPENAI_SUGGESTION_DEPLOYMENT }}
+      AzureOpenAI__Workloads__vision__ReasoningEffort: ${{ vars.AZURE_OPENAI_VISION_REASONING_EFFORT }}
+      AzureOpenAI__Workloads__selection__ReasoningEffort: ${{ vars.AZURE_OPENAI_SELECTION_REASONING_EFFORT }}
+      AzureOpenAI__Workloads__coach__ReasoningEffort: ${{ vars.AZURE_OPENAI_COACH_REASONING_EFFORT }}
+      AzureOpenAI__Workloads__describe__ReasoningEffort: ${{ vars.AZURE_OPENAI_DESCRIBE_REASONING_EFFORT }}
+      AzureOpenAI__Workloads__extraction__ReasoningEffort: ${{ vars.AZURE_OPENAI_EXTRACTION_REASONING_EFFORT }}
+      AzureOpenAI__Workloads__suggestion__ReasoningEffort: ${{ vars.AZURE_OPENAI_SUGGESTION_REASONING_EFFORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+          restore-keys: ${{ runner.os }}-nuget-
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Run refreshed in-process golden gate
+        env:
+          GOLDEN_VISION_INPUT_PER_1M: ${{ vars.GOLDEN_VISION_INPUT_PER_1M }}
+          GOLDEN_VISION_OUTPUT_PER_1M: ${{ vars.GOLDEN_VISION_OUTPUT_PER_1M }}
+          GOLDEN_SELECTION_INPUT_PER_1M: ${{ vars.GOLDEN_SELECTION_INPUT_PER_1M }}
+          GOLDEN_SELECTION_OUTPUT_PER_1M: ${{ vars.GOLDEN_SELECTION_OUTPUT_PER_1M }}
+        run: |
+          mkdir -p artifacts
+          vision_deployment="${AzureOpenAI__Workloads__vision__Deployment:-${AzureOpenAI__DeploymentName:-gpt-5-nano}}"
+          selection_deployment="${AzureOpenAI__Workloads__selection__Deployment:-${AzureOpenAI__DeploymentName:-gpt-5-nano}}"
+          pricing_env=()
+          if [ -n "$GOLDEN_VISION_INPUT_PER_1M" ]; then pricing_env+=("AzureOpenAI__Pricing__${vision_deployment}__InputPer1M=$GOLDEN_VISION_INPUT_PER_1M"); fi
+          if [ -n "$GOLDEN_VISION_OUTPUT_PER_1M" ]; then pricing_env+=("AzureOpenAI__Pricing__${vision_deployment}__OutputPer1M=$GOLDEN_VISION_OUTPUT_PER_1M"); fi
+          if [ "$selection_deployment" != "$vision_deployment" ]; then
+            if [ -n "$GOLDEN_SELECTION_INPUT_PER_1M" ]; then pricing_env+=("AzureOpenAI__Pricing__${selection_deployment}__InputPer1M=$GOLDEN_SELECTION_INPUT_PER_1M"); fi
+            if [ -n "$GOLDEN_SELECTION_OUTPUT_PER_1M" ]; then pricing_env+=("AzureOpenAI__Pricing__${selection_deployment}__OutputPer1M=$GOLDEN_SELECTION_OUTPUT_PER_1M"); fi
+          fi
+          env "${pricing_env[@]}" dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --refresh --gate --report artifacts/golden-report.json
+      - name: Upload golden report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-report
+          path: artifacts/golden-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  agent-evals:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    services:
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite
+        ports:
+          - 10000:10000
+          - 10001:10001
+          - 10002:10002
+        options: >-
+          --health-cmd "node -e \"require('http').get('http://127.0.0.1:10000/', r => process.exit(0)).on('error', () => process.exit(1))\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AzureOpenAI__Endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AzureOpenAI__Workloads__coach__Deployment: ${{ vars.AZURE_OPENAI_COACH_DEPLOYMENT }}
+      AzureOpenAI__Workloads__describe__Deployment: ${{ vars.AZURE_OPENAI_DESCRIBE_DEPLOYMENT }}
+      AzureOpenAI__Workloads__extraction__Deployment: ${{ vars.AZURE_OPENAI_EXTRACTION_DEPLOYMENT }}
+      GUTAI_EVAL_STORAGE: UseDevelopmentStorage=true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+          restore-keys: ${{ runner.os }}-nuget-
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Run agent evaluations
+        run: |
+          mkdir -p artifacts
+          dotnet run --project backend/tools/AgentEvalHarness -c Release -- --suite all --gate --report artifacts/agent-eval-report.json
+      - name: Upload agent evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-report
+          path: artifacts/agent-eval-report.json
+          if-no-files-found: warn
+          retention-days: 30

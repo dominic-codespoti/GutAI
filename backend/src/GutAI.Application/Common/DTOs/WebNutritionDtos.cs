@@ -30,14 +30,28 @@ public sealed record WebNutritionResult
     public string? CacheKey { get; init; }
 }
 
+/// <summary>
+/// One web-nutrition cache row: either a positive result or a negative ("nothing credible
+/// found") marker, both stamped with <see cref="CachedAt"/> so readers enforce TTLs.
+/// </summary>
+public sealed record WebNutritionCacheEntry
+{
+    public WebNutritionResult? Result { get; init; }
+
+    /// <summary>True for a negative-cache marker; <see cref="Result"/> is null then.</summary>
+    public bool IsNegative { get; init; }
+
+    public required DateTimeOffset CachedAt { get; init; }
+}
+
 public interface IWebNutritionLookup
 {
     /// <summary>
-    /// Look up per-100g nutrition for a food via the free web cascade.
+    /// Look up per-100g nutrition for a food via the free web cascade, scoped to the requested region.
     /// Returns null when nothing credible was found (caller keeps ai-source).
     /// Implementations must be fail-soft: never throw for "not found".
     /// </summary>
-    Task<WebNutritionResult?> LookupAsync(string foodName, CancellationToken ct = default);
+    Task<WebNutritionResult?> LookupAsync(string foodName, GutAI.Domain.Enums.FoodRegion region, CancellationToken ct = default);
 }
 
 /// <summary>LLM extraction schema from fetched page markdown (strict JSON).</summary>

@@ -423,6 +423,90 @@ az deployment group show \
 
 Then update `frontend/eas.json` → `build.production.env.EXPO_PUBLIC_API_URL` with that URL.
 
+## Production AI Configuration
+
+Set these production API settings on the Container App. The deploy workflow and `infra/main.bicep` configure the shared `AzureOpenAI` endpoint/deployment but do not set per-workload deployment/reasoning choices or deployment prices. Azure App Configuration keys map to environment variables by replacing `:` with `__`:
+
+- `AzureOpenAI__Workloads__<workload>__Deployment` and `AzureOpenAI__Workloads__<workload>__ReasoningEffort` for each of `vision`, `selection`, `extraction`, `coach`, `describe`, and `suggestion`.
+- `AzureOpenAI__Pricing__<deployment>__InputPer1M` and `AzureOpenAI__Pricing__<deployment>__OutputPer1M` for each deployment's actual input/output price per one million tokens.
+- Coach's optional limits are `AzureOpenAI__Workloads__coach__MaxToolIterations` and `AzureOpenAI__Workloads__coach__MaxConsecutiveToolErrors`.
+
+For the resource group and Container App created by the production deployment (`rg-gutai-prod` and `gutai-prod-api`), set the following example values, replacing the example deployment and price values with deployments available in your Azure OpenAI resource and their current prices. Repeat both pricing variables for every deployment you configure:
+
+```bash
+az containerapp update --resource-group rg-gutai-prod --name gutai-prod-api --set-env-vars \
+  AzureOpenAI__Workloads__vision__Deployment=gpt-5.4-mini \
+  AzureOpenAI__Workloads__vision__ReasoningEffort=medium \
+  AzureOpenAI__Workloads__selection__Deployment=gpt-5.4-mini \
+  AzureOpenAI__Workloads__selection__ReasoningEffort=low \
+  AzureOpenAI__Workloads__extraction__Deployment=gpt-5.4-mini \
+  AzureOpenAI__Workloads__extraction__ReasoningEffort=low \
+  AzureOpenAI__Workloads__coach__Deployment=gpt-5.4-mini \
+  AzureOpenAI__Workloads__coach__ReasoningEffort=medium \
+  AzureOpenAI__Workloads__describe__Deployment=gpt-5.4-mini \
+  AzureOpenAI__Workloads__describe__ReasoningEffort=medium \
+  AzureOpenAI__Workloads__suggestion__Deployment=gpt-5.4-mini \
+  AzureOpenAI__Workloads__suggestion__ReasoningEffort=medium \
+  AzureOpenAI__Pricing__gpt-5.4-mini__InputPer1M=<input-price-usd> \
+  AzureOpenAI__Pricing__gpt-5.4-mini__OutputPer1M=<output-price-usd>
+```
+
+Replace the angle-bracket price placeholders with numeric USD rates before running the command. Without pricing for a deployment, estimated cost is `null`; the p95 cost alert has no priced scan values to evaluate and cannot fire.
+
+The following feature flags default to `false` in `Features`: `HiddenCalories`, `PortionCalibration`, `MealSuggestions`, and `WebGrounding`. `MealScan:RequireCompatibilityAgreement` and `MealScan:MultiQueryAutoSelect` also default to `false`.
+
+Runtime defaults below come from the corresponding service configuration reads; set overrides in the production configuration source only when intentionally changing the behavior:
+
+| Setting | Default | Purpose |
+| --- | ---: | --- |
+| `Mcp:MinCommitDelaySeconds` | `20` | Minimum time after an MCP-origin proposal before its draft can be committed |
+| `MealDrafts:ClosedRetentionDays` | `90` | Retention for closed meal drafts |
+| `MealDrafts:CleanupIntervalHours` | `24` | Draft-cleanup service interval |
+| `MealScan:DeadlineSeconds` | `60` | Overall synchronous photo-scan deadline |
+| `MealScan:MinSecondsForSelection` | `8` | Remaining time required to start batched candidate selection |
+| `MealScan:MinSecondsForWeb` | `6` | Remaining time required to start the web lookup stage |
+| `MealScan:MaxWebQueriesPerScan` | `2` | Maximum web lookup queries per scan |
+| `MealSuggestions:MaxSuggestions` | `3` | Maximum suggestions returned per request |
+| `MealSuggestions:MaxItemsPerSuggestion` | `6` | Maximum items in a suggestion |
+| `MealSuggestions:MaxPoolSize` | `60` | Maximum server-built food candidates |
+| `MealSuggestions:KcalTolerance` | `0.10` | Allowed relative calorie difference from the meal target (10%) |
+| `MealSuggestions:MealShares:Breakfast` | `0.25` | Default share of the daily calorie goal |
+| `MealSuggestions:MealShares:Lunch` | `0.35` | Default share of the daily calorie goal |
+| `MealSuggestions:MealShares:Dinner` | `0.30` | Default share of the daily calorie goal |
+| `MealSuggestions:MealShares:Snack` | `0.10` | Default share of the daily calorie goal |
+
+`MealDrafts:TtlHours` defaults to `24` for pending drafts. `MealScan:MaxComponentsPerPhoto` defaults to `12`; hidden-calorie limits are `MealScan:MaxInferredComponents` (`3`) and `MealScan:MaxInferredGramsPerMeal` (`40`). The scan stages use the remaining overall deadline; they do not have independent fixed-duration timeouts.
+
+### Feature-flag rollout
+
+Keep every behavior flag off until both the golden scan gate and the AgentEvalHarness gate pass on the candidate build. Then enable and assess one at a time following the plan's sequence: `Features:HiddenCalories`, `Features:PortionCalibration`, `Features:MealSuggestions`, `Features:WebGrounding`, and `MealScan:MultiQueryAutoSelect`. Keep WebGrounding off until its separate source/terms review in decision D6 is complete, even if the gates pass. Enable `MealScan:RequireCompatibilityAgreement` only after the same gates pass. Re-run the relevant gates and review results before proceeding.
+
+## Application Insights Alerts
+
+The optional scan alerts are deployed only when `alertEmailAddress` is non-empty. The action group emails that address. Both scheduled query rules evaluate every 15 minutes over a one-hour window, auto-mitigate, and send severity-2 cost or severity-3 latency alerts:
+
+| Parameter | Default | Meaning |
+| --- | ---: | --- |
+| `alertEmailAddress` | `''` | Recipient; leave empty to disable the action group and both rules |
+| `scanCostP95ThresholdUsd` | `0.05` | Alert when p95 estimated AI cost per `meal_scan` exceeds this USD value |
+| `scanLatencyP95BudgetMs` | `45000` | Alert when p95 `POST /api/meals/scan/image` duration exceeds this many milliseconds (75% of the 60-second scan deadline) |
+
+Pass these parameters to `az deployment group create` (or set them in `infra/main.bicepparam`) to enable and tune notifications. Cost calculations require the per-deployment pricing configuration above.
+
+The `Logging:OpenTelemetry:LogLevel` provider filter is the one used by the OpenTelemetry logger exported through Application Insights 3.x. Production sets the `GutAI.Infrastructure.Services.MealScanService` category to `Information` while the broader production default remains `Error`, so the structured per-scan usage trace can drive the cost query.
+
+### Golden nightly workflow configuration
+
+The workflow [`.github/workflows/golden-nightly.yml`](../.github/workflows/golden-nightly.yml) requires these GitHub Actions secrets for Azure OIDC and the OpenAI endpoint: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, and `AZURE_OPENAI_ENDPOINT`. Configure repository variables `AZURE_OPENAI_VISION_DEPLOYMENT`, `AZURE_OPENAI_SELECTION_DEPLOYMENT`, `AZURE_OPENAI_COACH_DEPLOYMENT`, `AZURE_OPENAI_DESCRIBE_DEPLOYMENT`, `AZURE_OPENAI_EXTRACTION_DEPLOYMENT`, and `AZURE_OPENAI_SUGGESTION_DEPLOYMENT`; the six matching `AZURE_OPENAI_*_REASONING_EFFORT` variables are optional. The deployment variables must name deployments available at the endpoint.
+
+## AI Evaluation and Repair Operations
+
+- [GoldenScanHarness README](../backend/tools/GoldenScanHarness/README.md) documents `stage-a`, `in-process`, and `e2e` runs, cache/refresh behavior, gates, and reporting. From the repository root, for example: `dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --gate --report golden-report.json`. The nightly workflow uses `--refresh --gate`.
+- [AgentEvalHarness README](../backend/tools/AgentEvalHarness/README.md) documents the `coach`, `describe`, `label`, and `all` suites. Run from `backend/`, for example: `dotnet run --project tools/AgentEvalHarness -c Release -- --suite all --gate --report all-report.json`. Coach evaluation needs Azurite and configured Azure OpenAI endpoint/deployments; do not run against a paid model without authorization.
+- [CorrectionAnalytics README](../backend/tools/CorrectionAnalytics/README.md) documents the read-only operator report: `dotnet run --project backend/tools/CorrectionAnalytics -- --connection "<storage connection string>" --out correction-report.json`. Treat its output as sensitive operational data; review and explicitly approve a calibration snippet before applying it.
+- `ScanMealRepair` currently has no README. Its [program and usage](../backend/tools/ScanMealRepair/Program.cs) require a Table Storage connection (`--connection` or `GUTAI_STORAGE_CONNECTION`); run `dotnet run --project backend/tools/ScanMealRepair -- --connection "<storage connection string>"` for a dry run, optionally scoped with `--user <guid>`. Only add `--apply` after reviewing the dry-run report; that mode updates historical meal-item nutrition and meal totals.
+
+
 ## Cost Estimate
 
 With scale-to-zero and minimal usage:

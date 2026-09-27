@@ -27,7 +27,7 @@ public class McpContractTests
     }
 
     [Fact]
-    public void AllTools_TotalCount_IsEleven()
+    public void AllTools_TotalCount_IsTwelve()
     {
         var allTools = new List<MethodInfo>();
         foreach (var type in AllToolTypes().Select(t => (Type)t[0]))
@@ -36,13 +36,15 @@ public class McpContractTests
                 .Where(m => m.GetCustomAttributes(typeof(McpServerToolAttribute), false).Length > 0));
         }
 
-        allTools.Should().HaveCount(11, "all 11 MCP tools should have [McpServerTool] attribute");
+        allTools.Should().HaveCount(12, "all 12 MCP tools should have [McpServerTool] attribute");
 
         var toolNames = allTools.Select(m => m.GetCustomAttribute<McpServerToolAttribute>()!.Name).ToList();
         toolNames.Should().Contain("gutai_search_foods");
         toolNames.Should().Contain("gutai_get_fodmap_assessment");
         toolNames.Should().Contain("gutai_get_food_safety");
-        toolNames.Should().Contain("gutai_log_meal");
+        toolNames.Should().Contain("gutai_propose_meal");
+        toolNames.Should().Contain("gutai_commit_meal");
+        toolNames.Should().NotContain("gutai_log_meal");
         toolNames.Should().Contain("gutai_log_symptom");
         toolNames.Should().Contain("gutai_get_todays_meals");
         toolNames.Should().Contain("gutai_get_nutrition_summary");
@@ -74,7 +76,6 @@ public class McpContractTests
     {
         var expectedReadOnly = new HashSet<string>
         {
-            "gutai_search_foods",
             "gutai_get_fodmap_assessment",
             "gutai_get_food_safety",
             "gutai_get_todays_meals",
@@ -97,6 +98,25 @@ public class McpContractTests
                 {
                     attr.ReadOnly.Should().BeTrue($"Tool '{attr.Name}' should be marked ReadOnly");
                 }
+            }
+        }
+    }
+
+    [Fact]
+    public void EveryToolExceptAccountLink_RequiresAuthorization()
+    {
+        foreach (var type in AllToolTypes().Select(t => (Type)t[0]))
+        {
+            var tools = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() is not null);
+
+            foreach (var tool in tools)
+            {
+                var name = tool.GetCustomAttribute<McpServerToolAttribute>()!.Name;
+                if (name == "gutai_link_account")
+                    continue;
+                tool.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false)
+                    .Should().NotBeEmpty($"Tool '{name}' must be authorized");
             }
         }
     }

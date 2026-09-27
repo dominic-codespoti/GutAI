@@ -7,8 +7,21 @@ namespace GutAI.Infrastructure.Data;
 /// precomputed once at <see cref="FoodMatchIndex.AddRange"/> time, so search only ever
 /// recomputes the query-dependent relevance signal per call.</summary>
 internal sealed record FoodCandidate(
-    FoodProductDto Dto, string NameLower, string PrimaryNounLower,
-    string[] NameTokens, string[] PrimaryTokens, float Quality);
+    FoodProductDto Dto,
+    string NameLower,
+    string NameStem,
+    string NormalizedName,
+    string PrimaryNounLower,
+    string[] NameTokens,
+    string[] NameTokenStems,
+    string[] PrimaryTokens,
+    string[] PrimaryTokenStems,
+    string[] DescriptorTokens,
+    string[] DescriptorTokenStems,
+    string[] BrandTokenStems,
+    FoodMacros? Macros,
+    int NameTokenCount,
+    float Quality);
 
 /// <summary>
 /// In-memory food candidate store and ranker. Replaces the previous Lucene-backed
@@ -40,16 +53,37 @@ public sealed class FoodMatchIndex
             if (!_seenIdentities.Add(FoodCandidateIdentity.Of(food)))
                 continue;
 
-            var primaryNoun = FoodTextNormalizer.ExtractPrimaryNoun(food.Name);
-            var nameLower = food.Name.ToLowerInvariant();
+            var name = food.Name;
+            var primaryNoun = FoodTextNormalizer.ExtractPrimaryNoun(name);
+            var nameLower = name.ToLowerInvariant();
             var primaryNounLower = primaryNoun.ToLowerInvariant();
+            var nameTokens = FoodTextNormalizer.TokenizeForMatching(nameLower);
+            var primaryTokens = FoodTextNormalizer.TokenizeForMatching(primaryNounLower);
+            var nameTokenStems = FoodTextNormalizer.DepluralizeAll(nameTokens);
+            var primaryTokenStems = FoodTextNormalizer.DepluralizeAll(primaryTokens);
+            var commaIdx = nameLower.IndexOf(',');
+            var descriptorTokens = commaIdx >= 0
+                ? nameLower[(commaIdx + 1)..].Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                : [];
+            var brandTokenStems = string.IsNullOrWhiteSpace(food.Brand)
+                ? Array.Empty<string>()
+                : FoodTextNormalizer.DepluralizeAll(FoodTextNormalizer.Tokenize(food.Brand));
 
             _candidates.Add(new FoodCandidate(
                 Dto: food,
                 NameLower: nameLower,
+                NameStem: FoodTextNormalizer.Depluralize(nameLower),
+                NormalizedName: FoodTextNormalizer.NormalizeFoodName(name),
                 PrimaryNounLower: primaryNounLower,
-                NameTokens: FoodTextNormalizer.Tokenize(nameLower),
-                PrimaryTokens: primaryNounLower.Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                NameTokens: nameTokens,
+                NameTokenStems: nameTokenStems,
+                PrimaryTokens: primaryTokens,
+                PrimaryTokenStems: primaryTokenStems,
+                DescriptorTokens: descriptorTokens,
+                DescriptorTokenStems: FoodTextNormalizer.DepluralizeAll(descriptorTokens),
+                BrandTokenStems: brandTokenStems,
+                Macros: food.Calories100g.HasValue ? FoodMacros.From(food) : null,
+                NameTokenCount: name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length,
                 Quality: FoodQualityScorer.Score(food)));
 
             if (!string.IsNullOrEmpty(food.Brand))
@@ -67,10 +101,8 @@ public sealed class FoodMatchIndex
         return resolution.Selected is null ? [] : [resolution.Selected, .. resolution.Alternatives];
     }
 
-    /// <summary>Minimum score margin the top candidate needs over the runner-up to be
-    /// auto-selected with confidence instead of flagged <see cref="FoodResolutionStatus.Ambiguous"/>.
-    /// Calibrated against typical bonus magnitudes (full coverage ~15, brand match ~20-40) —
-    /// a smaller gap than this means the top two candidates are effectively tied.</summary>
+    /// <summary>Minimum score margin, after removing the shared lexical coverage signal,
+    /// required for a non-exact match to be auto-selected as probable.</summary>
     private const float AmbiguityMargin = 15f;
 
     /// <summary>
@@ -91,35 +123,92 @@ public sealed class FoodMatchIndex
         if (ctx.RawTokens.Length == 0)
             return new FoodResolutionDto { OriginalQuery = query };
 
-        var boostSet = boostIds as ISet<Guid> ?? new HashSet<Guid>(boostIds);
+        var resultLimit = Math.Min(Math.Max(maxResults, 0), _candidates.Count);
+        if (resultLimit == 0)
+            return new FoodResolutionDto { OriginalQuery = query };
 
-        var scored = _candidates
-            .Select(c =>
-            {
-                var relevance = FoodRelevanceScorer.Score(c, ctx, out var eligible, out var exact, out var coverage);
-                var personalized = relevance + c.Quality * FoodRelevanceScorer.QualityWeight
-                    + (boostSet.Count > 0 && boostSet.Contains(c.Dto.Id) ? FoodRelevanceScorer.PersonalizationBoost : 0f);
-                return (Candidate: c, Score: personalized, Eligible: eligible, Exact: exact, Coverage: coverage);
-            })
-            .Where(x => x.Eligible)
-            // Equal scores previously preserved provider arrival order, making result order nondeterministic across retries.
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Candidate.Dto.Name, StringComparer.Ordinal)
-            .ThenBy(x => x.Candidate.Dto.ExternalId ?? "", StringComparer.Ordinal)
-            .Take(maxResults)
-            .ToList();
+        var boostSet = boostIds as ISet<Guid>;
+        if (boostSet is null && boostIds is not IReadOnlyCollection<Guid> { Count: 0 })
+            boostSet = new HashSet<Guid>(boostIds);
+
+        var scored = new List<ScoredFoodCandidate>(resultLimit);
+        foreach (var candidate in _candidates)
+        {
+            var relevance = FoodRelevanceScorer.Score(
+                candidate, ctx, out var eligible, out var exact, out var coverage, out var tokenMatchScore);
+            if (!eligible)
+                continue;
+
+            var personalized = relevance + candidate.Quality * FoodRelevanceScorer.QualityWeight
+                + (boostSet is { Count: > 0 } && boostSet.Contains(candidate.Dto.Id)
+                    ? FoodRelevanceScorer.PersonalizationBoost
+                    : 0f);
+            var item = new ScoredFoodCandidate(
+                candidate, personalized, personalized - tokenMatchScore, exact, coverage);
+
+            var insertionIndex = 0;
+            while (insertionIndex < scored.Count && !ComesBefore(item, scored[insertionIndex]))
+                insertionIndex++;
+            if (insertionIndex >= resultLimit)
+                continue;
+
+            if (scored.Count == resultLimit)
+                scored.RemoveAt(scored.Count - 1);
+            scored.Insert(insertionIndex, item);
+        }
 
         if (scored.Count == 0)
             return new FoodResolutionDto { OriginalQuery = query };
 
         var top = scored[0];
         var confidence = FoodRelevanceScorer.ComputeConfidence(top.Exact, top.Coverage);
-        var margin = scored.Count > 1 ? top.Score - scored[1].Score : float.MaxValue;
-        var status = top.Exact
-            ? FoodResolutionStatus.Exact
-            : margin >= AmbiguityMargin
-                ? FoodResolutionStatus.Probable
-                : FoodResolutionStatus.Ambiguous;
+        var margin = scored.Count > 1 ? top.DecisionScore - scored[1].DecisionScore : float.MaxValue;
+        var hasEquivalentAlternative = false;
+        if (!top.Exact && ctx.RawTokens.Length == 1)
+        {
+            for (var i = 1; i < scored.Count; i++)
+            {
+                var alternative = scored[i].Candidate.Dto;
+                var selected = top.Candidate.Dto;
+                if (scored[i].Coverage == top.Coverage
+                    && alternative.FoodKind == selected.FoodKind
+                    && alternative.DataSource == selected.DataSource
+                    && alternative.Calories100g == selected.Calories100g
+                    && alternative.Protein100g == selected.Protein100g
+                    && alternative.Carbs100g == selected.Carbs100g
+                    && alternative.Fat100g == selected.Fat100g)
+                {
+                    hasEquivalentAlternative = true;
+                    break;
+                }
+            }
+        }
+
+        var matchesEveryQueryToken = FoodRelevanceScorer.MatchesEveryQueryToken(top.Candidate, ctx);
+        var selectedHasBrand = !string.IsNullOrWhiteSpace(top.Candidate.Dto.Brand);
+        var isLegacyExactName = top.Candidate.NameLower == ctx.QueryLower
+            || top.Candidate.NameStem == ctx.QueryStem;
+        var queryNamesSelectedBrand = FoodRelevanceScorer.IsBrandNamed(top.Candidate, ctx);
+        var mayAutoSelectExact = top.Exact && matchesEveryQueryToken
+            && (!selectedHasBrand || isLegacyExactName || queryNamesSelectedBrand);
+        var mayAutoSelectProbable = !selectedHasBrand && matchesEveryQueryToken && margin >= AmbiguityMargin;
+        var status = hasEquivalentAlternative
+            ? FoodResolutionStatus.Ambiguous
+            : mayAutoSelectExact
+                ? FoodResolutionStatus.Exact
+                : mayAutoSelectProbable
+                    ? FoodResolutionStatus.Probable
+                    : FoodResolutionStatus.Ambiguous;
+
+        var alternatives = new List<FoodProductDto>(scored.Count - 1);
+        for (var i = 1; i < scored.Count; i++)
+        {
+            var alternative = scored[i];
+            alternatives.Add(alternative.Candidate.Dto with
+            {
+                MatchConfidence = FoodRelevanceScorer.ComputeConfidence(alternative.Exact, alternative.Coverage)
+            });
+        }
 
         return new FoodResolutionDto
         {
@@ -127,12 +216,24 @@ public sealed class FoodMatchIndex
             Status = status,
             Selected = top.Candidate.Dto with { MatchConfidence = confidence },
             MatchConfidence = confidence,
-            Alternatives = scored.Skip(1)
-                .Select(x => x.Candidate.Dto with
-                {
-                    MatchConfidence = FoodRelevanceScorer.ComputeConfidence(x.Exact, x.Coverage)
-                })
-                .ToList(),
+            Alternatives = alternatives,
         };
     }
+
+    private static bool ComesBefore(ScoredFoodCandidate left, ScoredFoodCandidate right)
+    {
+        if (left.Score != right.Score)
+            return left.Score > right.Score;
+
+        var nameComparison = StringComparer.Ordinal.Compare(left.Candidate.Dto.Name, right.Candidate.Dto.Name);
+        if (nameComparison != 0)
+            return nameComparison < 0;
+
+        return StringComparer.Ordinal.Compare(
+            left.Candidate.Dto.ExternalId ?? "",
+            right.Candidate.Dto.ExternalId ?? "") < 0;
+    }
+
+    private readonly record struct ScoredFoodCandidate(
+        FoodCandidate Candidate, float Score, float DecisionScore, bool Exact, float Coverage);
 }

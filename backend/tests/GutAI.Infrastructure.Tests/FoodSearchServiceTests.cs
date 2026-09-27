@@ -27,6 +27,130 @@ public class FoodSearchServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_EmbeddedCatalogRanksWholeBoiledEggAndEggplantCorrectly()
+    {
+        var store = new Mock<ITableStore> { DefaultValue = DefaultValue.Empty };
+        var aggregator = new ExternalFoodProviderAggregator(
+            [new WholeFoodApiService(), new BrandedFoodApiService(), new AustralianFoodApiService()],
+            NullLogger<ExternalFoodProviderAggregator>.Instance);
+        var service = new FoodSearchService(
+            store.Object, aggregator, new FoodRanker(), NullLogger<FoodSearchService>.Instance);
+        const string boiledEgg = "Egg, whole, cooked, hard-boiled";
+        var wholeFoodResults = await new WholeFoodApiService().SearchAsync("boiled egg");
+        wholeFoodResults.Select(food => food.Name).Should().Contain(boiledEgg);
+        var descriptiveWholeFoods = await new WholeFoodApiService().SearchAsync("large hard-boiled chicken egg");
+        descriptiveWholeFoods.Select(food => food.Name).Should().Contain(boiledEgg);
+
+        foreach (var query in new[] { "boiled egg", "hard boiled egg", "hard-boiled egg", "egg, whole, cooked, hard-boiled" })
+        {
+            var results = await service.SearchAsync(query);
+            results[0].Name.Should().Be(boiledEgg, query);
+        }
+
+        var descriptiveEgg = await service.SearchAsync("large hard-boiled chicken egg");
+        descriptiveEgg.Take(3).Select(food => food.Name).Should().Contain(boiledEgg);
+
+        var egg = await service.SearchAsync("egg");
+        egg[0].Name.Should().StartWith("Egg, whole,");
+
+        var eggplant = await service.SearchAsync("eggplant");
+        eggplant[0].Name.Should().StartWith("Eggplant");
+
+        var boiledEggplant = await service.SearchAsync("boiled eggplant");
+        boiledEggplant[0].Name.Should().Contain("Eggplant").And.Contain("boiled");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_BrandlessSpaghettiStaysAmbiguous_BrandQueryCanResolveBarilla()
+    {
+        var store = new Mock<ITableStore> { DefaultValue = DefaultValue.Empty };
+        var aggregator = new ExternalFoodProviderAggregator(
+            [new WholeFoodApiService(), new BrandedFoodApiService(), new AustralianFoodApiService()],
+            NullLogger<ExternalFoodProviderAggregator>.Instance);
+        var service = new FoodSearchService(
+            store.Object, aggregator, new FoodRanker(), NullLogger<FoodSearchService>.Instance);
+
+        var genericResult = await service.ResolveAsync("spaghetti", []);
+
+        genericResult.Status.Should().Be(FoodResolutionStatus.Ambiguous);
+        genericResult.Selected!.Name.Should().NotStartWith("Barilla");
+
+        var brandedResult = await service.ResolveAsync("barilla spaghetti", []);
+        brandedResult.Status.Should().BeOneOf(FoodResolutionStatus.Exact, FoodResolutionStatus.Probable);
+        brandedResult.MatchConfidence.Should().BeGreaterThanOrEqualTo(0.85m);
+        brandedResult.Selected.Should().NotBeNull();
+        brandedResult.Selected!.Brand.Should().StartWith("Barilla");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PartialOrBrandedMatchesStayAmbiguous()
+    {
+        var store = new Mock<ITableStore> { DefaultValue = DefaultValue.Empty };
+        var aggregator = new ExternalFoodProviderAggregator(
+            [new WholeFoodApiService(), new BrandedFoodApiService(), new AustralianFoodApiService()],
+            NullLogger<ExternalFoodProviderAggregator>.Instance);
+        var service = new FoodSearchService(
+            store.Object, aggregator, new FoodRanker(), NullLogger<FoodSearchService>.Instance);
+
+        foreach (var query in new[]
+        {
+            "English breakfast baked beans",
+            "large hard-boiled chicken egg",
+            "cooked bacon rashers",
+            "cooked mushrooms with browning",
+            "egg scramble with sautéed vegetables",
+            "frozen blackberries bowl",
+            "parsley sprig on pasta",
+            "pickles served with katsu curry",
+            "roasted asparagus",
+            "spaghetti with tomato sauce",
+        })
+        {
+            var result = await service.ResolveAsync(query, []);
+            result.Status.Should().Be(FoodResolutionStatus.Ambiguous, query);
+        }
+
+        foreach (var query in new[] { "hard boiled egg", "hard-boiled egg" })
+        {
+            var result = await service.ResolveAsync(query, []);
+            if (result.Status is FoodResolutionStatus.Exact or FoodResolutionStatus.Probable)
+            {
+                result.Selected.Should().NotBeNull();
+                result.Selected!.Brand.Should().BeNull();
+                result.Selected.Name.Should().Be("Egg, whole, cooked, hard-boiled");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ResolveAsync_BrandlessQueriesPreserveBaselineBrandedSelections()
+    {
+        var store = new Mock<ITableStore> { DefaultValue = DefaultValue.Empty };
+        var aggregator = new ExternalFoodProviderAggregator(
+            [new WholeFoodApiService(), new BrandedFoodApiService(), new AustralianFoodApiService()],
+            NullLogger<ExternalFoodProviderAggregator>.Instance);
+        var service = new FoodSearchService(
+            store.Object, aggregator, new FoodRanker(), NullLogger<FoodSearchService>.Instance);
+        var cases = new[]
+        {
+            (Query: "bacon", ExpectedName: "Bacon"),
+            (Query: "baked beans", ExpectedName: "Baked Beans"),
+            (Query: "guacamole", ExpectedName: "Guacamole"),
+            (Query: "pulled pork sandwich", ExpectedName: "Pulled Pork Sandwich"),
+            (Query: "salsa", ExpectedName: "Salsa"),
+        };
+
+        foreach (var (query, expectedName) in cases)
+        {
+            var result = await service.ResolveAsync(query, []);
+            result.Status.Should().BeOneOf(FoodResolutionStatus.Exact, FoodResolutionStatus.Probable);
+            result.MatchConfidence.Should().BeGreaterThanOrEqualTo(0.85m);
+            result.Selected.Should().NotBeNull();
+            result.Selected!.Name.Should().Be(expectedName);
+        }
+    }
+
+    [Fact]
     public async Task ResolveAsync_ConfidentLocalExact_ReturnsWithoutAggregatorCall()
     {
         // Arrange

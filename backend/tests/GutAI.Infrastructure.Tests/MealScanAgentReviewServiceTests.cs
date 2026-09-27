@@ -16,8 +16,10 @@ public sealed class MealScanAgentReviewServiceTests
     public async Task ReviewAsync_ExecutesGroundingInspectionToolAndSelectsReturnedCandidate()
     {
         var fakeInner = new ToolLoopFakeChatClient();
-        using var chatClient = new ChatClientBuilder(fakeInner)
+        using var selectionClient = new ChatClientBuilder(fakeInner)
             .UseFunctionInvocation()
+            .Build();
+        using var visionClient = new ChatClientBuilder(new VisionReanalysisFakeChatClient())
             .Build();
 
         var search = new Mock<GutAI.Application.Common.Interfaces.IFoodSearchService>();
@@ -30,7 +32,8 @@ public sealed class MealScanAgentReviewServiceTests
             })
             .Build();
         var service = new MealScanAgentReviewService(
-            chatClient,
+            visionClient,
+            selectionClient,
             grounding,
             config,
             NullLogger<MealScanAgentReviewService>.Instance);
@@ -85,9 +88,11 @@ public sealed class MealScanAgentReviewServiceTests
     public async Task ReviewAsync_AllowsOneBoundedReanalysisToolCall()
     {
         var fakeInner = new ReanalysisToolFakeChatClient();
-        using var chatClient = new ChatClientBuilder(fakeInner)
+        var visionFake = new VisionReanalysisFakeChatClient();
+        using var selectionClient = new ChatClientBuilder(fakeInner)
             .UseFunctionInvocation()
             .Build();
+        using var visionClient = new ChatClientBuilder(visionFake).Build();
 
         var search = new Mock<GutAI.Application.Common.Interfaces.IFoodSearchService>();
         search
@@ -104,7 +109,8 @@ public sealed class MealScanAgentReviewServiceTests
             })
             .Build();
         var service = new MealScanAgentReviewService(
-            chatClient,
+            visionClient,
+            selectionClient,
             grounding,
             config,
             NullLogger<MealScanAgentReviewService>.Instance);
@@ -137,9 +143,129 @@ public sealed class MealScanAgentReviewServiceTests
         var result = await service.ReviewAsync(grounded, [1, 2, 3], "image/jpeg", CancellationToken.None);
 
         Assert.Null(result.ResolvedProduct);
-        Assert.Equal(1, fakeInner.ReanalysisInvocations);
         Assert.Equal("medium", fakeInner.RequestedEffort);
+        Assert.Equal(1, visionFake.ReanalysisInvocations);
+        Assert.True(fakeInner.AgentInvocations >= 3);
     }
+
+    [Fact]
+    public async Task ReviewAsync_AcceptedReanalysisKeepsStageAComponentAndGrams()
+    {
+        var result = await ReviewReanalysisWithProposalAsync(candidateIndex: 0, requireCompatibilityAgreement: false);
+
+        Assert.Equal("fish fillet", result.Original.Name);
+        Assert.Equal(100m, result.Original.EstimatedGramsLow);
+        Assert.Equal(150m, result.Original.EstimatedGramsMidpoint);
+        Assert.Equal(220m, result.Original.EstimatedGramsHigh);
+        Assert.Equal(0.7m, result.Original.Confidence);
+        Assert.Equal(0.7m, result.Original.PortionConfidence);
+        Assert.Equal("grilled", result.Original.PreparationNote);
+        Assert.Equal("fillet", result.Original.ServingHintUnit);
+        Assert.Equal(150m, result.Original.ServingHintUnitGrams);
+        Assert.Equal("agent_tool_review_reanalysis", result.Attempt.Method);
+        Assert.NotNull(result.ResolvedProduct);
+    }
+
+    [Fact]
+    public async Task ReviewAsync_CompatibilityAgreementRejectsNonTopCandidate()
+    {
+        var result = await ReviewReanalysisWithProposalAsync(candidateIndex: 1, requireCompatibilityAgreement: true);
+
+        Assert.Null(result.ResolvedProduct);
+    }
+
+    [Fact]
+    public async Task ReviewAsync_CompatibilityAgreementAcceptsTopCandidate()
+    {
+        var result = await ReviewReanalysisWithProposalAsync(candidateIndex: 0, requireCompatibilityAgreement: true);
+
+        Assert.NotNull(result.ResolvedProduct);
+        Assert.Equal("agent_tool_review_reanalysis", result.Attempt.Method);
+    }
+
+    [Fact]
+    public async Task ReviewAsync_CompatibilityAgreementDisabledAllowsNonTopCandidate()
+    {
+        var result = await ReviewReanalysisWithProposalAsync(candidateIndex: 1, requireCompatibilityAgreement: false);
+
+        Assert.NotNull(result.ResolvedProduct);
+        Assert.Equal("agent_tool_review_reanalysis", result.Attempt.Method);
+    }
+
+    private static async Task<GroundedItem> ReviewReanalysisWithProposalAsync(
+        int candidateIndex,
+        bool requireCompatibilityAgreement)
+    {
+        var selectionFake = new ReanalysisToolFakeChatClient(candidateIndex, abstain: false);
+        using var selectionClient = new ChatClientBuilder(selectionFake).UseFunctionInvocation().Build();
+        using var visionClient = new ChatClientBuilder(new VisionReanalysisFakeChatClient()).Build();
+        var first = new FoodProductDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "grilled fish fillet",
+            DataSource = "USDA",
+            MatchConfidence = 0.95m,
+        };
+        var second = new FoodProductDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "grilled fish portion",
+            DataSource = "USDA",
+            MatchConfidence = 0.94m,
+        };
+        var search = new Mock<GutAI.Application.Common.Interfaces.IFoodSearchService>();
+        search
+            .Setup(f => f.ResolveAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto
+            {
+                MatchConfidence = 0.9m,
+                Alternatives = [first, second],
+            });
+        var grounding = new ComponentGroundingEngine(search.Object);
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["MealScan:AgentMaxReanalysisEffort"] = "high",
+                ["MealScan:RequireCompatibilityAgreement"] = requireCompatibilityAgreement.ToString(),
+            })
+            .Build();
+        var service = new MealScanAgentReviewService(
+            visionClient,
+            selectionClient,
+            grounding,
+            config,
+            NullLogger<MealScanAgentReviewService>.Instance);
+        var grounded = new GroundedItem(
+            new ScannedComponent
+            {
+                Name = "fish fillet",
+                EstimatedGramsLow = 100,
+                EstimatedGramsMidpoint = 150,
+                EstimatedGramsHigh = 220,
+                Confidence = 0.7m,
+                PortionConfidence = 0.7m,
+                PreparationNote = "grilled",
+                ServingHintUnit = "fillet",
+                ServingHintUnitGrams = 150,
+            },
+            null,
+            new GroundingAttemptDto
+            {
+                Query = "fish fillet",
+                ResolutionStatus = "ambiguous",
+                AutoSelected = false,
+                MatchConfidence = 0.62m,
+                Method = "resolve_async",
+                Candidates = [],
+            },
+            [first, second]);
+
+        return await service.ReviewAsync(grounded, [1, 2, 3], "image/jpeg", CancellationToken.None);
+    }
+
 
     [Fact]
     public void DecisionGate_RejectsCandidateWithoutIdentityOverlap()
@@ -267,9 +393,9 @@ public sealed class MealScanAgentReviewServiceTests
         {
         }
     }
-    private sealed class ReanalysisToolFakeChatClient : IChatClient
+    private sealed class ReanalysisToolFakeChatClient(int? candidateIndex = null, bool abstain = true) : IChatClient
     {
-        public int ReanalysisInvocations { get; private set; }
+        public int AgentInvocations { get; private set; }
         public string? RequestedEffort { get; private set; }
 
         public Task<ChatResponse> GetResponseAsync(
@@ -277,17 +403,8 @@ public sealed class MealScanAgentReviewServiceTests
             ChatOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            var messageList = messages.ToList();
-            var functionResults = messageList.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Count();
-
-            if (options?.Tools is null || options.Tools.Count == 0)
-            {
-                ReanalysisInvocations++;
-                return Task.FromResult(new ChatResponse(
-                    new ChatMessage(
-                        ChatRole.Assistant,
-                        "{\"name\":\"grilled fish fillet\",\"estimated_grams_low\":100,\"estimated_grams_midpoint\":150,\"estimated_grams_high\":220,\"confidence\":0.9,\"portion_confidence\":0.8,\"is_garnish\":false,\"preparation_note\":\"grilled\",\"search_queries\":[\"grilled fish fillet\"]}")));
-            }
+            AgentInvocations++;
+            var functionResults = messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Count();
 
             if (functionResults == 0)
             {
@@ -312,10 +429,42 @@ public sealed class MealScanAgentReviewServiceTests
                             new Dictionary<string, object?> { ["inspection_id"] = 1 })])));
             }
 
+            var decision = abstain
+                ? "{\"inspection_id\":1,\"candidate_index\":null,\"confidence\":0.4,\"reason\":\"No grounded candidate was returned after reanalysis.\",\"abstain\":true}"
+                : $"{{\"inspection_id\":1,\"candidate_index\":{candidateIndex},\"confidence\":0.95,\"reason\":\"The inspected candidate matches the component.\",\"abstain\":false}}";
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, decision)));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class VisionReanalysisFakeChatClient : IChatClient
+    {
+        public int ReanalysisInvocations { get; private set; }
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            ReanalysisInvocations++;
             return Task.FromResult(new ChatResponse(
                 new ChatMessage(
                     ChatRole.Assistant,
-                    "{\"inspection_id\":1,\"candidate_index\":null,\"confidence\":0.4,\"reason\":\"No grounded candidate was returned after reanalysis.\",\"abstain\":true}")));
+                    "{\"name\":\"grilled fish fillet\",\"estimated_grams_low\":400,\"estimated_grams_midpoint\":500,\"estimated_grams_high\":600,\"confidence\":0.9,\"portion_confidence\":0.8,\"is_garnish\":false,\"preparation_note\":\"grilled\",\"search_queries\":[\"grilled fish fillet\"]}")));
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

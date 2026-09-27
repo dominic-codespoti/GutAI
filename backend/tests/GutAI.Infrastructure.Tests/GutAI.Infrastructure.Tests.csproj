@@ -21,6 +21,7 @@
     <ProjectReference Include="../../src/GutAI.Infrastructure/GutAI.Infrastructure.csproj" />
     <ProjectReference Include="../../src/GutAI.Application/GutAI.Application.csproj" />
     <ProjectReference Include="../../src/GutAI.Domain/GutAI.Domain.csproj" />
+    <ProjectReference Include="../../tools/ScanMealRepair/ScanMealRepair.csproj" />
   </ItemGroup>
 
   <ItemGroup>

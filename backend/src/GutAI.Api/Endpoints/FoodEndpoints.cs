@@ -652,6 +652,11 @@ public static class FoodEndpoints
             return "Nutrition values are unrealistically high.";
         if (dto.Ingredients is { Length: > 2000 })
             return "Ingredients must not exceed 2000 characters.";
+        if (dto.NutritionProvenance is not null
+            && dto.NutritionProvenance is not ("Sourced" or "ModelEstimated" or "UserEntered"))
+            return "Nutrition provenance must be Sourced, ModelEstimated, or UserEntered.";
+        if (dto.ExtractionConfidence is < 0 or > 1)
+            return "Extraction confidence must be between 0 and 1.";
         return null;
     }
 
@@ -678,6 +683,8 @@ public static class FoodEndpoints
             SugarG = dto.SugarG,
             SodiumMg = dto.SodiumMg,
             Ingredients = dto.Ingredients,
+            NutritionProvenance = dto.NutritionProvenance,
+            ExtractionConfidence = dto.ExtractionConfidence,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -709,11 +716,14 @@ public static class FoodEndpoints
         existing.SugarG = dto.SugarG;
         existing.SodiumMg = dto.SodiumMg;
         existing.Ingredients = dto.Ingredients;
+        existing.NutritionProvenance = dto.NutritionProvenance ?? existing.NutritionProvenance;
+        existing.ExtractionConfidence = dto.ExtractionConfidence ?? existing.ExtractionConfidence;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await store.UpsertCustomFoodAsync(existing);
         return Results.Ok(existing);
     }
+
 
     static async Task<IResult> DeleteCustomFood(Guid id, ClaimsPrincipal user, ITableStore store)
     {

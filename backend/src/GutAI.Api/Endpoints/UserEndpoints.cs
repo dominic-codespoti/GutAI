@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
+using GutAI.Domain.Enums;
 
 public static class UserEndpoints
 {
@@ -45,8 +46,17 @@ public static class UserEndpoints
             gutConditions = user.GutConditions,
             onboardingCompleted = user.OnboardingCompleted,
             timezoneId = user.TimezoneId,
+            preferredFoodRegion = user.PreferredFoodRegion.ToString(),
             createdAt = user.CreatedAt
         });
+    }
+
+    static bool TryParseFoodRegion(string value, out FoodRegion region)
+    {
+        region = default;
+        var name = Enum.GetNames<FoodRegion>()
+            .FirstOrDefault(candidate => string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase));
+        return name is not null && Enum.TryParse(name, out region);
     }
 
     static async Task<IResult> UpdateProfile(UpdateProfileRequest request, ClaimsPrincipal principal, ITableStore store)
@@ -54,6 +64,14 @@ public static class UserEndpoints
         var userId = GetUserId(principal);
         var user = await store.GetUserAsync(userId);
         if (user is null) return Results.NotFound();
+
+        FoodRegion? preferredFoodRegion = null;
+        if (request.PreferredFoodRegion is not null)
+        {
+            if (!TryParseFoodRegion(request.PreferredFoodRegion, out var parsedRegion))
+                return Results.BadRequest(new { error = "Preferred food region must be Default, Us, or Au" });
+            preferredFoodRegion = parsedRegion;
+        }
 
         if (request.DisplayName is not null && request.DisplayName.Length > 100)
             return Results.BadRequest(new { error = "Display name must not exceed 100 characters" });
@@ -83,6 +101,7 @@ public static class UserEndpoints
         user.Allergies = request.Allergies ?? user.Allergies;
         user.DietaryPreferences = request.DietaryPreferences ?? user.DietaryPreferences;
         user.GutConditions = request.GutConditions ?? user.GutConditions;
+        user.PreferredFoodRegion = preferredFoodRegion ?? user.PreferredFoodRegion;
         user.TimezoneId = request.TimezoneId ?? user.TimezoneId;
         if (request.OnboardingCompleted.HasValue)
             user.OnboardingCompleted = request.OnboardingCompleted.Value;
@@ -102,6 +121,7 @@ public static class UserEndpoints
             dailyCarbGoalG = user.DailyCarbGoalG,
             dailyFatGoalG = user.DailyFatGoalG,
             dailyFiberGoalG = user.DailyFiberGoalG,
+            preferredFoodRegion = user.PreferredFoodRegion.ToString(),
             createdAt = user.CreatedAt
         });
     }

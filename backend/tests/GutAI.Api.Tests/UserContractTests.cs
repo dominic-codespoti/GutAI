@@ -28,6 +28,9 @@ public class UserContractTests(GutAiWebFactory factory)
         json.AssertHasProperty("allergies", JsonValueKind.Array);
         json.AssertHasProperty("dietaryPreferences", JsonValueKind.Array);
         json.AssertHasProperty("gutConditions", JsonValueKind.Array);
+        json.GetProperty("timezoneId").ValueKind.Should().BeOneOf(JsonValueKind.String, JsonValueKind.Null);
+        json.AssertHasStringProperty("preferredFoodRegion");
+        json.AssertHasStringProperty("createdAt");
         json.AssertHasBoolProperty("onboardingCompleted");
     }
 
@@ -43,6 +46,67 @@ public class UserContractTests(GutAiWebFactory factory)
         var json = await profile.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("displayName").GetString().Should().Be("CustomName");
         json.GetProperty("onboardingCompleted").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateProfile_RoundTripsPreferredFoodRegionAndReturnsCompleteProfile()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var update = await client.PutAsJsonAsync(
+            "/api/user/profile",
+            new { preferredFoodRegion = "aU" });
+
+        update.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await update.Content.ReadFromJsonAsync<JsonElement>();
+        updated.AssertHasStringProperty("id");
+        updated.AssertHasStringProperty("email");
+        updated.AssertHasStringProperty("displayName");
+        updated.AssertHasProperty("allergies", JsonValueKind.Array);
+        updated.AssertHasProperty("dietaryPreferences", JsonValueKind.Array);
+        updated.AssertHasProperty("gutConditions", JsonValueKind.Array);
+        updated.GetProperty("timezoneId").ValueKind.Should().BeOneOf(JsonValueKind.String, JsonValueKind.Null);
+        updated.AssertHasBoolProperty("onboardingCompleted");
+        updated.AssertHasNumberProperty("dailyCalorieGoal");
+        updated.AssertHasNumberProperty("dailyProteinGoalG");
+        updated.AssertHasNumberProperty("dailyCarbGoalG");
+        updated.AssertHasNumberProperty("dailyFatGoalG");
+        updated.AssertHasNumberProperty("dailyFiberGoalG");
+        updated.AssertHasStringProperty("preferredFoodRegion");
+        updated.AssertHasStringProperty("createdAt");
+        updated.GetProperty("preferredFoodRegion").GetString().Should().Be("Au");
+
+        var readBack = await client.GetAsync("/api/user/profile");
+        var profile = await readBack.Content.ReadFromJsonAsync<JsonElement>();
+        profile.GetProperty("preferredFoodRegion").GetString().Should().Be("Au");
+    }
+
+    [Fact]
+    public async Task UpdateProfile_NullPreferredFoodRegionKeepsCurrentValue()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        await client.PutAsJsonAsync("/api/user/profile", new { preferredFoodRegion = "Us" });
+        var response = await client.PutAsJsonAsync("/api/user/profile", new { preferredFoodRegion = (string?)null });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var profile = await (await client.GetAsync("/api/user/profile")).Content.ReadFromJsonAsync<JsonElement>();
+        profile.GetProperty("preferredFoodRegion").GetString().Should().Be("Us");
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("2")]
+    [InlineData("0")]
+    [InlineData("3")]
+    public async Task UpdateProfile_RejectsUnknownOrNumericRegionNames(string region)
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PutAsJsonAsync(
+            "/api/user/profile",
+            new { preferredFoodRegion = region });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.AssertHasStringProperty("error");
     }
 
     [Fact]

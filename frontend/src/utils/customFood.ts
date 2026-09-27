@@ -1,11 +1,12 @@
 import type { CustomFood, CreateMealItemRequest } from "../types";
 
-export type AiGeneratedFood = CustomFood & { extractionConfidence?: number | null };
+export type AiGeneratedFood = CustomFood;
 
 export const ROUND = (v: number) => Math.round(v * 10) / 10;
 
 export function normalizeCustomFood(data: AiGeneratedFood): CustomFood {
   return {
+    id: data.id,
     name: data.name ?? "",
     brandName: data.brandName ?? "",
     servingSize: Math.max(1, ROUND(data.servingSize ?? 100)),
@@ -18,12 +19,16 @@ export function normalizeCustomFood(data: AiGeneratedFood): CustomFood {
     sugarG: data.sugarG != null ? ROUND(data.sugarG) : null,
     sodiumMg: data.sodiumMg != null ? ROUND(data.sodiumMg) : null,
     ingredients: data.ingredients ?? "",
+    extractionConfidence: data.extractionConfidence,
+    nutritionProvenance: data.nutritionProvenance ?? "ModelEstimated",
+    describedComponents: data.describedComponents ?? null,
   };
 }
 
 export function customFoodToMealItem(
   food: CustomFood & { id?: string },
   aiExtractionConfidence?: number | null,
+  isAiDescribed = aiExtractionConfidence != null,
 ): CreateMealItemRequest {
   return {
     foodName: food.name,
@@ -43,6 +48,7 @@ export function customFoodToMealItem(
     // entered, fully-deterministic item to the symptom-association engine. Undefined
     // (not 0) for manual entry — a real "no confidence signal" case, not "zero confidence".
     matchConfidence: aiExtractionConfidence ?? undefined,
-    nutritionProvenance: aiExtractionConfidence != null ? "Estimated" : undefined,
+    nutritionProvenance:
+      food.nutritionProvenance ?? (isAiDescribed ? "ModelEstimated" : "UserEntered"),
   };
 }

@@ -194,13 +194,25 @@ public class FoodSearchFaultToleranceTests(GutAiWebFactory factory)
 
         public Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default) => inner.DeleteCoachMessagesAsync(userId, default);
 
-        public Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default) => inner.UpsertScanSessionAsync(session, default);
+        public Task UpsertMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default) => inner.UpsertMealDraftAsync(draft, default);
 
-        public Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => inner.GetScanSessionAsync(userId, sessionId, default);
+        public Task<MealDraftRecord?> GetMealDraftAsync(Guid userId, Guid draftId, CancellationToken ct = default) => inner.GetMealDraftAsync(userId, draftId, default);
+        public Task<string?> TryReplaceMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default) => inner.TryReplaceMealDraftAsync(draft, default);
 
-        public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => inner.DeleteScanSessionAsync(userId, sessionId, default);
+        public Task<List<MealDraftRecord>> GetMealDraftsByStatusAsync(Guid userId, string status, CancellationToken ct = default) => inner.GetMealDraftsByStatusAsync(userId, status, default);
 
-        public Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default) => inner.GetWebNutritionCacheAsync(normalizedName, default);
+
+        public Task<int> PurgeMealDraftsAsync(DateTimeOffset pendingExpiredBefore, DateTimeOffset closedCreatedBefore, CancellationToken ct = default) => inner.PurgeMealDraftsAsync(pendingExpiredBefore, closedCreatedBefore, default);
+
+        public Task<CoachSessionState?> GetCoachSessionStateAsync(Guid userId, CancellationToken ct = default) => inner.GetCoachSessionStateAsync(userId, default);
+
+        public Task UpsertCoachSessionStateAsync(Guid userId, CoachSessionState state, CancellationToken ct = default) => inner.UpsertCoachSessionStateAsync(userId, state, default);
+
+        public Task DeleteCoachSessionStateAsync(Guid userId, CancellationToken ct = default) => inner.DeleteCoachSessionStateAsync(userId, default);
+
+        public Task<WebNutritionCacheEntry?> GetWebNutritionCacheEntryAsync(string cacheKey, CancellationToken ct = default) => inner.GetWebNutritionCacheEntryAsync(cacheKey, default);
+
+        public Task UpsertWebNutritionNegativeCacheAsync(string cacheKey, CancellationToken ct = default) => inner.UpsertWebNutritionNegativeCacheAsync(cacheKey, default);
 
         public Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default) => inner.UpsertWebNutritionCacheAsync(result, default);
     }

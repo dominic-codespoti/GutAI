@@ -1,0 +1,7 @@
+{
+  "minimumAssertionPassRate": 0.8,
+  "maximumKcalPercentError": 20.0,
+  "maximumMacroPercentError": 25.0,
+  "maximumLatencyP95Ms": 120000,
+  "maximumTokenP95": 20000
+}

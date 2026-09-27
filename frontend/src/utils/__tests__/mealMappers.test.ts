@@ -1,67 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapParsedItemToRequest } from "../mealMappers";
-import { customFoodToMealItem } from "../customFood";
+import {
+  buildNlpCommitItems,
+  isNlpDraftUsable,
+  mapItemToRequest,
+  unresolvedNlpChoices,
+} from "../mealMappers";
+import { customFoodToMealItem, normalizeCustomFood } from "../customFood";
+import type { MealItem, ParsedFoodItem } from "../../types";
 
-test("natural-language quantities are applied once", () => {
-  const request = mapParsedItemToRequest(
-    {
-      name: "Egg",
-      servingWeightG: 100,
-      servingSize: "2",
-      servingQuantity: 2,
-      calories: 155,
-      proteinG: 26,
-      carbsG: 2.2,
-      fatG: 22,
-      fiberG: 0,
-      sugarG: 0,
-      sodiumMg: 124,
-      cholesterolMg: 372,
-      saturatedFatG: 7.2,
-      potassiumMg: 252,
-      matchConfidence: 1,
-      portionConfidence: 1,
-      nutritionProvenance: "Sourced",
-      resolutionStatus: "Exact",
-    },
-    { servingG: 50, multiplier: 2 },
-  );
-
-  assert.equal(request.servingWeightG, 100);
-  assert.equal(request.calories, 155);
-  assert.equal(request.sodiumMg, 124);
-});
-
-test("matchConfidence and nutritionProvenance survive the commit mapping", () => {
-  // Regression: these fields were computed by the parser, shown to the user in the
-  // review sheet, then silently dropped when building the save request — meaning
-  // every meal logged through the app UI (not chat) lost its identity/nutrition
-  // provenance signal before it ever reached the backend.
-  const request = mapParsedItemToRequest({
-    name: "Billion Bay Oatmeal",
-    servingWeightG: 100,
-    servingSize: "1 bowl",
-    servingQuantity: 1,
-    calories: 1580,
-    proteinG: 20,
-    carbsG: 66.7,
-    fatG: 6.67,
-    fiberG: 0,
-    sugarG: 0,
-    sodiumMg: 0,
-    cholesterolMg: 0,
-    saturatedFatG: 0,
-    potassiumMg: 0,
-    matchConfidence: 0.53,
-    portionConfidence: 0.75,
-    nutritionProvenance: "Sourced",
-    resolutionStatus: "Probable",
-  });
-
-  assert.equal(request.matchConfidence, 0.53);
-  assert.equal(request.nutritionProvenance, "Sourced");
-});
 
 test("custom-food logging preserves per-serving nutrition", () => {
   const request = customFoodToMealItem({
@@ -101,9 +48,125 @@ test("customFoodToMealItem carries AI extraction confidence through as matchConf
 
   const aiSourced = customFoodToMealItem(base, 0.42);
   assert.equal(aiSourced.matchConfidence, 0.42);
-  assert.equal(aiSourced.nutritionProvenance, "Estimated");
+  assert.equal(aiSourced.nutritionProvenance, "ModelEstimated");
 
   const manual = customFoodToMealItem(base);
   assert.equal(manual.matchConfidence, undefined);
-  assert.equal(manual.nutritionProvenance, undefined);
+  assert.equal(manual.nutritionProvenance, "UserEntered");
+
+  assert.equal(
+    customFoodToMealItem(base, undefined, true).nutritionProvenance,
+    "ModelEstimated",
+  );
 });
+test("custom-food mapping preserves server provenance and only defaults absent provenance", () => {
+  const base = {
+    name: "Grounded soup",
+    servingSize: 100,
+    servingSizeUnit: "g",
+    calories: 80,
+    proteinG: 4,
+    carbG: 10,
+    fatG: 2,
+  };
+
+  assert.equal(
+    customFoodToMealItem({ ...base, nutritionProvenance: "Sourced" }).nutritionProvenance,
+    "Sourced",
+  );
+  assert.equal(
+    customFoodToMealItem({ ...base, nutritionProvenance: "ModelEstimated" }).nutritionProvenance,
+    "ModelEstimated",
+  );
+  const serverResult = normalizeCustomFood({
+    ...base,
+    nutritionProvenance: "Sourced",
+    extractionConfidence: 0.76,
+  });
+  assert.equal(serverResult.nutritionProvenance, "Sourced");
+  assert.equal(serverResult.extractionConfidence, 0.76);
+  assert.equal(normalizeCustomFood(base).nutritionProvenance, "ModelEstimated");
+});
+
+test("legacy non-catalog meal items default missing provenance to UserEntered", () => {
+  const legacy = {
+    id: "legacy-meal-item",
+    foodName: "Homemade soup",
+    barcode: null,
+    servings: 1,
+    servingUnit: "bowl",
+    servingWeightG: 300,
+    calories: 240,
+    proteinG: 12,
+    carbsG: 30,
+    fatG: 8,
+    fiberG: 4,
+    sugarG: 5,
+    sodiumMg: 500,
+  } as MealItem;
+  assert.equal(mapItemToRequest(legacy).nutritionProvenance, "UserEntered");
+});
+
+test("NLP draft commits carry explicit candidate choices only for needs-choice items", () => {
+  const items = [
+    { draftItemId: "kept", needsChoice: true, servingWeightG: 100 },
+    { draftItemId: "alternative", needsChoice: true, servingWeightG: 100 },
+    { draftItemId: "unchosen", needsChoice: true, servingWeightG: 100 },
+    { draftItemId: "ordinary", needsChoice: false, servingWeightG: 100 },
+    { draftItemId: "replaced", needsChoice: true, servingWeightG: 100 },
+  ] as ParsedFoodItem[];
+  const commits = buildNlpCommitItems(
+    items,
+    {},
+    { 4: "replacement-product" },
+    { 0: "preview-key", 1: "alternative-key", 3: "irrelevant-key" },
+  );
+
+  assert.deepEqual(commits.map((item) => item.selectedCandidateKey), [
+    "preview-key",
+    "alternative-key",
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  assert.deepEqual(commits[4], {
+    itemId: "replaced",
+    grams: 100,
+    replacementFoodProductId: "replacement-product",
+  });
+  assert.equal("calories" in commits[0], false);
+});
+
+test("unresolved NLP choice gating ignores excluded, replaced and chosen rows", () => {
+  const items = [
+    { needsChoice: true },
+    { needsChoice: true },
+    { needsChoice: true },
+    { needsChoice: true },
+    { needsChoice: false },
+  ] as ParsedFoodItem[];
+
+  assert.deepEqual(
+    unresolvedNlpChoices(
+      items,
+      { 3: "alternative-key" },
+      { 2: "replacement-product" },
+      { 1: false },
+    ),
+    [0],
+  );
+});
+test("NLP draft is usable only when every included item has a draft id", () => {
+  const items = [
+    { draftItemId: "draft-item" },
+    { draftItemId: "second-item" },
+  ] as ParsedFoodItem[];
+  assert.equal(isNlpDraftUsable(items, "draft-id"), true);
+  assert.equal(isNlpDraftUsable(items, null), false);
+  assert.equal(
+    isNlpDraftUsable([{ draftItemId: "draft-item" }, {}] as ParsedFoodItem[], "draft-id"),
+    false,
+  );
+  assert.equal(isNlpDraftUsable([], "draft-id"), true);
+});
+

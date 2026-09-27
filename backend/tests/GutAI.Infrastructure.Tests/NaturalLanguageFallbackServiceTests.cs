@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
+using GutAI.Domain.Entities;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Infrastructure.Data;
 using GutAI.Infrastructure.ExternalApis;
@@ -457,6 +458,8 @@ public class NaturalLanguageFallbackServiceTests
         result.Should().HaveCount(1);
         result[0].Name.Should().Be("xyznonexistentfood");
         result[0].Calories.Should().BeGreaterThan(0);
+        result[0].Per100g.Should().NotBeNull();
+        result[0].Per100g!.CaloriesKcal.Should().Be(150m);
     }
 
     [Fact]
@@ -470,17 +473,21 @@ public class NaturalLanguageFallbackServiceTests
         result[0].Calories.Should().Be(330m);
         result[0].ProteinG.Should().Be(62m);
         result[0].ServingWeightG.Should().Be(200m);
+        result[0].Per100g.Should().NotBeNull();
+        result[0].Per100g!.CaloriesKcal.Should().Be(165m);
     }
 
     [Fact]
     public async Task ParseAsync_PreservesCanonicalSodiumMilligrams()
     {
-        SetupFood("soup", "Soup", cal: 50, sodium100g: 656m);
+        SetupFood("soup", "Soup", cal: 50, sodium100g: 656.5m);
 
         var result = await CreateService().ParseAsync("100g soup");
 
         result.Should().ContainSingle();
-        result[0].SodiumMg.Should().Be(656m);
+        // NutritionCalculator rounds sodium to whole milligrams: 656.5 mg × 100/100 = 657 mg.
+        result[0].SodiumMg.Should().Be(657m);
+        result[0].Per100g!.SodiumMg.Should().Be(656.5m);
     }
 
     [Fact]
@@ -515,7 +522,8 @@ public class NaturalLanguageFallbackServiceTests
         var result = await CreateService().ParseAsync("8 oz steak");
         result.Should().HaveCount(1);
         result[0].ServingWeightG.Should().Be(226.8m);
-        result[0].Calories.Should().Be(Math.Round(250m * 2.268m, 1));
+        // NutritionCalculator rounds calories to whole kcal: 250 kcal/100 g × 226.8 g = 567 kcal.
+        result[0].Calories.Should().Be(567m);
     }
 
     // ════════════════════════════════════════════════════════
@@ -1400,6 +1408,14 @@ public class NaturalLanguageFallbackServiceTests
         // alternatives for the user to pick from.
         var chocolateCake = MakeFood("Chocolate Cake", cal: 371, protein: 5, carbs: 50, fat: 17);
         var carrotCake = MakeFood("Carrot Cake", cal: 349, protein: 4, carbs: 43, fat: 18);
+        var vanillaCake = MakeFood("Vanilla Cake", cal: 350, protein: 4, carbs: 45, fat: 17);
+        var duplicateCarrotCake = MakeFood("Carrot Cake", cal: 349, protein: 4, carbs: 43, fat: 18);
+        FoodProduct? persistedProduct = null;
+        _storeMock.Setup(x => x.SearchFoodProductsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<FoodProduct>());
+        _storeMock.Setup(x => x.UpsertFoodProductAsync(It.IsAny<FoodProduct>(), It.IsAny<CancellationToken>()))
+            .Callback<FoodProduct, CancellationToken>((product, _) => persistedProduct = product)
+            .Returns(Task.CompletedTask);
         _foodApiMock.Setup(x => x.ResolveAsync("cake", It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FoodResolutionDto
             {
@@ -1407,7 +1423,7 @@ public class NaturalLanguageFallbackServiceTests
                 Status = FoodResolutionStatus.Ambiguous,
                 Selected = chocolateCake,
                 MatchConfidence = 0.5m,
-                Alternatives = [carrotCake],
+                Alternatives = [carrotCake, vanillaCake, duplicateCarrotCake],
             });
 
         var result = await CreateService().ParseAsync("cake");
@@ -1417,6 +1433,30 @@ public class NaturalLanguageFallbackServiceTests
         result[0].Name.Should().Be("Chocolate Cake");
         result[0].Calories.Should().BeGreaterThan(0,
             "an ambiguous match still delivers usable sourced nutrition from its top candidate — it flags the identity as uncertain, it does not withhold the data");
+        result[0].NeedsChoice.Should().BeTrue();
+        var grounding = result[0].Grounding;
+        grounding.Should().NotBeNull();
+        var candidates = grounding!.Candidates;
+        result[0].CandidateKey.Should().Be(candidates[0].CandidateKey);
+        candidates[0].FoodProductId.Should().Be(persistedProduct!.Id);
+        candidates[0].Calories100g.Should().Be(chocolateCake.Calories100g);
+        candidates.Select(candidate => candidate.CandidateKey)
+            .Should().OnlyHaveUniqueItems();
+        candidates.Should().HaveCount(3);
+        candidates[1].Name.Should().Be("Carrot Cake");
+        candidates[2].Name.Should().Be("Vanilla Cake");
+    }
+
+    [Fact]
+    public async Task ParseAsync_AutoSelectedMatch_HasNoChoiceOrGrounding()
+    {
+        SetupFood("banana", "Banana", cal: 89, protein: 1.1m, carbs: 23, fat: 0.3m);
+
+        var result = await CreateService().ParseAsync("banana");
+
+        result.Should().ContainSingle();
+        result[0].NeedsChoice.Should().BeFalse();
+        result[0].Grounding.Should().BeNull();
     }
 
     [Fact]
@@ -1476,7 +1516,7 @@ public class NaturalLanguageFallbackServiceTests
             .ReturnsAsync(new FoodResolutionDto { Status = FoodResolutionStatus.Unresolved, Selected = null });
 
         var webMock = new Mock<IWebNutritionLookup>();
-        webMock.Setup(w => w.LookupAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        webMock.Setup(w => w.LookupAsync(It.IsAny<string>(), It.IsAny<GutAI.Domain.Enums.FoodRegion>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WebNutritionResult
             {
                 CaloriesKcal = 120m,
@@ -1491,12 +1531,16 @@ public class NaturalLanguageFallbackServiceTests
             _foodApiMock.Object, _storeMock.Object, _loggerMock.Object, webMock.Object);
 
         var result = await service.ParseAsync("1 bowl of chicken laksa");
-
         result.Should().ContainSingle();
-        result[0].NutritionProvenance.Should().Be("Sourced");
+        result[0].NutritionProvenance.Should().Be("Web");
         result[0].ResolutionStatus.Should().Be("ResolvedWeb");
         result[0].MatchConfidence.Should().Be(0.85m);
-        result[0].Calories.Should().BeGreaterThan(0);
+        // A bowl estimates to 300 g: 120 kcal/100 g × 3 = 360 kcal (whole-kcal rounding);
+        // this web result has no sodium basis, so the parsed display amount is zero.
+        result[0].Calories.Should().Be(360m);
+        result[0].SodiumMg.Should().Be(0m);
+        result[0].Per100g.Should().NotBeNull();
+        result[0].Per100g!.CaloriesKcal.Should().Be(120m);
     }
 
     [Fact]

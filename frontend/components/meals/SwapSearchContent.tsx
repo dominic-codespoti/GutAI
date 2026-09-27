@@ -14,6 +14,7 @@ import { foodApi } from "../../src/api";
 import { FoodSearchResult } from "../FoodSearchResult";
 import { radius, spacing } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
+import { useAuthStore } from "../../src/stores/auth";
 import type { FoodProduct } from "../../src/types";
 
 interface Props {
@@ -29,6 +30,9 @@ export function SwapSearchContent({
   fitContent = false,
 }: Props) {
   const router = useRouter();
+  const preferredFoodRegion = useAuthStore((state) => state.user?.preferredFoodRegion ?? "Default");
+  const searchRegion =
+    preferredFoodRegion === "Au" ? "AU" : preferredFoodRegion === "Us" ? "US" : undefined;
   const colors = useThemeColors();
   const [search, setSearch] = useState(initialSearch);
   const [debounced, setDebounced] = useState(initialSearch);
@@ -39,9 +43,9 @@ export function SwapSearchContent({
   }, [search]);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["swap-food-search", debounced],
+    queryKey: ["swap-food-search", debounced, searchRegion],
     queryFn: ({ signal }) =>
-      foodApi.search(debounced, signal).then((r) => r.data),
+      foodApi.search(debounced, signal, searchRegion).then((r) => r.data),
     enabled: debounced.length >= 2,
     retry: false,
     staleTime: 5 * 60 * 1000,

@@ -22,14 +22,18 @@ import { SwapSearchContent } from "./SwapSearchContent";
 import { useMealSheetStore } from "../../src/stores/mealSheet";
 import { useMealMutations } from "../../src/hooks/useMealMutations";
 import { useFavorites } from "../../src/hooks/useFavorites";
-import { mealApi, foodApi, mealScanApi } from "../../src/api";
+import { mealApi, foodApi, mealScanApi, mealDraftApi } from "../../src/api";
 import * as ImagePicker from "expo-image-picker";
 import { toast } from "../../src/stores/toast";
 import {
   useSubscriptionStore,
   presentPaywall,
 } from "../../src/stores/subscription";
-import { mapParsedItemToRequest } from "../../src/utils/mealMappers";
+import {
+  buildNlpCommitItems,
+  isNlpDraftUsable,
+  unresolvedNlpChoices,
+} from "../../src/utils/mealMappers";
 import {
   normalizeCustomFood,
   customFoodToMealItem,
@@ -37,11 +41,9 @@ import {
 import type { AiGeneratedFood } from "../../src/utils/customFood";
 import { radius, spacing, type ThemeColors } from "../../src/utils/theme";
 import { useThemeColors } from "../../src/stores/theme";
+import { useAuthStore } from "../../src/stores/auth";
 import { buildLoggedAt } from "../../src/utils/date";
-import {
-  scaleNutrition,
-  nutritionSummaryText,
-} from "../../src/utils/nutrition";
+import { scaleNutrition, nutritionSummaryText, computeNutrition } from "../../src/utils/nutrition";
 import { deleteItem, getItem, setItem } from "../../src/utils/storage";
 import { maybeRequestReview } from "../../src/utils/review";
 import {
@@ -49,14 +51,13 @@ import {
   mealWriteFromResponse,
 } from "../../src/services/health";
 import { SearchResultSkeleton } from "../SkeletonLoader";
-import { MealScanReviewSheet } from "./MealScanReviewSheet";
+import { MealDraftReviewSheet } from "./MealDraftReviewSheet";
 import type {
   ParsedFoodItem,
   FoodProduct,
   FavoriteFood,
   RecentFood,
-  MealScanDraft,
-  MealScanConfirmItem,
+  MealDraft,
 } from "../../src/types";
 
 const EMPTY_PRODUCT_ID = "00000000-0000-0000-0000-000000000000";
@@ -64,6 +65,19 @@ const MAX_CALORIES = 10000;
 const MAX_MACRO_G = 2000;
 const MAX_SODIUM_MG = 50000;
 const MAX_SERVINGS = 100;
+const NLP_COMMIT_INVALIDATION_KEYS = [
+  "meals",
+  "daily-summary",
+  "recent-foods",
+  "streak",
+  "custom-foods",
+  "trigger-foods-dashboard",
+  "trigger-foods",
+  "food-diary-analysis",
+  "additive-exposure",
+  "nutrition-trends",
+  "meal-drafts",
+] as const;
 
 const sheetScrollStyle = {
   flex: Platform.OS === "web" ? 1 : 0,
@@ -196,6 +210,16 @@ function parsedItemWarnings(
       text: "Nutrition estimated, not from a verified product",
       tone: "muted",
     });
+  } else if (item.nutritionProvenance === "Web") {
+    warnings.push({
+      text: "Nutrition from a cited web page — verify",
+      tone: "warning",
+    });
+  } else if (item.nutritionProvenance === "ModelEstimated") {
+    warnings.push({
+      text: "AI-estimated nutrition",
+      tone: "warning",
+    });
   }
 
   if (item.portionConfidence < 0.5) {
@@ -216,6 +240,9 @@ function uncertaintyColor(tone: ItemUncertaintyTone, colors: ThemeColors) {
 
 export function LogMealSheet() {
   const colors = useThemeColors();
+  const preferredFoodRegion = useAuthStore((state) => state.user?.preferredFoodRegion ?? "Default");
+  const searchRegion =
+    preferredFoodRegion === "Au" ? "AU" : preferredFoodRegion === "Us" ? "US" : undefined;
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -235,12 +262,26 @@ export function LogMealSheet() {
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
 
   // Meal scan state
-  const [mealScanDraft, setMealScanDraft] = useState<MealScanDraft | null>(
-    null,
-  );
+  const [mealScanDraft, setMealScanDraft] = useState<MealDraft | null>(null);
   const [showMealScanReview, setShowMealScanReview] = useState(false);
   const [isScanningMeal, setIsScanningMeal] = useState(false);
+  const [scanNote, setScanNote] = useState("");
+  const [scanStage, setScanStage] = useState(0);
+  const scanStartedAtRef = useRef<number | null>(null);
   const [isScanningLabel, setIsScanningLabel] = useState(false);
+  useEffect(() => {
+    if (!isScanningMeal) {
+      scanStartedAtRef.current = null;
+      setScanStage(0);
+      return;
+    }
+    scanStartedAtRef.current = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - (scanStartedAtRef.current ?? Date.now());
+      setScanStage(elapsed > 10_000 ? 2 : elapsed >= 4_000 ? 1 : 0);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isScanningMeal]);
 
   // Time
   const initialDate = new Date();
@@ -253,13 +294,19 @@ export function LogMealSheet() {
 
   // Describe state
   const [naturalText, setNaturalText] = useState("");
+  const [parsedOriginalText, setParsedOriginalText] = useState("");
   const [parsedItems, setParsedItems] = useState<ParsedFoodItem[]>([]);
   const [parsedConfigs, setParsedConfigs] = useState<
     Record<number, { servingG: number; multiplier: number; customText: string }>
   >({});
+  const [parsedCandidateChoices, setParsedCandidateChoices] = useState<Record<number, string>>({});
+  const [nlpDraftId, setNlpDraftId] = useState<string | null>(null);
+  const [parsedReplacements, setParsedReplacements] = useState<Record<number, string>>({});
+  const [isCommittingNlp, setIsCommittingNlp] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [aiPreview, setAiPreview] = useState<AiGeneratedFood | null>(null);
 
+  const recreatingNlpDraftRef = useRef(false);
   // Manual state
   const [manualName, setManualName] = useState("");
   const [manualCalories, setManualCalories] = useState("");
@@ -298,41 +345,47 @@ export function LogMealSheet() {
     getItem(draftKey).then((raw) => {
       if (!raw) return;
       try {
-        const draft = JSON.parse(raw) as Record<string, string>;
-        setNaturalText(draft.naturalText ?? "");
-        setMealNotes(draft.mealNotes ?? "");
-        setManualName(draft.manualName ?? "");
-        setManualCalories(draft.manualCalories ?? "");
-        setManualProtein(draft.manualProtein ?? "0");
-        setManualCarbs(draft.manualCarbs ?? "0");
-        setManualFat(draft.manualFat ?? "0");
-        setManualFiber(draft.manualFiber ?? "0");
-        setManualSugar(draft.manualSugar ?? "0");
-        setManualSodium(draft.manualSodium ?? "0");
-        setManualServings(draft.manualServings ?? "1");
-        setMealHour(draft.mealHour ?? mealHour);
-        setMealMinute(draft.mealMinute ?? mealMinute);
-        toast.info("Recovered an unfinished meal draft");
+        const draft = JSON.parse(raw) as Record<string, unknown>;
+        setNaturalText(typeof draft.naturalText === "string" ? draft.naturalText : "");
+        setParsedOriginalText(
+          typeof draft.parsedOriginalText === "string" ? draft.parsedOriginalText : "",
+        );
+        setMealNotes(typeof draft.mealNotes === "string" ? draft.mealNotes : "");
+        setManualName(typeof draft.manualName === "string" ? draft.manualName : "");
+        setManualCalories(typeof draft.manualCalories === "string" ? draft.manualCalories : "");
+        setManualProtein(typeof draft.manualProtein === "string" ? draft.manualProtein : "0");
+        setManualCarbs(typeof draft.manualCarbs === "string" ? draft.manualCarbs : "0");
+        setManualFat(typeof draft.manualFat === "string" ? draft.manualFat : "0");
+        setManualFiber(typeof draft.manualFiber === "string" ? draft.manualFiber : "0");
+        setManualSugar(typeof draft.manualSugar === "string" ? draft.manualSugar : "0");
+        setManualSodium(typeof draft.manualSodium === "string" ? draft.manualSodium : "0");
+        setManualServings(typeof draft.manualServings === "string" ? draft.manualServings : "1");
+        setMealHour(typeof draft.mealHour === "string" ? draft.mealHour : mealHour);
+        setMealMinute(typeof draft.mealMinute === "string" ? draft.mealMinute : mealMinute);
+        setNlpDraftId(typeof draft.nlpDraftId === "string" ? draft.nlpDraftId : null);
+        if (Array.isArray(draft.parsedItems)) setParsedItems(draft.parsedItems as ParsedFoodItem[]);
+        if (draft.parsedConfigs && typeof draft.parsedConfigs === "object") {
+          setParsedConfigs(draft.parsedConfigs as typeof parsedConfigs);
+        }
+        if (draft.parsedReplacements && typeof draft.parsedReplacements === "object") {
+          setParsedReplacements(draft.parsedReplacements as Record<number, string>);
+        }
+        if (Array.isArray(draft.parsedItems) && draft.parsedItems.length > 0) setShowReview(true);
       } catch {
         void deleteItem(draftKey);
       }
     });
   }, [visible]);
-
   useEffect(() => {
     if (!visible || !draftHydrated.current) return;
-    const hasDraft = [naturalText, mealNotes, manualName, manualCalories].some(
-      Boolean,
-    );
+    const hasDraft = [naturalText, parsedOriginalText, mealNotes, manualName, manualCalories].some(Boolean) ||
+      parsedItems.length > 0 || !!nlpDraftId;
     const timer = setTimeout(() => {
-      if (!hasDraft) {
-        void deleteItem(draftKey);
-        return;
-      }
       void setItem(
         draftKey,
         JSON.stringify({
           naturalText,
+          parsedOriginalText,
           mealNotes,
           manualName,
           manualCalories,
@@ -345,12 +398,17 @@ export function LogMealSheet() {
           manualServings,
           mealHour,
           mealMinute,
+          parsedItems,
+          parsedConfigs,
+          parsedReplacements,
+          nlpDraftId,
         }),
       );
     }, 300);
     return () => clearTimeout(timer);
   }, [
     visible,
+    parsedOriginalText,
     naturalText,
     mealNotes,
     manualName,
@@ -364,6 +422,10 @@ export function LogMealSheet() {
     manualServings,
     mealHour,
     mealMinute,
+    parsedItems,
+    parsedConfigs,
+    parsedReplacements,
+    nlpDraftId,
   ]);
 
   const { isPro } = useSubscriptionStore();
@@ -376,9 +438,9 @@ export function LogMealSheet() {
   });
 
   const searchResults = useQuery({
-    queryKey: ["log-sheet-search", debouncedSearch],
+    queryKey: ["log-sheet-search", debouncedSearch, searchRegion],
     queryFn: ({ signal }) =>
-      foodApi.search(debouncedSearch, signal).then((r) => r.data),
+      foodApi.search(debouncedSearch, signal, searchRegion).then((r) => r.data),
     enabled: debouncedSearch.length >= 2,
     staleTime: 5 * 60 * 1000,
   });
@@ -429,10 +491,16 @@ export function LogMealSheet() {
       mealApi
         .parseNatural({ text, mealType: selectedMealType })
         .then((r) => r.data),
-    onSuccess: (response) => {
+    onSuccess: (response, text) => {
+      const recreatingDraft = recreatingNlpDraftRef.current;
+      recreatingNlpDraftRef.current = false;
       const parsed = response.parsedItems;
       if (parsed.length === 0) {
-        toast.error("No foods recognized. Try being more specific.");
+        toast.error(
+          recreatingDraft
+            ? "Could not re-analyze this meal. Enter the original description again."
+            : "No foods recognized. Try being more specific.",
+        );
         return;
       }
       const newConfigs: typeof parsedConfigs = {};
@@ -440,25 +508,38 @@ export function LogMealSheet() {
         const quantity = it.servingQuantity ?? 1;
         const totalWeight = it.servingWeightG ?? 100;
         newConfigs[idx] = {
-          // The parser returns nutrition and weight for the total quantity.
-          // Keep the review base portion per unit so the multiplier is applied once.
           servingG: quantity > 0 ? totalWeight / quantity : totalWeight,
           multiplier: quantity,
           customText: "",
         };
       });
+      setNlpDraftId(response.draftId ?? null);
+      setParsedOriginalText(text);
+      setParsedCandidateChoices({});
+      setParsedReplacements({});
       setParsedConfigs(newConfigs);
       setParsedItems(parsed);
       setNaturalText("");
       setShowReview(true);
-      toast.success(
-        parsed.length === 1
-          ? `Found "${parsed[0].name}" — review & log`
-          : `Found ${parsed.length} food items`,
+      if (recreatingDraft) {
+        toast.info("This review expired, so we re-analyzed your meal. Check the items and tap Log again.");
+      } else {
+        toast.success(
+          parsed.length === 1
+            ? `Found "${parsed[0].name}" — review & log`
+            : `Found ${parsed.length} food items`,
+        );
+      }
+    },
+    onError: () => {
+      const recreatingDraft = recreatingNlpDraftRef.current;
+      recreatingNlpDraftRef.current = false;
+      toast.error(
+        recreatingDraft
+          ? "Could not re-analyze this meal. Enter the original description again."
+          : "Could not parse meal. Try being more specific.",
       );
     },
-    onError: () =>
-      toast.error("Could not parse meal. Try being more specific."),
   });
 
   // AI describe mutation (Create Custom Food shortcut)
@@ -531,31 +612,89 @@ export function LogMealSheet() {
             fiberG: Number(manualFiber) || 0,
             sugarG: Number(manualSugar) || 0,
             sodiumMg: Number(manualSodium) || 0,
+            nutritionProvenance: "UserEntered",
           },
         ],
       },
       { onSuccess: resetForm },
     );
   };
+  const recreateNlpDraft = () => {
+    const originalText = parsedOriginalText.trim() || naturalText.trim();
+    if (!originalText) {
+      toast.error("The original description is unavailable. Enter it again to re-analyze this meal.");
+      return;
+    }
+    setNlpDraftId(null);
+    recreatingNlpDraftRef.current = true;
+    parseMutation.mutate(originalText);
+  };
 
-  const handleLogParsed = () => {
-    if (parsedItems.length === 0) return;
-    createMeal.mutate(
-      {
+  const handleLogParsed = async () => {
+    if (parsedItems.length === 0 || isCommittingNlp || parseMutation.isPending) return;
+    if (!isNlpDraftUsable(parsedItems, nlpDraftId)) {
+      recreateNlpDraft();
+      return;
+    }
+    if (unresolvedNlpChoices(parsedItems, parsedCandidateChoices, parsedReplacements).length > 0) {
+      return;
+    }
+    const loggedAt = buildLoggedAt(selectedDate, Number(mealHour), Number(mealMinute));
+    const notes = mealNotes.trim() || undefined;
+    setIsCommittingNlp(true);
+    try {
+      const response = await mealDraftApi.commit(nlpDraftId!, {
         mealType: selectedMealType,
-        loggedAt: buildLoggedAt(
-          selectedDate,
-          Number(mealHour),
-          Number(mealMinute),
+        loggedAt,
+        notes,
+        items: buildNlpCommitItems(
+          parsedItems,
+          parsedConfigs,
+          parsedReplacements,
+          parsedCandidateChoices,
         ),
-        notes: mealNotes.trim() || undefined,
-        originalText: naturalText.trim() || undefined,
-        items: parsedItems.map((it, idx) =>
-          mapParsedItemToRequest(it, parsedConfigs[idx]),
-        ),
-      },
-      { onSuccess: resetForm },
-    );
+      });
+      const result = response.data;
+      for (const key of NLP_COMMIT_INVALIDATION_KEYS) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+      toast.success("Meal logged!");
+      haptics.success();
+      maybeRequestReview();
+      maybeWriteMealToPlatform({
+        mealId: result.mealId,
+        loggedAt,
+        mealType: selectedMealType,
+        name: parsedItems.map((item) => item.name).join(", "),
+        calories: result.totalCalories,
+        proteinG: result.totalProteinG,
+        carbsG: result.totalCarbsG,
+        fatG: result.totalFatG,
+      });
+      resetForm();
+      close();
+    } catch (error) {
+      const axiosError = isAxiosError(error) ? error : undefined;
+      const status = axiosError?.response?.status;
+      if (status === 422) {
+        const message = axiosError?.response?.data?.error;
+        toast.error(typeof message === "string" ? message : "Some foods need a choice before logging.");
+      } else if (status === 409) {
+        for (const key of NLP_COMMIT_INVALIDATION_KEYS) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+        resetForm();
+        close();
+        toast.info("This meal was already logged or the draft was closed.");
+      } else if (status === 404) {
+        toast.info("This review expired. Re-analyzing your meal…");
+        recreateNlpDraft();
+      } else {
+        toast.error("Failed to log meal");
+      }
+    } finally {
+      setIsCommittingNlp(false);
+    }
   };
 
   const handleAiDescribe = async () => {
@@ -577,7 +716,7 @@ export function LogMealSheet() {
     try {
       const normalized = normalizeCustomFood(aiPreview);
       const saved = await foodApi.createCustomFood(normalized);
-      const customFoodId = (saved.data as any).id;
+      const customFoodId = saved.data.id;
       queryClient.invalidateQueries({ queryKey: ["custom-foods"] });
       createMeal.mutate({
         mealType: selectedMealType,
@@ -590,6 +729,7 @@ export function LogMealSheet() {
           customFoodToMealItem(
             { ...normalized, id: customFoodId },
             aiPreview.extractionConfidence,
+            true,
           ),
         ],
       });
@@ -618,19 +758,60 @@ export function LogMealSheet() {
       });
       return next;
     });
+    setParsedReplacements((prev) => {
+      const next: typeof prev = {};
+      let nextIndex = 0;
+      parsedItems.forEach((_, oldIndex) => {
+        if (oldIndex !== idx) {
+          if (prev[oldIndex]) next[nextIndex] = prev[oldIndex];
+          nextIndex++;
+        }
+      });
+      return next;
+    });
+    setParsedCandidateChoices((prev) => {
+      const next: typeof prev = {};
+      let nextIndex = 0;
+      parsedItems.forEach((_, oldIndex) => {
+        if (oldIndex !== idx) {
+          if (prev[oldIndex]) next[nextIndex] = prev[oldIndex];
+          nextIndex++;
+        }
+      });
+      return next;
+    });
   };
 
   const handleSwapSelect = (food: FoodProduct) => {
     if (swapIndex === null) return;
+    if (!food.id || food.id === EMPTY_PRODUCT_ID) {
+      toast.error("This result can't be linked right now — try another");
+      return;
+    }
     const cfg = parsedConfigs[swapIndex];
     const servingG = food.servingQuantity ?? cfg?.servingG ?? 100;
+    setParsedReplacements((prev) => ({ ...prev, [swapIndex]: food.id }));
+    setParsedCandidateChoices((prev) => {
+      const next = { ...prev };
+      delete next[swapIndex];
+      return next;
+    });
     setParsedItems((prev) =>
       prev.map((it, i) =>
         i === swapIndex
           ? {
               ...it,
               name: food.name,
-              foodProductId: food.id !== EMPTY_PRODUCT_ID ? food.id : undefined,
+              foodProductId: food.id,
+              per100g: {
+                caloriesKcal: food.calories100g ?? 0,
+                proteinG: food.protein100g ?? 0,
+                carbsG: food.carbs100g ?? 0,
+                fatG: food.fat100g ?? 0,
+                fiberG: food.fiber100g,
+                sugarG: food.sugar100g,
+                sodiumMg: food.sodiumMg100g,
+              },
               calories: food.calories100g ?? 0,
               proteinG: food.protein100g ?? 0,
               carbsG: food.carbs100g ?? 0,
@@ -639,6 +820,7 @@ export function LogMealSheet() {
               sugarG: food.sugar100g ?? 0,
               sodiumMg: food.sodiumMg100g ?? 0,
               servingWeightG: 100,
+              nutritionProvenance: "Sourced",
             }
           : it,
       ),
@@ -714,74 +896,22 @@ export function LogMealSheet() {
   };
 
   const mealScanMutation = useMutation({
-    mutationFn: (uri: string) => mealScanApi.scanImage(uri).then((r) => r.data),
+    mutationFn: ({ uri, mime }: { uri: string; mime?: string }) =>
+      mealScanApi
+        .scanImage(uri, mime, scanNote.trim() || undefined)
+        .then((r) => r.data),
     onSuccess: (draft) => {
       setIsScanningMeal(false);
+      setScanNote("");
       setMealScanDraft(draft);
       setShowMealScanReview(true);
       handleClose();
       haptics.success();
     },
-    onError: (err: any) => {
+    onError: (error: unknown) => {
       setIsScanningMeal(false);
-      toast.error(err.message || "Failed to analyze meal photo.");
+      toast.error(error instanceof Error ? error.message : "Failed to analyze meal photo.");
     },
-  });
-
-  const confirmMealScanMutation = useMutation({
-    mutationFn: ({
-      sessionId,
-      mealType,
-      items,
-      loggedAt,
-    }: {
-      sessionId: string;
-      mealType: string;
-      items: MealScanConfirmItem[];
-      loggedAt?: string;
-    }) => mealScanApi.confirmDraft(sessionId, { mealType, items, loggedAt }),
-    onSuccess: (res, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["meals"] });
-      queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-foods"] });
-      queryClient.invalidateQueries({ queryKey: ["streak"] });
-      setShowMealScanReview(false);
-      setMealScanDraft(null);
-      handleClose();
-      toast.success("Meal logged!");
-      maybeRequestReview();
-      haptics.success();
-      if (res?.data?.mealId) {
-        const names = variables.items
-          .map((i) => i.name)
-          .filter(Boolean)
-          .join(", ");
-        const sum = (
-          key:
-            | "calories"
-            | "proteinG"
-            | "carbsG"
-            | "fatG"
-            | "fiberG"
-            | "sugarG"
-            | "sodiumMg",
-        ) => variables.items.reduce((sum, it) => sum + (it[key] ?? 0), 0);
-        maybeWriteMealToPlatform({
-          mealId: res.data.mealId,
-          loggedAt: variables.loggedAt ?? new Date().toISOString(),
-          mealType: variables.mealType,
-          name: names || variables.mealType || "Scanned meal",
-          calories: sum("calories"),
-          proteinG: sum("proteinG"),
-          carbsG: sum("carbsG"),
-          fatG: sum("fatG"),
-          fiberG: sum("fiberG") || undefined,
-          sugarG: sum("sugarG") || undefined,
-          sodiumMg: sum("sodiumMg") || undefined,
-        });
-      }
-    },
-    onError: () => toast.error("Failed to log scanned meal."),
   });
 
   const parseLabelMutation = useMutation({
@@ -817,7 +947,10 @@ export function LogMealSheet() {
     });
     if (result.canceled || !result.assets[0]) return;
     setIsScanningMeal(true);
-    mealScanMutation.mutate(result.assets[0].uri);
+    mealScanMutation.mutate({
+      uri: result.assets[0].uri,
+      mime: result.assets[0].mimeType ?? undefined,
+    });
   };
 
   const handleMealPhotoFromLibrary = async () => {
@@ -837,7 +970,10 @@ export function LogMealSheet() {
     });
     if (result.canceled || !result.assets[0]) return;
     setIsScanningMeal(true);
-    mealScanMutation.mutate(result.assets[0].uri);
+    mealScanMutation.mutate({
+      uri: result.assets[0].uri,
+      mime: result.assets[0].mimeType ?? undefined,
+    });
   };
 
   const handleLabelPhoto = async () => {
@@ -876,7 +1012,11 @@ export function LogMealSheet() {
     void deleteItem(draftKey);
     setNaturalText("");
     setParsedItems([]);
+    setParsedOriginalText("");
     setParsedConfigs({});
+    setParsedCandidateChoices({});
+    setNlpDraftId(null);
+    setParsedReplacements({});
     setShowReview(false);
     setAiPreview(null);
     setManualName("");
@@ -923,6 +1063,16 @@ export function LogMealSheet() {
     { key: "scan", label: "Scan", icon: "barcode-outline" },
     { key: "manual", label: "Manual", icon: "create-outline" },
   ];
+
+  const nlpDraftUsable = isNlpDraftUsable(parsedItems, nlpDraftId);
+  const unresolvedChoiceIndices = unresolvedNlpChoices(
+    parsedItems,
+    parsedCandidateChoices,
+    parsedReplacements,
+  );
+  const hasOriginalDescription = !!(
+    parsedOriginalText.trim() || naturalText.trim()
+  );
 
   // ── Camera full overlay ──
   if (subView === "camera") {
@@ -1719,6 +1869,36 @@ export function LogMealSheet() {
                   };
                   const totalG = cfg.servingG * cfg.multiplier;
                   const scale = totalG / (item.servingWeightG || 100);
+                  const chosenCandidate = item.grounding?.candidates.find(
+                    (candidate) => candidate.candidate_key === parsedCandidateChoices[idx],
+                  );
+                  const candidateBasis = chosenCandidate
+                    ? {
+                        caloriesKcal: chosenCandidate.calories_100g ?? 0,
+                        proteinG: chosenCandidate.protein_100g ?? 0,
+                        carbsG: chosenCandidate.carbs_100g ?? 0,
+                        fatG: chosenCandidate.fat_100g ?? 0,
+                        fiberG: chosenCandidate.fiber_100g,
+                        sugarG: chosenCandidate.sugar_100g,
+                        sodiumMg: chosenCandidate.sodium_mg_100g,
+                      }
+                    : undefined;
+                  const nutrition = candidateBasis
+                    ? computeNutrition(candidateBasis, totalG)
+                    : item.per100g
+                      ? computeNutrition(item.per100g, totalG)
+                      : {
+                          calories: Math.round(item.calories * scale),
+                          proteinG: Math.round(item.proteinG * scale * 10) / 10,
+                          carbsG: Math.round(item.carbsG * scale * 10) / 10,
+                          fatG: Math.round(item.fatG * scale * 10) / 10,
+                        };
+                  const previewCandidate = item.grounding?.candidates.find(
+                    (candidate) => candidate.candidate_key === item.candidateKey,
+                  ) ?? item.grounding?.candidates[0];
+                  const alternatives = (item.grounding?.candidates ?? [])
+                    .slice(1)
+                    .filter((candidate) => !!candidate.candidate_key);
                   return (
                     <View
                       key={idx}
@@ -1749,18 +1929,22 @@ export function LogMealSheet() {
                           >
                             {item.name}
                           </Text>
-                          {parsedItemWarnings(item).map((w, wIdx) => (
-                            <Text
-                              key={wIdx}
-                              style={{
-                                fontSize: 11,
-                                color: uncertaintyColor(w.tone, colors),
-                                marginTop: 3,
-                              }}
-                            >
-                              {w.text}
-                            </Text>
-                          ))}
+                          {parsedItemWarnings(item)
+                            .filter((warning) =>
+                              !(item.needsChoice && warning.text === "Multiple possible matches — verify this item"),
+                            )
+                            .map((w, wIdx) => (
+                              <Text
+                                key={wIdx}
+                                style={{
+                                  fontSize: 11,
+                                  color: uncertaintyColor(w.tone, colors),
+                                  marginTop: 3,
+                                }}
+                              >
+                                {w.text}
+                              </Text>
+                            ))}
                         </View>
                         <TouchableOpacity
                           onPress={() => {
@@ -1790,6 +1974,88 @@ export function LogMealSheet() {
                           />
                         </TouchableOpacity>
                       </View>
+                      {item.needsChoice && !parsedReplacements[idx] && (
+                        <View style={{ marginBottom: spacing.sm }}>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
+                            Choose a match before logging:
+                          </Text>
+                          {previewCandidate?.candidate_key && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                setParsedReplacements((prev) => {
+                                  const next = { ...prev };
+                                  delete next[idx];
+                                  return next;
+                                });
+                                setParsedCandidateChoices((prev) => ({
+                                  ...prev,
+                                  [idx]: item.candidateKey ?? previewCandidate.candidate_key!,
+                                }));
+                              }}
+                              accessibilityRole="button"
+                              style={{
+                                padding: 8,
+                                borderRadius: radius.sm,
+                                borderWidth: 1,
+                                borderColor:
+                                  parsedCandidateChoices[idx] ===
+                                  (item.candidateKey ?? previewCandidate.candidate_key)
+                                    ? colors.primary
+                                    : colors.border,
+                                marginBottom: 5,
+                              }}
+                            >
+                              <Text style={{ color: colors.text, fontSize: 12 }}>
+                                {parsedCandidateChoices[idx] ===
+                                (item.candidateKey ?? previewCandidate.candidate_key)
+                                  ? "✓ "
+                                  : ""}
+                                Keep this match: {previewCandidate.name} ·{" "}
+                                {Math.round(previewCandidate.calories_100g ?? item.calories)} kcal/100 g
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          {alternatives.map((candidate) => (
+                            <TouchableOpacity
+                              key={candidate.candidate_key}
+                              onPress={() => {
+                                setParsedReplacements((prev) => {
+                                  const next = { ...prev };
+                                  delete next[idx];
+                                  return next;
+                                });
+                                setParsedCandidateChoices((prev) => ({
+                                  ...prev,
+                                  [idx]: candidate.candidate_key!,
+                                }));
+                              }}
+                              accessibilityRole="button"
+                              style={{
+                                padding: 8,
+                                borderRadius: radius.sm,
+                                borderWidth: 1,
+                                borderColor:
+                                  parsedCandidateChoices[idx] === candidate.candidate_key
+                                    ? colors.primary
+                                    : colors.border,
+                                marginBottom: 5,
+                              }}
+                            >
+                              <Text style={{ color: colors.text, fontSize: 12 }}>
+                                {parsedCandidateChoices[idx] === candidate.candidate_key
+                                  ? "✓ "
+                                  : ""}
+                                {candidate.name} · {Math.round(candidate.calories_100g ?? 0)} kcal/100 g
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                          {!parsedCandidateChoices[idx] && !parsedReplacements[idx] && (
+                            <Text style={{ fontSize: 11, color: colors.warning, marginTop: 4 }}>
+                              Select a match or replace this item to enable logging.
+                            </Text>
+                          )}
+                        </View>
+                      )}
                       <ServingSizeSelector
                         servingG={cfg.servingG}
                         onServingChange={(g) =>
@@ -1817,7 +2083,7 @@ export function LogMealSheet() {
                             item.servingWeightG || item.servingQuantity || 1,
                           servingSize: item.servingSize || "serving",
                         }}
-                        summaryText={`${totalG}g total · ${Math.round(item.calories * scale)} cal · ${Math.round(item.proteinG * scale * 10) / 10}g P · ${Math.round(item.carbsG * scale * 10) / 10}g C · ${Math.round(item.fatG * scale * 10) / 10}g F`}
+                        summaryText={`${totalG}g total · ${nutrition.calories} cal · ${nutrition.proteinG}g P · ${nutrition.carbsG}g C · ${nutrition.fatG}g F`}
                       />
                     </View>
                   );
@@ -1833,14 +2099,30 @@ export function LogMealSheet() {
                   <Text style={{ fontSize: 12, color: colors.textMuted }}>
                     Total:{" "}
                     {Math.round(
-                      parsedItems.reduce((acc, it, idx) => {
-                        const cfg = parsedConfigs[idx];
-                        if (!cfg) return acc;
-                        return (
-                          acc +
-                          (it.calories * (cfg.servingG * cfg.multiplier)) /
-                            (it.servingWeightG ?? 100)
+                      parsedItems.reduce((acc, item, idx) => {
+                        const cfg = parsedConfigs[idx] ?? {
+                          servingG: item.servingWeightG || 100,
+                          multiplier: 1,
+                        };
+                        const grams = cfg.servingG * cfg.multiplier;
+                        const selected = item.grounding?.candidates.find(
+                          (candidate) =>
+                            candidate.candidate_key === parsedCandidateChoices[idx],
                         );
+                        const basis = selected
+                          ? {
+                              caloriesKcal: selected.calories_100g ?? 0,
+                              proteinG: selected.protein_100g ?? 0,
+                              carbsG: selected.carbs_100g ?? 0,
+                              fatG: selected.fat_100g ?? 0,
+                              fiberG: selected.fiber_100g,
+                              sugarG: selected.sugar_100g,
+                              sodiumMg: selected.sodium_mg_100g,
+                            }
+                          : item.per100g;
+                        return acc + (basis
+                          ? computeNutrition(basis, grams).calories
+                          : (item.calories * grams) / (item.servingWeightG ?? 100));
                       }, 0),
                     )}{" "}
                     cal
@@ -1851,7 +2133,6 @@ export function LogMealSheet() {
                         setParsedItems([]);
                         setShowReview(false);
                       }}
-                      style={{ paddingHorizontal: 14, paddingVertical: 8 }}
                     >
                       <Text
                         style={{ color: colors.textMuted, fontWeight: "600" }}
@@ -1862,7 +2143,12 @@ export function LogMealSheet() {
                     <TouchableOpacity
                       onPress={handleLogParsed}
                       disabled={
-                        createMeal.isPending || parsedItems.length === 0
+                        isCommittingNlp ||
+                        parseMutation.isPending ||
+                        createMeal.isPending ||
+                        parsedItems.length === 0 ||
+                        (nlpDraftUsable && unresolvedChoiceIndices.length > 0) ||
+                        (!nlpDraftUsable && !hasOriginalDescription)
                       }
                       style={{
                         backgroundColor: colors.primary,
@@ -1871,7 +2157,7 @@ export function LogMealSheet() {
                         borderRadius: radius.sm,
                       }}
                     >
-                      {createMeal.isPending ? (
+                      {createMeal.isPending || isCommittingNlp || parseMutation.isPending ? (
                         <ActivityIndicator
                           color={colors.textOnPrimary}
                           size="small"
@@ -1884,16 +2170,28 @@ export function LogMealSheet() {
                             fontSize: 14,
                           }}
                         >
-                          Log Meal ({parsedItems.length}{" "}
-                          {parsedItems.length === 1 ? "item" : "items"})
+                          {nlpDraftUsable
+                            ? `Log Meal (${parsedItems.length} ${parsedItems.length === 1 ? "item" : "items"})`
+                            : "Refresh review"}
                         </Text>
                       )}
                     </TouchableOpacity>
                   </View>
                 </View>
-              </ScrollView>
-            )}
+                {nlpDraftUsable && unresolvedChoiceIndices.length > 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.warning, marginTop: spacing.xs }}>
+                    Choose a match or replace each flagged item to log.
+                  </Text>
+                ) : !nlpDraftUsable ? (
+                  <Text style={{ fontSize: 12, color: colors.warning, marginTop: spacing.xs }}>
+                    {hasOriginalDescription
+                      ? "This review needs a server draft. Refresh to re-analyze before logging."
+                      : "The original description is unavailable. Enter it again to refresh this review."}
+                  </Text>
+                ) : null}
 
+                </ScrollView>
+              )}
             {/* ════════════════════════════════════════
              SEARCH TAB
              ════════════════════════════════════════ */}
@@ -2252,6 +2550,22 @@ export function LogMealSheet() {
                     calculates macros for review.
                   </Text>
 
+                  <TextInput
+                    placeholder="Add a note (e.g. from Chipotle, cooked in butter)"
+                    value={scanNote}
+                    onChangeText={(value) => setScanNote(value.slice(0, 200))}
+                    maxLength={200}
+                    accessibilityLabel="Photo scan note"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: radius.sm,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      marginBottom: spacing.sm,
+                      color: colors.text,
+                    }}
+                  />
                   {isScanningMeal ? (
                     <View
                       style={{
@@ -2273,7 +2587,7 @@ export function LogMealSheet() {
                           fontSize: 13,
                         }}
                       >
-                        Analyzing meal & matching nutrition...
+                        {["Identifying foods…", "Matching nutrition…", "Almost there — preparing your review…"][scanStage]}
                       </Text>
                     </View>
                   ) : (
@@ -2813,22 +3127,31 @@ export function LogMealSheet() {
         )}
       </BottomSheet>
 
-      <MealScanReviewSheet
+      <MealDraftReviewSheet
         draft={mealScanDraft}
         visible={showMealScanReview && !!mealScanDraft}
         onClose={() => {
           setShowMealScanReview(false);
           setMealScanDraft(null);
         }}
-        onConfirm={async ({ mealType, items }) => {
-          if (!mealScanDraft) return;
-          await confirmMealScanMutation.mutateAsync({
-            sessionId: mealScanDraft.scanSessionId,
-            mealType,
-            items,
+        onCommitted={(result, draft, request) => {
+          setShowMealScanReview(false);
+          setMealScanDraft(null);
+          resetForm();
+          close();
+          maybeRequestReview();
+          const names = draft.items.map((item) => item.name).filter(Boolean).join(", ");
+          maybeWriteMealToPlatform({
+            mealId: result.mealId,
+            loggedAt: request.loggedAt ?? new Date().toISOString(),
+            mealType: request.mealType ?? "Meal",
+            name: names || request.mealType || "Scanned meal",
+            calories: result.totalCalories,
+            proteinG: result.totalProteinG,
+            carbsG: result.totalCarbsG,
+            fatG: result.totalFatG,
           });
         }}
-        isConfirming={confirmMealScanMutation.isPending}
       />
     </>
   );

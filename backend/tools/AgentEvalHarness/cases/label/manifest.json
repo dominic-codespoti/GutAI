@@ -1,0 +1,77 @@
+{
+  "thresholds": {
+    "minimumAssertionPassRate": 1,
+    "maximumKcalPercentError": 20,
+    "maximumMacroPercentError": 25,
+    "maximumLatencyP95Ms": 120000,
+    "maximumTokenP95": 20000
+  },
+  "cases": [
+    {
+      "id": "label-01",
+      "image": "label-01.png",
+      "expected": {
+        "calories": 120,
+        "proteinG": 5,
+        "carbsG": 22,
+        "fatG": 2,
+        "servingGrams": 100
+      }
+    },
+    {
+      "id": "label-02",
+      "image": "label-02.png",
+      "expected": {
+        "calories": 210,
+        "proteinG": 8,
+        "carbsG": 31,
+        "fatG": 7,
+        "servingGrams": 100
+      }
+    },
+    {
+      "id": "label-03",
+      "image": "label-03.png",
+      "expected": {
+        "calories": 95,
+        "proteinG": 3,
+        "carbsG": 18,
+        "fatG": 1,
+        "servingGrams": 100
+      }
+    },
+    {
+      "id": "label-04",
+      "image": "label-04.png",
+      "expected": {
+        "calories": 320,
+        "proteinG": 14,
+        "carbsG": 42,
+        "fatG": 11,
+        "servingGrams": 100
+      }
+    },
+    {
+      "id": "label-05",
+      "image": "label-05.png",
+      "expected": {
+        "calories": 160,
+        "proteinG": 6,
+        "carbsG": 24,
+        "fatG": 4,
+        "servingGrams": 100
+      }
+    },
+    {
+      "id": "label-06",
+      "image": "label-06.png",
+      "expected": {
+        "calories": 245,
+        "proteinG": 10,
+        "carbsG": 35,
+        "fatG": 8,
+        "servingGrams": 100
+      }
+    }
+  ]
+}

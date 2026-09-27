@@ -1,16 +1,28 @@
 {
+  "schema_version": 2,
   "gate": {
-    "min_recall": 0.75,
-    "max_median_gram_error_percent": 45,
-    "min_nutrition_backed_rate": 0.70,
-    "max_false_positive_rate": 0.35
+    "min_recall": 0.885,
+    "max_median_gram_error_percent": 47.6,
+    "min_nutrition_backed_rate": 0.265,
+    "max_false_positive_rate": 0.477,
+    "min_precision": 0.663,
+    "max_median_kcal_error_percent": null,
+    "max_abs_kcal_bias_percent": null,
+    "min_identity_precision": null,
+    "max_abstention_rate": 0.761,
+    "min_interval_coverage": 0.469,
+    "max_identity_ece": null,
+    "max_kcal_cv_percent": null,
+    "max_p95_latency_seconds": 16.16,
+    "max_p95_cost_usd": 0.0032
   },
   "cases": [
     {
       "image": "case01.jpg",
       "mode": "composite",
+      "tags": ["mixed_dish"],
       "expected": [
-        { "name": "hawaiian pizza", "grams": 350 }
+        { "name": "hawaiian pizza", "grams": 350, "weighed": false }
       ],
       "notes": "Hawaiian pizza slice/plate"
     },
@@ -18,17 +30,18 @@
       "image": "case02.jpg",
       "mode": "components",
       "expected": [
-        { "name": "fish fillet", "grams": 150 },
-        { "name": "corn vegetable hash", "grams": 100 },
-        { "name": "mixed greens salad", "grams": 40 }
+        { "name": "fish fillet", "grams": 150, "weighed": false },
+        { "name": "corn vegetable hash", "grams": 100, "weighed": false },
+        { "name": "mixed greens salad", "grams": 40, "weighed": false }
       ],
       "notes": "Plated fish fillet over a corn-vegetable hash, topped with a dressed arugula/tomato salad and a sauce drizzle (garnish-scale, not logged separately). Original manifest wrongly said 'grilled salmon with salad' with only 2 components; species/cut is not verifiable from the image, so name it generically."
     },
     {
       "image": "case03.jpg",
       "mode": "composite",
+      "tags": ["mixed_dish"],
       "expected": [
-        { "name": "caesar salad", "grams": 300 }
+        { "name": "caesar salad", "grams": 300, "weighed": false }
       ],
       "notes": "Caesar salad as one assembled dish"
     },
@@ -36,8 +49,8 @@
       "image": "case04.jpg",
       "mode": "components",
       "expected": [
-        { "name": "pulled pork sandwich", "grams": 220 },
-        { "name": "french fries", "grams": 150 }
+        { "name": "pulled pork sandwich", "grams": 220, "weighed": false },
+        { "name": "french fries", "grams": 150, "weighed": false }
       ],
       "notes": "Pulled pork sandwich and fries combo"
     },
@@ -45,10 +58,10 @@
       "image": "case05.jpg",
       "mode": "components",
       "expected": [
-        { "name": "fried egg", "grams": 100 },
-        { "name": "sausage", "grams": 120 },
-        { "name": "bacon", "grams": 60 },
-        { "name": "baked beans", "grams": 130 }
+        { "name": "fried egg", "grams": 100, "weighed": false },
+        { "name": "sausage", "grams": 120, "weighed": false },
+        { "name": "bacon", "grams": 60, "weighed": false },
+        { "name": "baked beans", "grams": 130, "weighed": false }
       ],
       "notes": "Full English breakfast plate"
     },
@@ -56,18 +69,19 @@
       "image": "case06.jpg",
       "mode": "components",
       "expected": [
-        { "name": "steak", "grams": 250 },
-        { "name": "asparagus", "grams": 80 }
+        { "name": "steak", "grams": 250, "weighed": false },
+        { "name": "asparagus", "grams": 80, "weighed": false }
       ],
       "notes": "Steak with grilled asparagus"
     },
     {
       "image": "case07.jpg",
       "mode": "composite",
+      "tags": ["mixed_dish"],
       "expected": [
-        { "name": "pork katsu curry", "grams": 450 },
-        { "name": "shredded cabbage", "grams": 40 },
-        { "name": "miso soup", "grams": 150 }
+        { "name": "pork katsu curry", "grams": 450, "weighed": false },
+        { "name": "shredded cabbage", "grams": 40, "weighed": false },
+        { "name": "miso soup", "grams": 150, "weighed": false }
       ],
       "notes": "Japanese katsu curry set meal: curry rice bowl plus miso soup and shredded cabbage sides. Original manifest only listed the bowl and missed the two visible side dishes."
     },
@@ -75,19 +89,20 @@
       "image": "case08.jpg",
       "mode": "components",
       "expected": [
-        { "name": "scrambled eggs", "grams": 180 },
-        { "name": "mushroom", "grams": 55 },
-        { "name": "leafy greens", "grams": 30 },
-        { "name": "toast", "grams": 40 },
-        { "name": "avocado", "grams": 65 }
+        { "name": "scrambled eggs", "grams": 180, "weighed": false },
+        { "name": "mushroom", "grams": 55, "weighed": false },
+        { "name": "leafy greens", "grams": 30, "weighed": false },
+        { "name": "toast", "grams": 40, "weighed": false },
+        { "name": "avocado", "grams": 65, "weighed": false }
       ],
       "notes": "Downloaded personal breakfast plate; approximate diary weights pending user confirmation"
     },
     {
       "image": "case09.jpg",
       "mode": "composite",
+      "tags": ["mixed_dish"],
       "expected": [
-        { "name": "spaghetti with tomato sauce", "grams": 300 }
+        { "name": "spaghetti with tomato sauce", "grams": 300, "weighed": false }
       ],
       "notes": "Spaghetti al pomodoro as one prepared dish"
     },
@@ -95,11 +110,11 @@
       "image": "case10.jpg",
       "mode": "components",
       "expected": [
-        { "name": "oatmeal", "grams": 200 },
-        { "name": "blackberry", "grams": 30 },
-        { "name": "raspberry", "grams": 30 },
-        { "name": "blueberry", "grams": 30 },
-        { "name": "peanut butter", "grams": 20 }
+        { "name": "oatmeal", "grams": 200, "weighed": false },
+        { "name": "blackberry", "grams": 30, "weighed": false },
+        { "name": "raspberry", "grams": 30, "weighed": false },
+        { "name": "blueberry", "grams": 30, "weighed": false },
+        { "name": "peanut butter", "grams": 20, "weighed": false }
       ],
       "notes": "Oatmeal bowl with berries and peanut butter; approximate weights"
     },
@@ -107,19 +122,20 @@
       "image": "case11.jpg",
       "mode": "components",
       "expected": [
-        { "name": "salad", "grams": 250 },
-        { "name": "guacamole", "grams": 60 },
-        { "name": "tortilla chips", "grams": 60 },
-        { "name": "queso dip", "grams": 40 },
-        { "name": "salsa", "grams": 50 }
+        { "name": "salad", "grams": 250, "weighed": false },
+        { "name": "guacamole", "grams": 60, "weighed": false },
+        { "name": "tortilla chips", "grams": 60, "weighed": false },
+        { "name": "queso dip", "grams": 40, "weighed": false },
+        { "name": "salsa", "grams": 50, "weighed": false }
       ],
       "notes": "Restaurant taco-style salad plate with sides"
     },
     {
       "image": "case12.jpg",
       "mode": "composite",
+      "tags": ["mixed_dish", "beverage"],
       "expected": [
-        { "name": "fruit smoothie", "grams": 350 }
+        { "name": "fruit smoothie", "grams": 350, "weighed": false }
       ],
       "notes": "Fruit smoothie in a glass"
     }

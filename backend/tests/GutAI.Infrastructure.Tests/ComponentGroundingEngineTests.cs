@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
@@ -280,6 +281,106 @@ public class ComponentGroundingEngineTests
         grounded.Attempt.ResolutionStatus.Should().Be("ambiguous");
         grounded.ResolvedProduct.Should().BeNull();
         grounded.Attempt.Candidates.Should().Contain(c => c.Name == "Beef Sausage Snack Pieces", "it must still be exposed for human review, never dropped silently");
+    }
+
+    [Fact]
+    public async Task MultiQueryAutoSelect_OnlyUsesSecondaryResolutionWhenEnabled()
+    {
+        var primaryCandidate = Product("Chicken", conf: 0.5m);
+        var secondaryCandidate = Product("Chicken breast", conf: 0.95m);
+        var mock = new Mock<IFoodSearchService>();
+        mock.Setup(service => service.ResolveAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string query, IReadOnlyCollection<Guid> _, CancellationToken _) =>
+                query == "chicken"
+                    ? new FoodResolutionDto
+                    {
+                        Status = FoodResolutionStatus.Ambiguous,
+                        Selected = primaryCandidate,
+                        MatchConfidence = 0.5m,
+                    }
+                    : new FoodResolutionDto
+                    {
+                        Status = FoodResolutionStatus.Exact,
+                        Selected = secondaryCandidate,
+                        MatchConfidence = 0.95m,
+                    });
+        var component = Component("chicken");
+        component.SearchQueries = ["chicken breast"];
+
+        var disabled = await new ComponentGroundingEngine(mock.Object).GroundAsync(component);
+        var enabled = await new ComponentGroundingEngine(mock.Object, multiQueryAutoSelect: true).GroundAsync(component);
+
+        disabled.ResolvedProduct.Should().BeNull();
+        enabled.ResolvedProduct.Should().Be(secondaryCandidate);
+        enabled.Attempt.MatchConfidence.Should().Be(0.95m);
+        enabled.Attempt.ResolutionStatus.Should().Be("exact");
+    }
+
+    [Fact]
+    public async Task GroundAsync_PassesContextBoostIdsToResolver()
+    {
+        var boostIds = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var mock = new Mock<IFoodSearchService>();
+        mock.Setup(service => service.ResolveAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto { Status = FoodResolutionStatus.Unresolved });
+
+        await new ComponentGroundingEngine(mock.Object).GroundAsync(
+            Component(),
+            new GroundingContext(boostIds),
+            CancellationToken.None);
+
+        mock.Verify(service => service.ResolveAsync(
+            It.IsAny<string>(),
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(boostIds)),
+            It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task ToItem_UsesNutritionCalculatorAndExposesBasisProvenanceChoiceAndCandidateIdentity()
+    {
+        var product = Product("Rice", conf: 0.95m, cal100: 165m) with
+        {
+            Protein100g = 3m,
+            Carbs100g = 36m,
+            Fat100g = 0m,
+        };
+        var alternative = Product("Brown rice", conf: 0.6m);
+        var mock = new Mock<IFoodSearchService>();
+        mock.Setup(service => service.ResolveAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FoodResolutionDto
+            {
+                Status = FoodResolutionStatus.Exact,
+                Selected = product,
+                Alternatives = [alternative],
+                MatchConfidence = 0.95m,
+            });
+        var component = Component("rice", grams: 150.3m);
+
+        var item = (await new ComponentGroundingEngine(mock.Object).GroundAsync(component)).ToItem();
+
+        item.Calories.Should().Be(248m);
+        item.Per100g.Should().Be(NutritionCalculator.BasisFrom(product));
+        item.NutritionProvenance.Should().Be("Sourced");
+        item.NeedsChoice.Should().BeFalse();
+        item.Grounding!.Candidates.Should().Contain(candidate =>
+            candidate.Name == "Rice" && candidate.CandidateKey == FoodCandidateIdentity.Of(product));
+
+        var ungrounded = new GroundedItem(
+            component,
+            null,
+            item.Grounding with { AutoSelected = false, Candidates = item.Grounding.Candidates },
+            [product]).ToItem();
+        ungrounded.NutritionProvenance.Should().Be("Unknown");
+        ungrounded.NeedsChoice.Should().BeTrue();
     }
 }
 

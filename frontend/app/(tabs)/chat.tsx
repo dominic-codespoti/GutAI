@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import axios from "axios";
 import {
   View,
   Text,
@@ -17,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useThemeColors } from "../../src/stores/theme";
 import * as haptics from "../../src/utils/haptics";
-import { chatApi } from "../../src/api";
+import { chatApi, mealApi, mealDraftApi } from "../../src/api";
 import Markdown from "react-native-markdown-display";
 import {
   useSubscriptionStore,
@@ -29,8 +30,14 @@ import { getDeviceTimezoneId } from "../../src/utils/timezone";
 import { toast } from "../../src/stores/toast";
 import { useChatStream, formatToolName } from "../../src/hooks/useChatStream";
 import TypingIndicator from "../../src/components/TypingIndicator";
+import { MealDraftReviewSheet } from "../../components/meals/MealDraftReviewSheet";
 
-import type { ChatMessage, ToolResultSummary } from "../../src/types";
+import type {
+  ChatMessage,
+  MealDraft,
+  MealDraftCommitResult,
+  ToolResultSummary,
+} from "../../src/types";
 
 interface LocalMessage {
   id: string;
@@ -41,52 +48,178 @@ interface LocalMessage {
   toolResults?: ToolResultSummary[];
 }
 
+interface ToolCardState {
+  status?: "logged" | "discarded" | "undone";
+  calories?: number;
+  error?: string;
+  pending?: boolean;
+}
+
+interface ToolResultCardProps {
+  summary: ToolResultSummary;
+  state?: ToolCardState;
+  onConfirm?: (draftId: string) => void;
+  onEdit?: (draftId: string) => void;
+  onDiscard?: (draftId: string) => void;
+  onUndo?: (mealId: string) => void;
+}
+
 /** Rich inline card for a completed coach tool (persistent, not transient). */
-function ToolResultCard({ summary }: { summary: ToolResultSummary }) {
+function ToolResultCard({
+  summary,
+  state,
+  onConfirm,
+  onEdit,
+  onDiscard,
+  onUndo,
+}: ToolResultCardProps) {
   const c = useThemeColors();
   const bg =
     summary.type === "triggers"
       ? c.warningBg
-      : summary.type === "meal_logged"
+      : summary.type === "meal_logged" || summary.type === "meal_draft" || summary.type === "meal_suggestions"
         ? c.primaryBg
         : c.secondaryBg;
   const fg =
     summary.type === "triggers"
       ? c.warning
-      : summary.type === "meal_logged"
+      : summary.type === "meal_logged" || summary.type === "meal_draft" || summary.type === "meal_suggestions"
         ? c.primary
         : c.secondary;
   const icon: keyof typeof Ionicons.glyphMap =
-    summary.type === "meal_logged"
-      ? "checkmark-circle"
-      : summary.type === "meals_today"
-        ? "restaurant-outline"
-        : "warning-outline";
+    summary.type === "meal_logged" && state?.status === "undone"
+      ? "arrow-undo-circle"
+      : summary.type === "meal_logged" || (summary.type === "meal_draft" && state?.status === "logged")
+        ? "checkmark-circle"
+        : summary.type === "meal_draft" && state?.status === "discarded"
+          ? "close-circle"
+          : summary.type === "meals_today" || summary.type === "meal_draft" || summary.type === "meal_suggestions"
+            ? "restaurant-outline"
+            : "warning-outline";
 
   let headline = "";
   if (summary.type === "meal_logged") {
-    headline = `Logged${summary.mealType ? ` · ${summary.mealType}` : ""} · ${Math.round(summary.calories)} kcal`;
+    headline =
+      state?.status === "undone"
+        ? "Undone"
+        : `Logged${summary.mealType ? ` · ${summary.mealType}` : ""} · ${Math.round(summary.calories)} kcal`;
+  } else if (summary.type === "meal_draft") {
+    headline =
+      state?.status === "logged"
+        ? `Logged · ${Math.round(state.calories ?? summary.calories)} kcal`
+        : state?.status === "discarded"
+          ? "Discarded"
+          : `${summary.mealType ?? "Meal"} draft · ${Math.round(summary.calories)} kcal${summary.needsChoice > 0 ? ` · ${summary.needsChoice} need a match` : ""}`;
   } else if (summary.type === "meals_today") {
     headline = `${summary.count} meal${summary.count === 1 ? "" : "s"} today · ${Math.round(summary.calories)} kcal`;
-  } else {
+  } else if (summary.type === "meal_suggestions") {
+    headline = "Meal suggestions";
+  } else if (summary.type === "triggers") {
     headline = summary.top
       ? `Pattern found: ${summary.top}${summary.count > 1 ? ` (+${summary.count - 1})` : ""}`
       : "Trigger scan complete";
   }
 
+  const draft = summary.type === "meal_draft" ? summary : null;
+  const loggedMeal = summary.type === "meal_logged" ? summary : null;
+  const showDraftActions = !!draft && !state?.status;
+  const showUndo = !!loggedMeal?.mealId && !state?.status;
   return (
     <View
       style={[
         trStyles.card,
         { backgroundColor: bg, borderColor: fg + "55" },
       ]}
-      accessibilityRole="text"
       accessibilityLabel={headline}
     >
-      <Ionicons name={icon} size={14} color={fg} />
-      <Text style={[trStyles.text, { color: c.text }]} numberOfLines={1}>
-        {headline}
-      </Text>
+      <View style={trStyles.cardContent}>
+        <View style={trStyles.headlineRow}>
+          <Ionicons name={icon} size={14} color={fg} />
+          <Text style={[trStyles.text, { color: c.text }]} numberOfLines={2}>
+            {headline}
+          </Text>
+        </View>
+        {draft && !state?.status && draft.items.length > 0 && (
+          <Text style={[trStyles.itemNames, { color: c.textSecondary }]} numberOfLines={1}>
+            {draft.items.slice(0, 3).join(", ")}
+          </Text>
+        )}
+        {summary.type === "meal_suggestions" && summary.suggestions.map((suggestion) => (
+          <View key={suggestion.draftId} style={trStyles.suggestionCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={[trStyles.suggestionTitle, { color: c.text }]} numberOfLines={2}>
+                {suggestion.title} · {Math.round(suggestion.calories)} kcal
+              </Text>
+              <Text style={[trStyles.itemNames, { color: c.textSecondary }]} numberOfLines={2}>
+                {suggestion.items.join(", ")}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[trStyles.actionButton, { backgroundColor: c.primary }]}
+              onPress={() => onEdit?.(suggestion.draftId)}
+              accessibilityRole="button"
+              accessibilityLabel={`Review ${suggestion.title}`}
+            >
+              <Text style={[trStyles.actionText, { color: c.textOnPrimary }]}>Review</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {state?.error ? (
+          <Text style={[trStyles.error, { color: c.warning }]} accessibilityRole="alert">
+            {state.error}
+          </Text>
+        ) : null}
+        {showDraftActions && (
+          <View style={trStyles.actions}>
+            <TouchableOpacity
+              style={[trStyles.actionButton, { backgroundColor: c.primary }]}
+              onPress={() => draft && onConfirm?.(draft.draftId)}
+              disabled={state?.pending}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm meal draft"
+            >
+              {state?.pending ? (
+                <ActivityIndicator size="small" color={c.textOnPrimary} />
+              ) : (
+                <Text style={[trStyles.actionText, { color: c.textOnPrimary }]}>Confirm</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[trStyles.actionButton, { borderColor: fg }]}
+              onPress={() => draft && onEdit?.(draft.draftId)}
+              disabled={state?.pending}
+              accessibilityRole="button"
+              accessibilityLabel="Edit meal draft"
+            >
+              <Text style={[trStyles.actionText, { color: fg }]}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[trStyles.actionButton, { borderColor: fg }]}
+              onPress={() => draft && onDiscard?.(draft.draftId)}
+              disabled={state?.pending}
+              accessibilityRole="button"
+              accessibilityLabel="Discard meal draft"
+            >
+              <Text style={[trStyles.actionText, { color: fg }]}>Discard</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {showUndo && (
+          <TouchableOpacity
+            style={[trStyles.actionButton, { borderColor: fg, alignSelf: "flex-start" }]}
+            onPress={() => loggedMeal?.mealId && onUndo?.(loggedMeal.mealId)}
+            disabled={state?.pending}
+            accessibilityRole="button"
+            accessibilityLabel="Undo logged meal"
+          >
+            {state?.pending ? (
+              <ActivityIndicator size="small" color={fg} />
+            ) : (
+              <Text style={[trStyles.actionText, { color: fg }]}>Undo</Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -97,13 +230,41 @@ const trStyles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: 14,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 7,
     alignSelf: "flex-start",
     maxWidth: "100%",
   },
+  cardContent: { flexShrink: 1, gap: 5 },
+  headlineRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   text: { fontSize: 12, fontWeight: "600", flexShrink: 1 },
+  itemNames: { fontSize: 11, flexShrink: 1 },
+  error: { fontSize: 11, fontWeight: "500" },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
+  actionButton: {
+    minHeight: 28,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionText: { fontSize: 11, fontWeight: "700" },
+  suggestionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#00000012",
+    paddingTop: 7,
+    marginTop: 7,
+  },
+  suggestionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
 });
 export default function ChatScreen() {
   const colors = useThemeColors();
@@ -117,6 +278,8 @@ export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [cardStates, setCardStates] = useState<Record<string, ToolCardState>>({});
+  const [reviewDraft, setReviewDraft] = useState<MealDraft | null>(null);
   const { startStream, cancelStream } = useChatStream();
   const { isLoading, isFetching } = useQuery({
     queryKey: ["chatHistory"],
@@ -142,6 +305,141 @@ export default function ChatScreen() {
     );
   }, [historyData, isStreaming, isFetching]);
   const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
+  const invalidateMealQueries = useCallback(() => {
+    for (const queryKey of [
+      ["meals"],
+      ["daily-summary"],
+      ["meal-drafts"],
+      ["streak"],
+    ]) {
+      queryClient.invalidateQueries({ queryKey });
+    }
+  }, [queryClient]);
+
+  const confirmDraft = useCallback(async (draftId: string) => {
+    setCardStates((previous) => ({
+      ...previous,
+      [draftId]: { ...previous[draftId], pending: true, error: undefined },
+    }));
+    try {
+      const { data } = await mealDraftApi.commit(draftId);
+      setCardStates((previous) => ({
+        ...previous,
+        [draftId]: { status: "logged", calories: data.totalCalories },
+      }));
+      invalidateMealQueries();
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      setCardStates((previous) => ({
+        ...previous,
+        [draftId]: {
+          ...previous[draftId],
+          pending: false,
+          error:
+            status === 422
+              ? "Some items need a match — tap Edit"
+              : status === 404
+                ? "This draft expired"
+                : "Unable to confirm this draft",
+        },
+      }));
+    }
+  }, [invalidateMealQueries]);
+
+  const editDraft = useCallback(async (draftId: string) => {
+    setCardStates((previous) => ({
+      ...previous,
+      [draftId]: { ...previous[draftId], pending: true, error: undefined },
+    }));
+    try {
+      const { data } = await mealDraftApi.get(draftId);
+      setCardStates((previous) => ({
+        ...previous,
+        [draftId]: { ...previous[draftId], pending: false, error: undefined },
+      }));
+      setReviewDraft(data);
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      setCardStates((previous) => ({
+        ...previous,
+        [draftId]: {
+          ...previous[draftId],
+          pending: false,
+          error: status === 404 ? "This draft expired" : "Unable to open this draft",
+        },
+      }));
+    }
+  }, []);
+
+  const discardDraft = useCallback(async (draftId: string) => {
+    setCardStates((previous) => ({
+      ...previous,
+      [draftId]: { ...previous[draftId], pending: true, error: undefined },
+    }));
+    try {
+      await mealDraftApi.discard(draftId);
+      setCardStates((previous) => ({
+        ...previous,
+        [draftId]: { status: "discarded" },
+      }));
+      queryClient.invalidateQueries({ queryKey: ["meal-drafts"] });
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      setCardStates((previous) => ({
+        ...previous,
+        [draftId]: {
+          ...previous[draftId],
+          pending: false,
+          error: status === 404 ? "This draft expired" : "Unable to discard this draft",
+        },
+      }));
+    }
+  }, [queryClient]);
+
+  const undoMeal = useCallback(async (mealId: string) => {
+    setCardStates((previous) => ({
+      ...previous,
+      [mealId]: { ...previous[mealId], pending: true, error: undefined },
+    }));
+    try {
+      await mealApi.delete(mealId);
+      setCardStates((previous) => ({
+        ...previous,
+        [mealId]: { status: "undone" },
+      }));
+      invalidateMealQueries();
+    } catch {
+      setCardStates((previous) => ({
+        ...previous,
+        [mealId]: {
+          ...previous[mealId],
+          pending: false,
+          error: "Unable to undo this meal",
+        },
+      }));
+    }
+  }, [invalidateMealQueries]);
+
+  const handleDraftCommitted = useCallback((
+    result: MealDraftCommitResult,
+    draft: MealDraft,
+  ) => {
+    setCardStates((previous) => ({
+      ...previous,
+      [draft.draftId]: { status: "logged", calories: result.totalCalories },
+    }));
+    setReviewDraft(null);
+    invalidateMealQueries();
+  }, [invalidateMealQueries]);
+
+  const handleDraftDiscarded = useCallback((draft: MealDraft) => {
+    setCardStates((previous) => ({
+      ...previous,
+      [draft.draftId]: { status: "discarded" },
+    }));
+    setReviewDraft(null);
+    queryClient.invalidateQueries({ queryKey: ["meal-drafts"] });
+  }, [queryClient]);
 
   // Contextual starter prompts from local time and already-cached app state.
   const suggestedPrompts = useCallback(() => {
@@ -361,7 +659,21 @@ export default function ChatScreen() {
               {!isUser && (item.toolResults?.length ?? 0) > 0 ? (
                 <View style={styles.toolResultsRow}>
                   {item.toolResults!.map((tr, i) => (
-                    <ToolResultCard key={`${tr.type}-${i}`} summary={tr} />
+                    <ToolResultCard
+                      key={`${tr.type}-${i}`}
+                      summary={tr}
+                      state={
+                        tr.type === "meal_draft"
+                          ? cardStates[tr.draftId]
+                          : tr.type === "meal_logged" && tr.mealId
+                            ? cardStates[tr.mealId]
+                            : undefined
+                      }
+                      onConfirm={confirmDraft}
+                      onEdit={editDraft}
+                      onDiscard={discardDraft}
+                      onUndo={undoMeal}
+                    />
                   ))}
                 </View>
               ) : null}
@@ -370,7 +682,17 @@ export default function ChatScreen() {
         </View>
       );
     },
-    [colors, styles, mdStyles, handleLinkPress],
+    [
+      colors,
+      styles,
+      mdStyles,
+      handleLinkPress,
+      cardStates,
+      confirmDraft,
+      editDraft,
+      discardDraft,
+      undoMeal,
+    ],
   );
 
   if (!subLoaded) {
@@ -556,6 +878,13 @@ export default function ChatScreen() {
           )}
         </TouchableOpacity>
       </View>
+      <MealDraftReviewSheet
+        draft={reviewDraft}
+        visible={reviewDraft !== null}
+        onClose={() => setReviewDraft(null)}
+        onCommitted={handleDraftCommitted}
+        onDiscarded={handleDraftDiscarded}
+      />
     </KeyboardAvoidingView>
   );
 }

@@ -15,10 +15,63 @@ public class FoodMatchIndexTests
         decimal? cal = null, decimal? protein = null, decimal? carbs = null, decimal? fat = null) =>
         new()
         {
-            Id = Guid.NewGuid(), Name = name, DataSource = source, FoodKind = kind,
-            Brand = brand, Barcode = barcode, ExternalId = externalId,
-            Calories100g = cal, Protein100g = protein, Carbs100g = carbs, Fat100g = fat,
+            Id = Guid.NewGuid(),
+            Name = name,
+            DataSource = source,
+            FoodKind = kind,
+            Brand = brand,
+            Barcode = barcode,
+            ExternalId = externalId,
+            Calories100g = cal,
+            Protein100g = protein,
+            Carbs100g = carbs,
+            Fat100g = fat,
         };
+
+    [Fact]
+    public void FoodMacroArchetypes_MatchWholeKeywordTokensAndSimplePlurals()
+    {
+        static FoodProductDto Macros(string name, decimal fat = 10m) => MakeFood(
+            name, cal: 200m, protein: 20m, carbs: 0m, fat: fat);
+
+        var regularFat = Macros("Test food");
+        FoodMacroArchetypes.Score(regularFat, "boiled egg").Should().Be(0f);
+        FoodMacroArchetypes.Score(regularFat, "broiled chicken").Should().Be(0f);
+        FoodMacroArchetypes.Score(Macros("Ribeye", fat: 30m), "ribeye steak").Should().Be(0f);
+        FoodMacroArchetypes.Score(regularFat, "foil").Should().Be(0f);
+
+        FoodMacroArchetypes.Score(regularFat, "olive oil").Should().Be(-15f);
+        FoodMacroArchetypes.Score(regularFat, "coconut oils").Should().Be(-15f);
+        FoodMacroArchetypes.Score(Macros("Test food", fat: 30m), "iced tea").Should().Be(-10f);
+        FoodMacroArchetypes.Score(Macros("Test food", fat: 30m), "orange juice").Should().Be(-10f);
+        FoodMacroArchetypes.Score(Macros("Test food", fat: 30m), "orange juices").Should().Be(-10f);
+        FoodMacroArchetypes.Score(Macros("Test food", fat: 30m), "iced teas").Should().Be(-10f);
+
+        FoodMacroArchetypes.HasLegitimateCarbSource("Chicken nuggets").Should().BeTrue();
+        FoodMacroArchetypes.HasLegitimateCarbSource("Pork tenderloin").Should().BeFalse();
+        FoodMacroArchetypes.IsLeanProteinQuery("pork tenderloin").Should().BeTrue();
+        FoodMacroArchetypes.IsLeanProteinQuery("stir-fry chicken").Should().BeFalse();
+        var carbHeavyTenderloin = Macros("Pork tenderloin") with { Carbs100g = 10m };
+        FoodMacroArchetypes.Score(carbHeavyTenderloin, "pork tenderloin").Should().Be(-15f);
+    }
+
+    [Fact]
+    public void Search_HyphenPartsAndWholeTokens_RankRelevantEggAbovePrefixes()
+    {
+        var egg = MakeFood("Egg, whole, cooked, hard-boiled");
+        var index = new FoodMatchIndex([
+            MakeFood("Eggplant, cooked, boiled"),
+            MakeFood("Eggnog"),
+            MakeFood("Egg-yolk, dried"),
+            egg,
+        ]);
+
+        foreach (var query in new[] { "boiled egg", "hard boiled egg", "hard-boiled egg", "hardboiled egg" })
+            index.Search(query, 5)[0].Id.Should().Be(egg.Id);
+
+        index.Search("egg, whole, cooked, hard-boiled", 5)[0].Id.Should().Be(egg.Id);
+        index.Search("egg", 5)[0].Name.Should().StartWith("Egg,");
+    }
 
     [Fact]
     public void Search_EmptyQuery_ReturnsEmpty()

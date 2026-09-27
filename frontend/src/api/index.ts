@@ -37,8 +37,14 @@ import type {
   MealTypeNutrition,
   FavoriteFood,
   CustomFood,
-  MealScanDraft,
-  MealScanConfirmRequest,
+  MealDraft,
+  MealDraftCommitRequest,
+  MealDraftCommitResult,
+  MealDraftUpdateRequest,
+  MealSuggestionRequest,
+  MealSuggestionResult,
+  MealSuggestionStatus,
+  FoodRegion,
   PairingCodeResponse,
   LinkedAccessToken,
   ImportMealsRequest,
@@ -51,6 +57,7 @@ interface UpdateProfileRequest {
   dietaryPreferences?: string[];
   gutConditions?: string[];
   timezoneId?: string;
+  preferredFoodRegion?: FoodRegion;
   onboardingCompleted?: boolean;
 }
 interface UpdateGoalsRequest {
@@ -111,9 +118,10 @@ export const mealApi = {
 };
 
 export const foodApi = {
-  search: (q: string, signal?: AbortSignal) =>
+  /** `region` biases whole-food sources server-side ("AU" | "US"); omit for the default ranking. */
+  search: (q: string, signal?: AbortSignal, region?: "AU" | "US") =>
     api.get<FoodProduct[]>("/api/food/search", {
-      params: { q },
+      params: { q, region },
       signal,
     }),
   lookupBarcode: (code: string) =>
@@ -140,10 +148,7 @@ export const foodApi = {
   removeFavorite: (id: string) => api.delete(`/api/food/${id}/favorite`),
   customFoods: () => api.get<FoodProduct[]>("/api/food/custom"),
   describeFood: (text: string) =>
-    api.post<CustomFood & { extractionConfidence?: number | null }>(
-      "/api/food/describe",
-      { text },
-    ),
+    api.post<CustomFood>("/api/food/describe", { text }),
   createCustomFood: (data: CustomFood) =>
     api.post<CustomFood>("/api/food/custom", data),
   updateCustomFood: (id: string, data: CustomFood) =>
@@ -184,7 +189,12 @@ export const foodApi = {
 };
 
 export const mealScanApi = {
-  scanImage: async (imageUri: string, mimeType: string = "image/jpeg") => {
+  /** Upload a meal photo; returns a pending `photo` draft. `note` (≤200 chars) is optional context. */
+  scanImage: async (
+    imageUri: string,
+    mimeType: string = "image/jpeg",
+    note?: string,
+  ) => {
     const formData = new FormData();
     if (Platform.OS === "web") {
       const response = await fetch(imageUri);
@@ -196,6 +206,10 @@ export const mealScanApi = {
         name: "meal.jpg",
         type: mimeType,
       } as any);
+    }
+    const trimmedNote = note?.trim();
+    if (trimmedNote) {
+      formData.append("note", trimmedNote.slice(0, 200));
     }
 
     const token = await getItem("accessToken");
@@ -211,16 +225,32 @@ export const mealScanApi = {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.error || "Meal photo scan failed");
     }
-    const data: MealScanDraft = await response.json();
+    const data: MealDraft = await response.json();
     return { data };
   },
+};
 
-  getDraft: (id: string) => api.get<MealScanDraft>(`/api/meals/scan/${id}`),
+/** Pending meal drafts (photo, coach, MCP, NLP, suggestion) — the only path AI meals take to the diary. */
+export const mealDraftApi = {
+  listPending: () => api.get<MealDraft[]>("/api/meals/drafts"),
+  get: (id: string) => api.get<MealDraft>(`/api/meals/drafts/${id}`),
+  update: (id: string, request: MealDraftUpdateRequest) =>
+    api.put<MealDraft>(`/api/meals/drafts/${id}`, request),
+  commit: (id: string, request?: MealDraftCommitRequest) =>
+    api.put<MealDraftCommitResult>(
+      `/api/meals/drafts/${id}/commit`,
+      request ?? {},
+    ),
+  discard: (id: string) => api.delete(`/api/meals/drafts/${id}`),
+};
 
-  discardDraft: (id: string) => api.delete(`/api/meals/scan/${id}`),
-
-  confirmDraft: (id: string, request: MealScanConfirmRequest) =>
-    api.put<{ mealId: string }>(`/api/meals/scan/${id}/confirm`, request),
+/** Grounded meal suggestions; each suggestion is a pending draft committed via mealDraftApi. */
+export const mealSuggestionApi = {
+  status: () => api.get<MealSuggestionStatus>("/api/meals/suggestions/status"),
+  suggest: (request: MealSuggestionRequest) =>
+    api.post<MealSuggestionResult>("/api/meals/suggestions", request, {
+      params: { timezoneId: tzId() },
+    }),
 };
 
 export const symptomApi = {

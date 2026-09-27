@@ -1,11 +1,13 @@
 using System.ComponentModel;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
-using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -21,207 +23,210 @@ public class MealSymptomTools
         WriteIndented = false
     };
 
+    private const string CommitNote = "Nothing is logged yet. The user can confirm this draft in the GutAI app, or call gutai_commit_meal after they confirm.";
+
     private readonly ITableStore _store;
-    private readonly INutritionApiService _nutritionApi;
     private readonly ICorrelationEngine _correlationEngine;
     private readonly IFoodDiaryAnalysisService _diaryService;
+    private readonly IMealDraftService _draftService;
+    private readonly IAgentMealItemResolver _itemResolver;
+    private readonly IConfiguration _configuration;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<MealSymptomTools> _logger;
 
     public MealSymptomTools(
         ITableStore store,
-        INutritionApiService nutritionApi,
         ICorrelationEngine correlationEngine,
         IFoodDiaryAnalysisService diaryService,
+        IMealDraftService draftService,
+        IAgentMealItemResolver itemResolver,
+        IConfiguration configuration,
+        TimeProvider timeProvider,
         ILogger<MealSymptomTools> logger)
     {
         _store = store;
-        _nutritionApi = nutritionApi;
         _correlationEngine = correlationEngine;
         _diaryService = diaryService;
+        _draftService = draftService;
+        _itemResolver = itemResolver;
+        _configuration = configuration;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
-    [McpServerTool(Name = "gutai_log_meal")]
+    [McpServerTool(Name = "gutai_propose_meal")]
     [Authorize]
-    [Description("Log a meal with one or more food items. For each item, first call gutai_search_foods to find its food_product_id, then include that ID here for accurate nutrition data. Items without a food_product_id will fall back to natural language nutrition estimation (less accurate). Use the description field as a last resort when items array is impractical.")]
-    public async Task<string> LogMeal(
+    [Description("Propose a meal for human review; this does not log anything. Call gutai_search_foods first and copy food_product_id and the matchConfidence value from its results into items.match_confidence. Supply either the JSON items array or a description. The user must review the saved draft in the GutAI app or in this chat before gutai_commit_meal; wait for the enforced review delay (20 seconds by default) before committing.")]
+    public async Task<string> ProposeMeal(
         ClaimsPrincipal? user,
         [Description("Meal type: Breakfast, Lunch, Dinner, or Snack (required)")] string mealType,
-        [Description("JSON array of items: [{\"food_product_id\":\"GUID\",\"name\":\"food name\",\"servings\":1}]. Strongly prefer including food_product_id from gutai_search_foods results for each item.")] string? items = null,
-        [Description("Fallback: natural language description of the meal. Only use when items array cannot capture the meal (e.g. 'a bowl of chicken soup and a glass of water').")] string? description = null,
+        [Description("JSON array of items: [{\"food_product_id\":\"GUID\",\"name\":\"food name\",\"servings\":1,\"serving_weight_g\":100,\"match_confidence\":0.95}]. Copy food_product_id and matchConfidence exactly from gutai_search_foods results into food_product_id and match_confidence.")] string? items = null,
+        [Description("Optional natural-language description when an items array is impractical.")] string? description = null,
+        [Description("Optional ISO-8601 date/time for the proposed meal.")] string? loggedAt = null,
         CancellationToken ct = default)
     {
+        McpAccess.EnsureWrite(user!);
         try
         {
-            McpAccess.EnsureWrite(user!);
             var userId = GetUserId(user!);
-            if (!Enum.TryParse<MealType>(mealType, true, out var mt))
+            if (!Enum.TryParse<GutAI.Domain.Enums.MealType>(mealType, true, out var parsedMealType)
+                || !Enum.IsDefined(parsedMealType))
                 throw new McpException($"Invalid meal type '{mealType}'. Must be one of: Breakfast, Lunch, Dinner, Snack.");
-            var mealId = Guid.NewGuid();
-            var mealItems = new List<MealItem>();
-            var originalParts = new List<string>();
 
-            if (!string.IsNullOrEmpty(items))
+            DateTimeOffset? timestamp = null;
+            if (loggedAt is not null)
             {
-                using var doc = JsonDocument.Parse(items);
-                foreach (var item in doc.RootElement.EnumerateArray())
-                {
-                    var servings = MealValidation.ClampServings(item.TryGetProperty("servings", out var sv) && sv.ValueKind == JsonValueKind.Number
-                        ? sv.GetDecimal() : 1m);
-                    var itemName = item.TryGetProperty("name", out var nm) ? nm.GetString() : null;
-
-                    if (item.TryGetProperty("food_product_id", out var fpId) && fpId.GetString() is { } fpIdStr
-                        && Guid.TryParse(fpIdStr, out var productId))
-                    {
-                        var product = await _store.GetFoodProductAsync(productId, ct);
-                        if (product is not null)
-                        {
-                            var servingG = product.ServingQuantity is > 0 ? product.ServingQuantity.Value : 100m;
-                            var factor = servings * servingG / 100m;
-                            mealItems.Add(new MealItem
-                            {
-                                Id = Guid.NewGuid(),
-                                MealLogId = mealId,
-                                FoodName = itemName ?? product.Name,
-                                FoodProductId = product.Id,
-                                Servings = servings,
-                                ServingUnit = product.ServingSize ?? "serving",
-                                ServingWeightG = servingG * servings,
-                                Calories = MealValidation.ClampNutrient((product.Calories100g ?? 0) * factor, MealValidation.MaxCalories),
-                                ProteinG = MealValidation.ClampNutrient((product.Protein100g ?? 0) * factor, MealValidation.MaxMacroG),
-                                CarbsG = MealValidation.ClampNutrient((product.Carbs100g ?? 0) * factor, MealValidation.MaxMacroG),
-                                FatG = MealValidation.ClampNutrient((product.Fat100g ?? 0) * factor, MealValidation.MaxMacroG),
-                                FiberG = (product.Fiber100g ?? 0) * factor,
-                                SugarG = (product.Sugar100g ?? 0) * factor,
-                                SodiumMg = (product.SodiumMg100g ?? 0) * factor,
-                            });
-                            originalParts.Add(itemName ?? product.Name);
-                            continue;
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(itemName))
-                    {
-                        var parsedItems = await _nutritionApi.ParseNaturalLanguageAsync(itemName, ct);
-                        foreach (var p in parsedItems)
-                        {
-                            mealItems.Add(new MealItem
-                            {
-                                Id = Guid.NewGuid(),
-                                MealLogId = mealId,
-                                FoodName = p.Name,
-                                Servings = servings * (p.ServingQuantity ?? 1m),
-                                ServingUnit = "serving",
-                                ServingWeightG = p.ServingWeightG * servings,
-                                Calories = MealValidation.ClampNutrient(p.Calories * servings, MealValidation.MaxCalories),
-                                ProteinG = MealValidation.ClampNutrient(p.ProteinG * servings, MealValidation.MaxMacroG),
-                                CarbsG = MealValidation.ClampNutrient(p.CarbsG * servings, MealValidation.MaxMacroG),
-                                FatG = MealValidation.ClampNutrient(p.FatG * servings, MealValidation.MaxMacroG),
-                                FiberG = p.FiberG * servings,
-                                SugarG = p.SugarG * servings,
-                                SodiumMg = p.SodiumMg * servings,
-                                CholesterolMg = p.CholesterolMg * servings,
-                                SaturatedFatG = p.SaturatedFatG * servings,
-                                PotassiumMg = p.PotassiumMg * servings,
-                                MatchConfidence = p.MatchConfidence,
-                                NutritionProvenance = p.NutritionProvenance.ToString(),
-                            });
-                            originalParts.Add(p.Name);
-                        }
-                    }
-                }
+                if (!DateTimeOffset.TryParse(loggedAt, out var parsedTimestamp))
+                    throw new McpException("loggedAt must be a valid ISO-8601 date/time.");
+                timestamp = parsedTimestamp;
             }
 
-            if (mealItems.Count == 0 && !string.IsNullOrEmpty(description))
-            {
-                var parsedItems = await _nutritionApi.ParseNaturalLanguageAsync(description, ct);
-                foreach (var p in parsedItems)
-                {
-                    mealItems.Add(new MealItem
-                    {
-                        Id = Guid.NewGuid(),
-                        MealLogId = mealId,
-                        FoodName = p.Name,
-                        Servings = p.ServingQuantity ?? 1m,
-                        ServingUnit = "serving",
-                        ServingWeightG = p.ServingWeightG,
-                        Calories = MealValidation.ClampNutrient(p.Calories, MealValidation.MaxCalories),
-                        ProteinG = MealValidation.ClampNutrient(p.ProteinG, MealValidation.MaxMacroG),
-                        CarbsG = MealValidation.ClampNutrient(p.CarbsG, MealValidation.MaxMacroG),
-                        FatG = MealValidation.ClampNutrient(p.FatG, MealValidation.MaxMacroG),
-                        FiberG = p.FiberG,
-                        SugarG = p.SugarG,
-                        SodiumMg = p.SodiumMg,
-                        CholesterolMg = p.CholesterolMg,
-                        SaturatedFatG = p.SaturatedFatG,
-                        PotassiumMg = p.PotassiumMg,
-                        MatchConfidence = p.MatchConfidence,
-                        NutritionProvenance = p.NutritionProvenance.ToString(),
-                    });
-                    originalParts.Add(p.Name);
-                }
-            }
-
-            if (mealItems.Count == 0)
+            var inputs = string.IsNullOrWhiteSpace(items) ? new List<AgentMealItemInput>() : ParseMealItems(items);
+            if (inputs.Count > 50)
+                throw new McpException("A meal can contain no more than 50 items.");
+            if (inputs.Count == 0 && string.IsNullOrWhiteSpace(description))
+                throw new McpException("Provide at least one item or a meal description.");
+            var profile = await _store.GetUserAsync(userId);
+            var resolved = await _itemResolver.ResolveAsync(
+                inputs,
+                description,
+                region: profile?.PreferredFoodRegion ?? GutAI.Domain.Enums.FoodRegion.Default,
+                ct: ct);
+            if (resolved.Count == 0)
                 throw new McpException("Could not resolve any food items from the provided input.");
+            if (resolved.Count > 50)
+                throw new McpException("A meal can contain no more than 50 resolved items.");
 
-            var meal = new MealLog
+            var draft = await _draftService.CreateAsync(userId, new MealDraftCreateRequest
             {
-                Id = mealId,
-                UserId = userId,
-                MealType = mt,
-                LoggedAt = DateTime.UtcNow,
-                OriginalText = string.Join(", ", originalParts),
-                TotalCalories = mealItems.Sum(i => i.Calories),
-                TotalProteinG = mealItems.Sum(i => i.ProteinG),
-                TotalCarbsG = mealItems.Sum(i => i.CarbsG),
-                TotalFatG = mealItems.Sum(i => i.FatG)
-            };
-
-            await _store.UpsertMealLogAsync(meal, ct);
-            await _store.UpsertMealItemsAsync(userId, meal.Id, mealItems, ct);
-
-            // Surface identity/nutrition uncertainty per item so the calling model can flag
-            // low-confidence or estimated entries to the user instead of presenting every
-            // item as equally trustworthy — auto-logging still happens (no confirmation gate
-            // exists in this tool-call flow), but the caller now has the evidence to act on.
-            var lowConfidenceItems = mealItems
-                .Where(i => i.NutritionProvenance == "Estimated" || i.MatchConfidence is < 0.6m)
-                .Select(i => i.FoodName)
-                .ToList();
+                Origin = MealDraftOrigins.Mcp,
+                MealType = parsedMealType.ToString(),
+                LoggedAt = timestamp,
+                Items = resolved,
+                Warnings = [],
+                OverallConfidence = resolved.Average(i => i.MatchConfidence)
+            }, ct);
 
             return JsonSerializer.Serialize(new
             {
-                id = meal.Id,
-                mealType = meal.MealType.ToString(),
-                totalCalories = meal.TotalCalories,
-                totalProteinG = meal.TotalProteinG,
-                totalCarbsG = meal.TotalCarbsG,
-                totalFatG = meal.TotalFatG,
-                totalFiberG = mealItems.Sum(i => i.FiberG),
-                items = mealItems.Select(i => new
+                draft_id = draft.DraftId,
+                meal_type = draft.MealType,
+                items = draft.Items.Select(i => new
                 {
-                    i.FoodName,
-                    i.Calories,
-                    i.ProteinG,
-                    i.CarbsG,
-                    i.FatG,
-                    i.FiberG,
-                    matchConfidence = i.MatchConfidence,
-                    nutritionProvenance = i.NutritionProvenance
+                    item_id = i.ItemId,
+                    name = i.Name,
+                    grams = i.Grams,
+                    calories = i.Calories,
+                    provenance = i.NutritionProvenance,
+                    needs_choice = i.NeedsChoice
                 }),
-                lowConfidenceItems,
-                lowConfidenceNote = lowConfidenceItems.Count > 0
-                    ? "Some items used an estimated or low-confidence nutrition match — consider mentioning this to the user and offering to correct them."
-                    : null
+                totals = new
+                {
+                    calories = draft.Totals.Calories,
+                    protein_g = draft.Totals.ProteinG,
+                    carbs_g = draft.Totals.CarbsG,
+                    fat_g = draft.Totals.FatG,
+                    items_without_nutrition = draft.Totals.ItemsWithoutNutrition
+                },
+                note = CommitNote
             }, JsonOpts);
         }
         catch (McpException) { throw; }
+        catch (JsonException)
+        {
+            throw new McpException("items must be a valid JSON array of food items.");
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LogMeal failed");
-            throw new McpException("Could not log that meal. Please try again.");
+            _logger.LogWarning(ex, "ProposeMeal failed");
+            throw new McpException("Could not propose that meal. Please try again.");
         }
+    }
+
+    [McpServerTool(Name = "gutai_commit_meal")]
+    [Authorize]
+    [Description("Commit an existing MCP-origin meal draft only after the user has reviewed it in the GutAI app or in this chat. A minimum delay (20 seconds by default) is enforced after proposal, so never call this in the same response as gutai_propose_meal.")]
+    public async Task<string> CommitMeal(
+        ClaimsPrincipal? user,
+        [Description("Draft ID returned by gutai_propose_meal (required)")] string draftId,
+        CancellationToken ct = default)
+    {
+        McpAccess.EnsureWrite(user!);
+        try
+        {
+            if (!Guid.TryParse(draftId, out var id))
+                throw new McpException("draftId must be a valid draft GUID.");
+            var result = await _draftService.CommitAsync(
+                GetUserId(user!), id, null,
+                new MealDraftCommitGuard(
+                    RequiredOrigin: MealDraftOrigins.Mcp,
+                    CreatedBefore: _timeProvider.GetUtcNow()
+                        - TimeSpan.FromSeconds(_configuration.GetValue("Mcp:MinCommitDelaySeconds", 20))), ct);
+            return JsonSerializer.Serialize(new
+            {
+                meal_id = result.MealId,
+                total_calories = result.TotalCalories,
+                total_protein_g = result.TotalProteinG,
+                total_carbs_g = result.TotalCarbsG,
+                total_fat_g = result.TotalFatG,
+                item_count = result.ItemCount,
+                items_without_nutrition = result.ItemsWithoutNutrition
+            }, JsonOpts);
+        }
+        catch (McpException) { throw; }
+        catch (MealDraftException ex) when (ex.Code == MealDraftErrorCode.SameTurnCommit)
+        {
+            throw new McpException(
+                "This meal draft was just proposed. The user must first review it in the GutAI app or in this chat, then call gutai_commit_meal again. Nothing was logged.");
+        }
+        catch (MealDraftException ex)
+        {
+            throw new McpException($"Could not commit meal draft ({ex.Code}): {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CommitMeal failed");
+            throw new McpException("Could not commit that meal. Please try again.");
+        }
+    }
+
+    private static List<AgentMealItemInput> ParseMealItems(string json)
+    {
+        var entries = JsonSerializer.Deserialize<List<ProposedMealItem>>(json, JsonOpts)
+            ?? throw new JsonException("Items cannot be null.");
+        return entries.Select(item =>
+        {
+            if (item is null)
+                throw new JsonException("Items cannot contain null.");
+            if (item.FoodProductId is not null && !Guid.TryParse(item.FoodProductId, out _))
+                throw new JsonException("food_product_id must be a valid GUID.");
+            if (string.IsNullOrWhiteSpace(item.Name) && item.FoodProductId is null)
+                throw new JsonException("Each item requires a name or food_product_id.");
+            if (item.ServingWeightG is < 0m)
+                throw new JsonException("serving_weight_g cannot be negative.");
+            if (item.MatchConfidence is < 0m or > 1m)
+                throw new JsonException("match_confidence must be between 0 and 1.");
+            return new AgentMealItemInput(
+                item.Name,
+                item.FoodProductId is null ? null : Guid.Parse(item.FoodProductId),
+                item.Servings ?? 1m,
+                item.ServingWeightG,
+                item.MatchConfidence);
+        }).ToList();
+    }
+
+    private sealed class ProposedMealItem
+    {
+        [JsonPropertyName("food_product_id")]
+        public string? FoodProductId { get; init; }
+        [JsonPropertyName("name")]
+        public string? Name { get; init; }
+        [JsonPropertyName("servings")]
+        public decimal? Servings { get; init; }
+        [JsonPropertyName("serving_weight_g")]
+        public decimal? ServingWeightG { get; init; }
+        [JsonPropertyName("match_confidence")]
+        public decimal? MatchConfidence { get; init; }
     }
 
     [McpServerTool(Name = "gutai_log_symptom")]

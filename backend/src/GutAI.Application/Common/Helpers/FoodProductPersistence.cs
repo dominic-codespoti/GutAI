@@ -47,10 +47,17 @@ public static class FoodProductPersistence
         // (the embedded whole-food/branded/Australian databases never set Barcode/ExternalId).
         if (string.IsNullOrWhiteSpace(dto.Barcode) && string.IsNullOrWhiteSpace(dto.ExternalId))
         {
-            var candidates = await store.SearchFoodProductsAsync(dto.Name, 10, ct);
-            return candidates.FirstOrDefault(c =>
-                string.Equals(c.Name, dto.Name, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(c.Brand, dto.Brand, StringComparison.OrdinalIgnoreCase));
+            try
+            {
+                var candidates = await store.SearchFoodProductsAsync(dto.Name, 10, ct);
+                return candidates.FirstOrDefault(c =>
+                    string.Equals(c.Name, dto.Name, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(c.Brand, dto.Brand, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return null;
+            }
         }
 
         return null;

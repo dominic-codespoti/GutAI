@@ -14,7 +14,12 @@ export interface UserProfile {
   gutConditions: string[];
   onboardingCompleted: boolean;
   timezoneId?: string;
+  /** Food database region biasing sources and web lookups. */
+  preferredFoodRegion: FoodRegion;
 }
+
+/** Mirrors the backend FoodRegion enum names. */
+export type FoodRegion = "Default" | "Us" | "Au";
 
 export interface AuthResponse {
   accessToken: string;
@@ -129,12 +134,24 @@ export interface ParsedFoodItem {
   portionConfidence: number;
   nutritionProvenance: string;
   resolutionStatus: string;
+  /** Per-100 g basis the server recomputes from at commit (AGENTS.md N1). */
+  per100g?: NutritionPer100g | null;
+  /** True when the top candidate did not pass the grounding policy. */
+  needsChoice?: boolean;
+  /** Resolver evidence; present when `needsChoice` so the user can pick a match. */
+  grounding?: GroundingAttempt | null;
+  /** `candidate_key` of the previewed candidate inside `grounding`. */
+  candidateKey?: string | null;
+  /** Item id inside the server-side `nlp` draft created for this parse. */
+  draftItemId?: string | null;
 }
 
 export interface NaturalLanguageResponse {
   originalText: string;
   mealType: string;
   parsedItems: ParsedFoodItem[];
+  /** Server-side `nlp` meal draft; commit through mealDraftApi. */
+  draftId?: string | null;
 }
 
 export type FoodKind = "WholeFood" | "Branded" | "Unknown";
@@ -232,6 +249,8 @@ export interface DailyNutritionSummary {
   totalSodiumMg: number;
   mealCount: number;
   calorieGoal: number;
+  /** Logged items without nutrition — totals are lower bounds when > 0. */
+  itemsWithoutNutrition?: number;
 }
 
 export interface Correlation {
@@ -248,7 +267,31 @@ export interface Correlation {
 }
 
 export type ToolResultSummary =
-  | { type: "meal_logged"; mealType?: string | null; calories: number; items: string[] }
+  | {
+      type: "meal_logged";
+      mealType?: string | null;
+      calories: number;
+      items: string[];
+      mealId?: string | null;
+    }
+  | {
+      type: "meal_draft";
+      draftId: string;
+      mealType?: string | null;
+      calories: number;
+      items: string[];
+      needsChoice: number;
+    }
+  | {
+      /** Coach suggest_meals: each suggestion is a pending suggestion-origin draft. */
+      type: "meal_suggestions";
+      suggestions: {
+        draftId: string;
+        title: string;
+        calories: number;
+        items: string[];
+      }[];
+    }
   | { type: "meals_today"; count: number; calories: number }
   | { type: "triggers"; count: number; top?: string | null };
 
@@ -567,6 +610,59 @@ export interface CustomFood {
   sugarG?: number | null;
   sodiumMg?: number | null;
   ingredients?: string | null;
+  /** 0..1 AI extraction confidence (describe/label). */
+  extractionConfidence?: number | null;
+  /** Server-set for described foods: Sourced when fully grounded, else ModelEstimated. */
+  nutritionProvenance?: NutritionProvenance | null;
+  /** Per-component breakdown for text-described foods. */
+  describedComponents?: DescribedFoodComponent[] | null;
+}
+
+/** One grounded component of a text-described food (mirrors DescribedFoodComponentDto). */
+export interface DescribedFoodComponent {
+  name: string;
+  grams: number;
+  foodProductId?: string | null;
+  canonicalName?: string | null;
+  /** "usda" | "off" | "au" | "db" for catalog matches, "ai" for a model estimate. */
+  source: string;
+  nutritionProvenance: NutritionProvenance | string;
+  matchConfidence: number;
+  calories?: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  fatG?: number | null;
+}
+
+// ── Nutrition basis (server-authoritative math; mirrored by utils/nutrition.ts) ──
+
+/** Mirrors NutritionProvenance on the backend (Dtos.cs). */
+export type NutritionProvenance =
+  | "Sourced"
+  | "Estimated"
+  | "Web"
+  | "ModelEstimated"
+  | "UserEntered"
+  | "Unknown";
+
+export interface NutritionPer100g {
+  caloriesKcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG?: number | null;
+  sugarG?: number | null;
+  sodiumMg?: number | null;
+}
+
+export interface NutritionAmounts {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG?: number | null;
+  sugarG?: number | null;
+  sodiumMg?: number | null;
 }
 
 // ── Meal Scan (P1–P6) ──
@@ -586,6 +682,8 @@ export interface GroundingCandidate {
   fiber_100g?: number | null;
   sugar_100g?: number | null;
   sodium_mg_100g?: number | null;
+  candidate_key?: string | null;
+  data_quality_flags?: string[] | null;
 }
 
 export interface GroundingAttempt {
@@ -600,7 +698,7 @@ export interface GroundingAttempt {
   method: string;
 }
 
-export interface MealScanItem {
+export interface MealDraftItem {
   itemId: string;
   name: string;
   canonicalName?: string | null;
@@ -616,6 +714,11 @@ export interface MealScanItem {
   portionMethod?: string | null;
   portionConfidence?: number | null;
   isGarnish?: boolean;
+  isInferred?: boolean;
+  includedByDefault?: boolean;
+  needsChoice?: boolean;
+  per100g?: NutritionPer100g | null;
+  nutritionProvenance?: NutritionProvenance;
   calories?: number | null;
   proteinG?: number | null;
   carbsG?: number | null;
@@ -624,7 +727,7 @@ export interface MealScanItem {
   sugarG?: number | null;
   sodiumMg?: number | null;
   matchConfidence: number;
-  visionConfidence: number;
+  visionConfidence?: number | null;
   candidateNames?: string[] | null;
   grounding?: GroundingAttempt | null;
   fodmap_status?: string | null;
@@ -632,36 +735,117 @@ export interface MealScanItem {
   gut_rating?: string | null;
 }
 
-export interface MealScanDraft {
-  scanSessionId: string;
-  items: MealScanItem[];
+export type MealDraftOrigin = "photo" | "coach" | "mcp" | "nlp" | "suggestion";
+
+export type MealDraftStatus =
+  | "PendingReview"
+  | "Committed"
+  | "Discarded"
+  | "Expired";
+
+export interface MealDraftTotals {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  /** Included items without a nutrition basis — totals are lower bounds when > 0. */
+  itemsWithoutNutrition: number;
+}
+
+export interface MealDraft {
+  draftId: string;
+  origin: MealDraftOrigin | string;
+  status: MealDraftStatus | string;
+  mealType?: string | null;
+  loggedAt?: string | null;
+  items: MealDraftItem[];
   warnings: string[];
   referenceObjectVisible: boolean;
   overallConfidence: number;
+  totals: MealDraftTotals;
+  createdAt: string;
+  expiresAt: string;
 }
 
-export interface MealScanConfirmItem {
+/** A reviewed draft item. The server recomputes nutrition; none is sent (AGENTS.md N1). */
+export interface MealDraftCommitItem {
   itemId: string;
-  name: string;
   grams: number;
-  foodProductId?: string | null;
-  source: string;
-  sourceUrl?: string | null;
-  matchConfidence: number;
-  visionConfidence: number;
-  calories?: number | null;
-  proteinG?: number | null;
-  carbsG?: number | null;
-  fatG?: number | null;
-  fiberG?: number | null;
-  sugarG?: number | null;
-  sodiumMg?: number | null;
+  selectedCandidateKey?: string | null;
+  replacementFoodProductId?: string | null;
+  logWithoutCalories?: boolean;
 }
 
-export interface MealScanConfirmRequest {
-  mealType?: string;
-  loggedAt?: string;
-  items: MealScanConfirmItem[];
+export interface MealDraftCommitRequest {
+  mealType?: string | null;
+  loggedAt?: string | null;
+  notes?: string | null;
+  /** Omit to commit every item included by default, unchanged. */
+  items?: MealDraftCommitItem[] | null;
+}
+
+export interface MealDraftUpdateRequest {
+  mealType?: string | null;
+  loggedAt?: string | null;
+  items: MealDraftCommitItem[];
+}
+
+export interface MealDraftCommitResult {
+  mealId: string;
+  totalCalories: number;
+  totalProteinG: number;
+  totalCarbsG: number;
+  totalFatG: number;
+  itemCount: number;
+  itemsWithoutNutrition: number;
+}
+
+// ── Grounded meal suggestions (server-validated; numbers from NutritionCalculator) ──
+
+export interface NutritionTargets {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG: number;
+}
+
+export interface NutritionBudget {
+  /** User's local date, YYYY-MM-DD. */
+  date: string;
+  goals: NutritionTargets;
+  consumed: NutritionTargets;
+  /** Goals minus consumed, clamped at zero. */
+  remaining: NutritionTargets;
+  mealCount: number;
+  /** Logged items without nutrition — consumed totals are lower bounds when > 0. */
+  itemsWithoutNutrition: number;
+  mealType?: string | null;
+  mealTarget?: NutritionTargets | null;
+}
+
+export interface MealSuggestionRequest {
+  mealType: "Breakfast" | "Lunch" | "Dinner" | "Snack";
+  /** Optional preference, ≤ 200 characters. */
+  preferences?: string | null;
+}
+
+export interface MealSuggestion {
+  title: string;
+  rationale: string;
+  /** Pending suggestion-origin draft; commit through mealDraftApi. */
+  draft: MealDraft;
+}
+
+export interface MealSuggestionResult {
+  budget: NutritionBudget;
+  suggestions: MealSuggestion[];
+  promptVersion: string;
+  rejectedCount: number;
+}
+
+export interface MealSuggestionStatus {
+  enabled: boolean;
 }
 
 export interface PairingCodeResponse {

@@ -1,8 +1,10 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GutAI.Application.Common.DTOs;
 using GutAI.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace GoldenScanHarness;
 
@@ -19,145 +21,98 @@ internal static class ProductionGoldenE2e
     };
 
     public static async Task<int> RunAsync(
-        string imagesDir,
-        GoldenManifest manifest,
-        bool confirm,
-        int repeat,
-        string apiUrl)
+        string imagesDir, GoldenManifest manifest, bool confirm, int repeat, string apiUrl, bool gate, string reportPath)
     {
         using var client = new HttpClient
         {
             BaseAddress = new Uri(apiUrl.TrimEnd('/') + "/"),
             Timeout = TimeSpan.FromMinutes(5),
         };
-
-        var scores = new List<GoldenMetrics.CaseScore>();
-        var groundedItems = 0;
-        var autoSelectedItems = 0;
-        var estimatedItems = 0;
-        var totalExpectedItems = 0;
-        var nutritionBackedMatches = 0;
-        var falsePositiveItems = 0;
+        var evaluations = new List<GoldenMetrics.CaseEvaluation>();
+        var repeatedKcal = new Dictionary<string, IReadOnlyList<double>>();
+        var repeatedRecall = new Dictionary<string, IReadOnlyList<double>>();
+        var stageObservations = new List<GoldenMetrics.StageObservation>();
         var confirmedMeals = 0;
         foreach (var goldenCase in manifest.Cases)
         {
+            var imagePath = Path.Combine(imagesDir, goldenCase.Image);
+            if (!File.Exists(imagePath)) continue;
+            var recallRuns = new List<double>();
+            var kcalRuns = new List<double>();
             for (var run = 1; run <= repeat; run++)
             {
-            var email = $"golden-e2e-{Guid.NewGuid():N}@example.com";
-            var register = await client.PostAsJsonAsync("api/auth/register", new
-            {
-                email,
-                password = "GoldenE2e123!",
-                displayName = $"Golden E2E {goldenCase.Image}",
-            });
-            var auth = await ReadOrThrowAsync<AuthResponse>(register, $"register {goldenCase.Image}");
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
-            var imagePath = Path.Combine(imagesDir, goldenCase.Image);
-            if (!File.Exists(imagePath))
-            {
-                Console.WriteLine($"⚠  {goldenCase.Image}: image missing, skipped.");
-                continue;
+                var email = $"golden-e2e-{Guid.NewGuid():N}@example.com";
+                var register = await client.PostAsJsonAsync("api/auth/register", new
+                {
+                    email, password = "GoldenE2e123!", displayName = $"Golden E2E {goldenCase.Image}",
+                });
+                var auth = await ReadOrThrowAsync<AuthResponse>(register, $"register {goldenCase.Image}");
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+                var scanStarted = System.Diagnostics.Stopwatch.StartNew();
+                var draft = await ScanAsync(client, imagePath);
+                var scanSeconds = scanStarted.Elapsed.TotalSeconds;
+                scanStarted.Stop();
+                stageObservations.Add(new GoldenMetrics.StageObservation("scan", scanSeconds,
+                    double.NaN, double.NaN, double.NaN));
+                var predicted = draft.Items.Select(item =>
+                {
+                    var selected = item.Grounding?.Candidates.FirstOrDefault(c => c.FoodProductId == item.FoodProductId);
+                    var identity = selected?.ExternalId is { Length: > 0 } externalId ? $"{selected.Source}:{externalId}" : null;
+                    return new GoldenMetrics.GoldenPredictedItem(item.Name, item.Grams, item.PortionLowGrams,
+                        item.PortionHighGrams, identity, item.Grounding?.Method, item.Grounding?.MatchConfidence,
+                        item.Grounding?.AutoSelected ?? false, item.Calories, item.ProteinG, item.CarbsG, item.FatG);
+                }).ToList();
+                evaluations.Add(GoldenMetrics.EvaluateCase(goldenCase, predicted));
+                recallRuns.Add(evaluations[^1].Recall);
+                if (confirm)
+                {
+                    var mealId = await ConfirmAsync(client, draft);
+                    await VerifyMealReadbackAsync(client, mealId, draft.Items.Count(i => i.IncludedByDefault));
+                    confirmedMeals++;
+                }
+                var selectedRun = draft.Items.Where(i => i.IncludedByDefault).Sum(i => i.Calories ?? 0);
+                kcalRuns.Add((double)selectedRun);
+                Console.WriteLine($"✓  {goldenCase.Image} run {run}/{repeat}: recall {evaluations[^1].Recall:P1}, kcal {selectedRun}");
             }
-
-            var draft = await ScanAsync(client, imagePath);
-            var scannedComponents = ToScannedComponents(draft);
-            var score = GoldenMetrics.ScoreCase(goldenCase, scannedComponents);
-            scores.Add(score);
-
-            var matched = GoldenMetrics.MatchComponents(goldenCase.Expected, scannedComponents);
-            var matchedScannedIndexes = matched.Select(pair => pair.ScannedIdx).ToHashSet();
-            var nutritionBacked = matched.Count(pair =>
-            {
-                var item = draft.Items[pair.ScannedIdx];
-                return item.Calories is not null
-                       && item.Source != "ai"
-                       && item.FoodProductId is { } productId
-                       && productId != Guid.Empty;
-            });
-
-            var grounded = draft.Items.Count(i => i.Source != "ai" && i.FoodProductId is { } id && id != Guid.Empty);
-            var autoSelected = draft.Items.Count(i => i.Grounding?.AutoSelected == true);
-            var estimated = draft.Items.Count(i => i.Source == "ai");
-            groundedItems += grounded;
-            autoSelectedItems += autoSelected;
-            estimatedItems += estimated;
-            totalExpectedItems += goldenCase.Expected.Count;
-            nutritionBackedMatches += nutritionBacked;
-            falsePositiveItems += draft.Items.Count - matchedScannedIndexes.Count;
-
-            Console.WriteLine(
-                $"✓  {goldenCase.Image} run {run}/{repeat}: recall {score.MatchedCount}/{score.ExpectedCount}, " +
-                $"nutrition {nutritionBacked}/{goldenCase.Expected.Count}, extras {draft.Items.Count - matchedScannedIndexes.Count}, " +
-                $"grounded {grounded}/{draft.Items.Count}, auto {autoSelected}, estimated {estimated}, " +
-                $"kcal {draft.Items.Sum(i => i.Calories ?? 0)}");
-
-            if (confirm)
-            {
-                var mealId = await ConfirmAsync(client, draft);
-                await VerifyMealReadbackAsync(client, mealId, draft.Items.Count);
-                confirmedMeals++;
-            }
-            }
+            repeatedRecall[goldenCase.Image] = recallRuns;
+            repeatedKcal[goldenCase.Image] = kcalRuns;
         }
-
-        if (scores.Count == 0)
+        if (evaluations.Count == 0)
         {
             Console.Error.WriteLine("No E2E cases produced results.");
             return 2;
         }
-
-        var recall = scores.Average(s => s.Recall);
-        var errors = scores.SelectMany(s => s.PerComponent)
-            .Where(p => p.Item3 >= 0)
-            .Select(p => p.Item3)
-            .OrderBy(e => e)
-            .ToList();
-        var medianError = errors.Count == 0 ? double.NaN : Percentile(errors, 50);
-        var nutritionBackedRate = totalExpectedItems == 0
-            ? 0
-            : (double)nutritionBackedMatches / totalExpectedItems;
-        var falsePositiveRate = groundedItems + estimatedItems == 0
-            ? 0
-            : (double)falsePositiveItems / (groundedItems + estimatedItems);
-
-        Console.WriteLine();
-        Console.WriteLine("════════════════════════════════════════════");
-        Console.WriteLine($" E2E API:              {apiUrl}");
-        Console.WriteLine($" Repeat runs:          {repeat}");
-        Console.WriteLine($" Cases scored:         {scores.Count}");
-        Console.WriteLine($" Mean component recall: {recall:P1}");
-        Console.WriteLine($" Median gram error:     {(double.IsNaN(medianError) ? "n/a" : $"{medianError:F1}%")}");
-        Console.WriteLine($" Nutrition-backed rate: {nutritionBackedRate:P1}");
-        Console.WriteLine($" False-positive rate:   {falsePositiveRate:P1}");
-        Console.WriteLine($" Grounded items:        {groundedItems}");
-        Console.WriteLine($" Auto-selected items:   {autoSelectedItems}");
-        Console.WriteLine($" Estimated items:       {estimatedItems}");
-        Console.WriteLine($" Confirmed meals:       {confirmedMeals}");
-        Console.WriteLine("════════════════════════════════════════════");
-
-        foreach (var score in scores)
+        var aggregate = GoldenMetrics.Aggregate(evaluations, repeatedKcal, repeatedRecall);
+        var perStage = GoldenMetrics.AggregateStages(stageObservations);
+        var p95Latency = GoldenMetrics.Percentile(stageObservations
+            .Where(s => string.Equals(s.Stage, "scan", StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.LatencySeconds), 95);
+        var gateResult = GoldenMetrics.EvaluateGate(manifest.Gate, aggregate, p95Latency, null);
+        var config = new ConfigurationBuilder().AddEnvironmentVariables().Build();
+        var report = JsonSerializer.Serialize(new
         {
-            Console.WriteLine($"\n— {score.Image}: recall {score.MatchedCount}/{score.ExpectedCount}");
-            foreach (var (expected, matched, error) in score.PerComponent)
+            schema_version = 2, mode = "e2e", api_url = apiUrl, generated_at = DateTimeOffset.UtcNow,
+            prompt_version = MealScanService.EffectiveVisionPromptVersion(config),
+            deployment = AiWorkloads.ResolveDeployment(config, AiWorkloads.Vision),
+            reasoning_effort = AiWorkloads.ResolveReasoningEffort(config, AiWorkloads.Vision) ?? "default",
+            grounding_policy_version = GroundingPolicy.PolicyVersion,
+            portion_calibrator_version = new PortionCalibrator(config).Version,
+            active_flags = new
             {
-                Console.WriteLine(error < 0
-                    ? $"     MISS  '{expected}'"
-                    : $"     MATCH '{expected}' ↔ '{matched}' ({error:F1}% error)");
-            }
-        }
-
-        var gatePass = recall >= manifest.Gate.MinRecall
-                       && (double.IsNaN(medianError) || medianError <= manifest.Gate.MaxMedianGramErrorPercent)
-                       && nutritionBackedRate >= manifest.Gate.MinNutritionBackedRate
-                       && falsePositiveRate <= manifest.Gate.MaxFalsePositiveRate;
-        Console.WriteLine(confirm
-            ? "\nProduction-like confirmation and readback completed."
-            : "\nScan drafts persisted; rerun with --confirm to exercise meal confirmation/readback.");
-
-        return gatePass ? 0 : 1;
+                hidden_calories = config.GetValue("Features:HiddenCalories", false),
+                portion_calibration = config.GetValue("Features:PortionCalibration", false),
+                web_grounding = config.GetValue("Features:WebGrounding", false),
+            },
+            metrics = aggregate, per_stage = perStage, gate = gateResult,
+            cases = evaluations, confirmed_meals = confirmedMeals,
+        }, new JsonSerializerOptions(JsonOptions) { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals });
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
+        await File.WriteAllTextAsync(reportPath, report);
+        Console.WriteLine($"Report: {reportPath}; confirmation readbacks: {confirmedMeals}");
+        return !gate || gateResult.Passed ? 0 : 1;
     }
 
-    private static async Task<MealScanDraftDto> ScanAsync(HttpClient client, string imagePath)
+    private static async Task<MealDraftDto> ScanAsync(HttpClient client, string imagePath)
     {
         await using var stream = File.OpenRead(imagePath);
         using var content = new MultipartFormDataContent();
@@ -166,37 +121,18 @@ internal static class ProductionGoldenE2e
         content.Add(file, "file", Path.GetFileName(imagePath));
 
         var response = await client.PostAsync("api/meals/scan/image", content);
-        return await ReadOrThrowAsync<MealScanDraftDto>(response, $"scan {Path.GetFileName(imagePath)}");
+        return await ReadOrThrowAsync<MealDraftDto>(response, $"scan {Path.GetFileName(imagePath)}");
     }
 
-    private static async Task<Guid> ConfirmAsync(HttpClient client, MealScanDraftDto draft)
+    private static async Task<Guid> ConfirmAsync(HttpClient client, MealDraftDto draft)
     {
-        var body = new
+        var body = new MealDraftCommitRequest
         {
-            mealType = "Snack",
-            loggedAt = DateTimeOffset.UtcNow,
-            items = draft.Items.Select(item => new
-            {
-                itemId = item.ItemId,
-                name = item.CanonicalName ?? item.Name,
-                grams = item.Grams,
-                foodProductId = item.FoodProductId,
-                source = item.Source,
-                sourceUrl = item.SourceUrl,
-                matchConfidence = item.MatchConfidence,
-                visionConfidence = item.VisionConfidence,
-                calories = item.Calories,
-                proteinG = item.ProteinG,
-                carbsG = item.CarbsG,
-                fatG = item.FatG,
-                fiberG = item.FiberG,
-                sugarG = item.SugarG,
-                sodiumMg = item.SodiumMg,
-            }),
+            MealType = "Snack",
+            LoggedAt = DateTimeOffset.UtcNow,
         };
-
-        var response = await client.PutAsJsonAsync($"api/meals/scan/{draft.ScanSessionId}/confirm", body);
-        var result = await ReadOrThrowAsync<MealConfirmResponse>(response, $"confirm {draft.ScanSessionId}");
+        var response = await client.PutAsJsonAsync($"api/meals/drafts/{draft.DraftId}/commit", body);
+        var result = await ReadOrThrowAsync<MealDraftCommitResult>(response, $"commit {draft.DraftId}");
         return result.MealId;
     }
 
@@ -211,15 +147,6 @@ internal static class ProductionGoldenE2e
             throw new InvalidOperationException($"Meal {mealId} read back {items} items; expected {expectedItems}.");
     }
 
-    private static List<ScannedComponent> ToScannedComponents(MealScanDraftDto draft) =>
-        draft.Items.Select(item => new ScannedComponent
-        {
-            Name = item.Name,
-            EstimatedGramsLow = item.Grams,
-            EstimatedGramsMidpoint = item.Grams,
-            EstimatedGramsHigh = item.Grams,
-            Confidence = item.VisionConfidence,
-        }).ToList();
 
     private static async Task<T> ReadOrThrowAsync<T>(HttpResponseMessage response, string operation)
     {
@@ -252,12 +179,6 @@ internal static class ProductionGoldenE2e
             _ => "image/jpeg",
         };
 
-    private static double Percentile(List<double> sorted, double percentile)
-    {
-        var index = (int)Math.Ceiling(percentile / 100.0 * sorted.Count) - 1;
-        return sorted[Math.Clamp(index, 0, sorted.Count - 1)];
-    }
 
     private sealed record AuthResponse(string AccessToken, string RefreshToken);
-    private sealed record MealConfirmResponse(Guid MealId);
 }

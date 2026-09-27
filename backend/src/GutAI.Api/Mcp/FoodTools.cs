@@ -48,9 +48,9 @@ public class FoodTools
         _logger = logger;
     }
 
-    [McpServerTool(Name = "gutai_search_foods", ReadOnly = true)]
+    [McpServerTool(Name = "gutai_search_foods")]
     [Authorize]
-    [Description("Search the food database by name for matching food products. Call this first before any food-related operation to find the right food product ID. Returns up to 10 results with nutrition per 100g, brand, data source, and match confidence.")]
+    [Description("Search the food database by name for matching food products. Call this first before any food-related operation to find the right food product ID. Returns up to 10 results with nutrition per 100g, brand, data source, and match confidence. IDs may be null for read-only connections when a result is not yet persisted.")]
     public async Task<string> SearchFoods(
         ClaimsPrincipal? user,
         [Description("Food name to search for (required). e.g. 'greek yogurt', 'chicken salad', 'coca cola'")] string query,
@@ -59,32 +59,55 @@ public class FoodTools
         try
         {
             var sanitized = QuerySanitizer.Sanitize(query);
-            var results = await _foodApi.SearchAsync(sanitized, ct);
-            var summary = results.Take(10).Select((f, i) => new
+            var results = (await _foodApi.SearchAsync(sanitized, ct)).Take(10).ToList();
+            var summary = new List<object>(results.Count);
+            for (var i = 0; i < results.Count; i++)
             {
-                index = i + 1,
-                id = f.Id,
-                name = f.Name,
-                brand = f.Brand,
-                dataSource = f.DataSource,
-                calories100g = f.Calories100g,
-                protein100g = f.Protein100g,
-                carbs100g = f.Carbs100g,
-                fat100g = f.Fat100g,
-                fiber100g = f.Fiber100g,
-                servingSize = f.ServingSize,
-                matchConfidence = f.MatchConfidence,
-                ingredients = f.Ingredients?.Length > 120 ? f.Ingredients[..120] + "..." : f.Ingredients
-            });
+                var food = results[i];
+                Guid? id;
+                if (food.Id == Guid.Empty && McpAccess.CanWrite(user))
+                {
+                    McpAccess.EnsureWrite(user!);
+                    try
+                    {
+                        id = await FoodProductPersistence.ResolveOrPersistAsync(food, _store, ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                    {
+                        _logger.LogWarning(ex, "Could not persist MCP food search result '{FoodName}'", food.Name);
+                        continue;
+                    }
+                }
+                else
+                {
+                    id = food.Id == Guid.Empty ? null : food.Id;
+                }
+                summary.Add(new
+                {
+                    index = i + 1,
+                    id,
+                    name = food.Name,
+                    brand = food.Brand,
+                    dataSource = food.DataSource,
+                    calories100g = food.Calories100g,
+                    protein100g = food.Protein100g,
+                    carbs100g = food.Carbs100g,
+                    fat100g = food.Fat100g,
+                    fiber100g = food.Fiber100g,
+                    servingSize = food.ServingSize,
+                    matchConfidence = food.MatchConfidence,
+                    ingredients = food.Ingredients?.Length > 120 ? food.Ingredients[..120] + "..." : food.Ingredients
+                });
+            }
             return JsonSerializer.Serialize(new { results = summary }, JsonOpts);
         }
+        catch (McpException) { throw; }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "SearchFoods failed");
             throw new McpException("Search failed. Please try again.");
         }
     }
-
     [McpServerTool(Name = "gutai_get_fodmap_assessment", ReadOnly = true)]
     [Authorize]
     [Description("Get the FODMAP ingredient-screening assessment for a food product: status (PotentialTriggersDetected / NoKnownTriggersDetected / InsufficientInformation), screening score 0-100 (higher = fewer triggers), confidence, trigger list with categories/severities, and summary. This is an ingredient screen, not a serving-size FODMAP classification.")]

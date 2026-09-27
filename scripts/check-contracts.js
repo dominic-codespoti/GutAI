@@ -75,55 +75,81 @@ function parseCSharpDtos(dirPath) {
 
   for (const file of files) {
     const content = fs.readFileSync(path.join(dirPath, file), "utf-8");
-    let current = null;
-    let braceDepth = 0;
+    const declarationPattern =
+      /\bpublic\s+(?:(?:sealed|partial|abstract|readonly)\s+)*(?:record|class)\s+(\w+)/g;
+    let declarationMatch;
 
-    for (const line of content.split("\n")) {
-      // Match record declaration with optional positional parameters
-      const recordMatch = line.match(/public\s+record\s+(\w+)\s*(?:\(([^)]*)\))?/);
-      if (recordMatch) {
-        current = recordMatch[1];
-        dtos[current] = [];
-        braceDepth = 0;
+    while ((declarationMatch = declarationPattern.exec(content)) !== null) {
+      const dtoName = declarationMatch[1];
+      dtos[dtoName] = [];
 
-        // Extract positional parameters (e.g. string Role, DateTimeOffset CreatedAt)
-        if (recordMatch[2]) {
-          const params = recordMatch[2].split(",").map(p => p.trim()).filter(Boolean);
-          for (const param of params) {
-            const parts = param.split(/\s+/);
-            if (parts.length >= 2) {
-              const name = parts[parts.length - 1];
-              const camel = toCamelCase(name);
-              dtos[current].push(camel);
+      let bodyStart = declarationPattern.lastIndex;
+      let cursor = bodyStart;
+      while (cursor < content.length && /\s/.test(content[cursor])) cursor++;
+
+      // Positional record parameters may span lines and contain attributes whose
+      // arguments also use parentheses, so find the matching close explicitly.
+      if (content[cursor] === "(") {
+        let depth = 0;
+        let end = cursor;
+        for (; end < content.length; end++) {
+          if (content[end] === "(") depth++;
+          else if (content[end] === ")" && --depth === 0) break;
+        }
+
+        if (end < content.length) {
+          const parameters = content.slice(cursor + 1, end);
+          const parts = [];
+          let start = 0;
+          let parenDepth = 0;
+          let bracketDepth = 0;
+          for (let i = 0; i < parameters.length; i++) {
+            if (parameters[i] === "(") parenDepth++;
+            else if (parameters[i] === ")") parenDepth--;
+            else if (parameters[i] === "[") bracketDepth++;
+            else if (parameters[i] === "]") bracketDepth--;
+            else if (parameters[i] === "," && parenDepth === 0 && bracketDepth === 0) {
+              parts.push(parameters.slice(start, i));
+              start = i + 1;
             }
           }
+          parts.push(parameters.slice(start));
+
+          for (const parameter of parts) {
+            const jsonName = parameter.match(
+              /JsonPropertyName\s*\(\s*"([^"]+)"\s*\)/,
+            )?.[1];
+            const withoutAttributes = parameter.replace(/\[[^\]]*\]/g, "");
+            const declaration = withoutAttributes.split("=")[0].trim();
+            const name = declaration.match(/([A-Za-z_]\w*)\s*$/)?.[1];
+            if (name) dtos[dtoName].push(jsonName || toCamelCase(name));
+          }
+          bodyStart = end + 1;
         }
-        continue;
       }
+      cursor = bodyStart;
+      while (cursor < content.length && /\s/.test(content[cursor])) cursor++;
+      if (content[cursor] === ";") continue;
 
-      if (current) {
-        braceDepth += (line.match(/{/g) || []).length;
-        braceDepth -= (line.match(/}/g) || []).length;
+      const openingBrace = content.indexOf("{", bodyStart);
+      if (openingBrace < 0) continue;
+      let depth = 0;
+      let closingBrace = openingBrace;
+      for (; closingBrace < content.length; closingBrace++) {
+        if (content[closingBrace] === "{") depth++;
+        else if (content[closingBrace] === "}" && --depth === 0) break;
+      }
+      if (closingBrace >= content.length) continue;
 
-        // Match { get; init; } properties
-        const propMatch = line.match(
-          /public\s+\S+\??\s+(\w+)\s*{\s*get;\s*init;\s*}/,
-        );
-        if (propMatch) {
-          const camel = toCamelCase(propMatch[1]);
-          dtos[current].push(camel);
-        }
-
-        // Match expression-bodied properties (e.g. public string Id => "...")
-        const exprMatch = line.match(/public\s+\S+\??\s+(\w+)\s*=>/);
-        if (exprMatch) {
-          const camel = toCamelCase(exprMatch[1]);
-          dtos[current].push(camel);
-        }
-
-        if (braceDepth <= 0 && line.includes("}")) {
-          current = null;
-        }
+      const body = content.slice(openingBrace + 1, closingBrace);
+      const propertyPattern =
+        /((?:\s*\[[^\]]+\]\s*)*)\s*public\s+(?:required\s+)?[\w?.<>,\[\]]+\s+(\w+)\s*(?=\{\s*get;|=>)/g;
+      let propertyMatch;
+      while ((propertyMatch = propertyPattern.exec(body)) !== null) {
+        const jsonName = propertyMatch[1].match(
+          /JsonPropertyName\s*\(\s*"([^"]+)"\s*\)/,
+        )?.[1];
+        dtos[dtoName].push(jsonName || toCamelCase(propertyMatch[2]));
       }
     }
   }
@@ -159,6 +185,24 @@ const INTERFACE_TO_DTO = {
   SymptomLog: "SymptomLogDto",
   SymptomType: "SymptomTypeDto",
   ChatMessage: "ChatHistoryMessage",
+  GroundingCandidate: "GroundingCandidateDto",
+  GroundingAttempt: "GroundingAttemptDto",
+  MealDraftItem: "MealDraftItemDto",
+  MealDraft: "MealDraftDto",
+  MealDraftTotals: "MealDraftTotalsDto",
+  MealDraftCommitItem: "MealDraftCommitItem",
+  MealDraftCommitRequest: "MealDraftCommitRequest",
+  MealDraftUpdateRequest: "MealDraftUpdateRequest",
+  MealDraftCommitResult: "MealDraftCommitResult",
+  NutritionPer100g: "NutritionPer100gDto",
+  NutritionAmounts: "NutritionAmountsDto",
+  DescribedFoodComponent: "DescribedFoodComponentDto",
+  NutritionTargets: "NutritionTargetsDto",
+  NutritionBudget: "NutritionBudgetDto",
+  MealSuggestionRequest: "MealSuggestionRequest",
+  MealSuggestion: "MealSuggestionDto",
+  MealSuggestionResult: "MealSuggestionResultDto",
+  MealSuggestionStatus: "MealSuggestionStatusDto",
 };
 
 // Additional directories to scan for backend DTO records (e.g. interfaces file)

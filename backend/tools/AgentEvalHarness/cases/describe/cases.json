@@ -1,0 +1,17 @@
+[
+ {"id":"banana-medium","description":"One medium raw banana, peeled, about 118 g.","fdcId":"173944","expected":{"calories":105,"proteinG":1.3,"carbsG":27,"fatG":0.4,"servingGrams":118}},
+ {"id":"apple-medium","description":"One medium raw apple with skin, about 182 g.","fdcId":"171688","expected":{"calories":95,"proteinG":0.5,"carbsG":25.1,"fatG":0.3,"servingGrams":182}},
+ {"id":"broccoli-cooked","description":"One cup chopped boiled broccoli, drained, about 156 g.","fdcId":"170379","expected":{"calories":55,"proteinG":3.7,"carbsG":11.2,"fatG":0.6,"servingGrams":156}},
+ {"id":"egg-hard-boiled","description":"One large hard-boiled egg, peeled, about 50 g.","fdcId":"173424","expected":{"calories":78,"proteinG":6.3,"carbsG":0.6,"fatG":5.3,"servingGrams":50}},
+ {"id":"chicken-roasted","description":"Roasted skinless chicken breast, 100 g cooked serving.","fdcId":"171077","expected":{"calories":165,"proteinG":31,"carbsG":0,"fatG":3.6,"servingGrams":100}},
+ {"id":"salmon-baked","description":"Baked Atlantic salmon, 100 g cooked portion.","fdcId":"175167","expected":{"calories":206,"proteinG":22.1,"carbsG":0,"fatG":12.4,"servingGrams":100}},
+ {"id":"rice-white-cooked","description":"One cup cooked long-grain white rice, about 158 g.","fdcId":"168878","expected":{"calories":205,"proteinG":4.3,"carbsG":44.5,"fatG":0.4,"servingGrams":158}},
+ {"id":"oatmeal-cooked","description":"One cup cooked oatmeal prepared with water, about 234 g.","fdcId":"173904","expected":{"calories":166,"proteinG":5.9,"carbsG":28.1,"fatG":3.6,"servingGrams":234}},
+ {"id":"avocado-half","description":"Half a medium raw avocado, edible portion about 100 g.","fdcId":"171705","expected":{"calories":160,"proteinG":2,"carbsG":8.5,"fatG":14.7,"servingGrams":100}},
+ {"id":"whole-milk-cup","description":"One cup whole cow's milk, about 244 g.","fdcId":"171265","expected":{"calories":149,"proteinG":7.7,"carbsG":11.7,"fatG":7.9,"servingGrams":244}},
+ {"id":"plain-yogurt","description":"One 170 g serving of plain low-fat yogurt.","fdcId":"171284","expected":{"calories":107,"proteinG":9.3,"carbsG":12.3,"fatG":2.6,"servingGrams":170}},
+ {"id":"baked-potato","description":"One medium baked potato with skin, about 173 g.","fdcId":"170026","expected":{"calories":161,"proteinG":4.3,"carbsG":36.6,"fatG":0.2,"servingGrams":173}},
+ {"id":"strawberries-cup","description":"One cup whole raw strawberries, about 144 g.","fdcId":"167762","expected":{"calories":46,"proteinG":1,"carbsG":11.1,"fatG":0.4,"servingGrams":144}},
+ {"id":"almonds-ounce","description":"One ounce raw almonds, about 28 g.","fdcId":"170567","expected":{"calories":164,"proteinG":6,"carbsG":6.1,"fatG":14.2,"servingGrams":28}},
+ {"id":"banana-small","description":"One small raw banana, peeled, about 101 g.","fdcId":"173944","expected":{"calories":90,"proteinG":1.1,"carbsG":23.1,"fatG":0.3,"servingGrams":101}}
+]

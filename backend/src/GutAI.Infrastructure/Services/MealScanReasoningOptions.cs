@@ -6,24 +6,44 @@ namespace GutAI.Infrastructure.Services;
 /// <summary>Maps the configured meal-scan reasoning checkpoint to Responses options.</summary>
 internal static class MealScanReasoningOptions
 {
-    public static ChatOptions Create(string? configured)
+    public static ChatOptions Create(string? configured, bool storeOutput = true)
     {
         var normalized = Normalize(configured);
         var options = new ChatOptions();
 
         if (normalized == "max")
         {
-#pragma warning disable OPENAI001 // raw Responses option required for max effort
-            options.RawRepresentationFactory = _ => new CreateResponseOptions
+#pragma warning disable OPENAI001 // raw Responses option required for max effort and storage control
+            options.RawRepresentationFactory = _ =>
             {
-                ReasoningOptions = new ResponseReasoningOptions
+                var rawOptions = new CreateResponseOptions
                 {
-                    ReasoningEffortLevel = new ResponseReasoningEffortLevel("max"),
-                },
+                    StoredOutputEnabled = storeOutput,
+                    ReasoningOptions = new ResponseReasoningOptions
+                    {
+                        ReasoningEffortLevel = new ResponseReasoningEffortLevel("max"),
+                    },
+                };
+                if (!storeOutput)
+                    rawOptions.IncludedProperties.Add("reasoning.encrypted_content");
+                return rawOptions;
             };
 #pragma warning restore OPENAI001
             return options;
         }
+
+        if (!storeOutput)
+        {
+#pragma warning disable OPENAI001 // raw Responses option required to disable server-side storage
+            options.RawRepresentationFactory = _ =>
+            {
+                var rawOptions = new CreateResponseOptions { StoredOutputEnabled = false };
+                rawOptions.IncludedProperties.Add("reasoning.encrypted_content");
+                return rawOptions;
+            };
+#pragma warning restore OPENAI001
+        }
+
         var enumValue = normalized == "xhigh" ? "ExtraHigh" : normalized;
         if (Enum.TryParse<ReasoningEffort>(enumValue, ignoreCase: true, out var effort))
             options.Reasoning = new ReasoningOptions { Effort = effort };

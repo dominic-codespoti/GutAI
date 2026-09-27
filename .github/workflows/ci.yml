@@ -7,6 +7,30 @@ on:
     branches: [main]
 
 jobs:
+  backend:
+    name: Backend Build, Tests & Contracts
+    runs-on: ubuntu-latest
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build
+        run: dotnet build backend/GutAI.sln --verbosity quiet
+      - name: Infrastructure Tests
+        run: dotnet test backend/tests/GutAI.Infrastructure.Tests --no-build --verbosity minimal
+      - name: API Tests
+        run: dotnet test backend/tests/GutAI.Api.Tests --no-build --verbosity minimal
+      - name: Integration Tests
+        run: dotnet test backend/tests/GutAI.IntegrationTests --no-build --verbosity minimal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check Contracts
+        run: node scripts/check-contracts.js
+
   frontend:
     name: Frontend Type Check
     runs-on: ubuntu-latest
@@ -24,8 +48,8 @@ jobs:
         run: npm ci
       - name: Type Check
         run: npx tsc --noEmit
-      - name: Auth Reconnect Tests
-        run: npx tsx --test src/stores/__tests__/auth-reconnect.test.ts
+      - name: Frontend Unit Tests
+        run: npx tsx --test src/utils/__tests__/*.test.ts src/stores/__tests__/*.test.ts
 
   docker:
     name: Docker Build

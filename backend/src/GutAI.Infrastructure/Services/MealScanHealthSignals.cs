@@ -17,7 +17,7 @@ namespace GutAI.Infrastructure.Services;
 public static class MealScanHealthSignals
 {
     public static async Task EnrichAsync(
-        MealScanItemDto item,
+        MealDraftItemDto item,
         ITableStore store,
         IFodmapService fodmapService,
         IGutRiskService gutRiskService,
@@ -48,7 +48,7 @@ public static class MealScanHealthSignals
 
     /// <summary>Enrich a batch sequentially (services are in-memory; no parallelism needed).</summary>
     public static async Task EnrichAllAsync(
-        IEnumerable<MealScanItemDto> items,
+        IEnumerable<MealDraftItemDto> items,
         ITableStore store,
         IFodmapService fodmapService,
         IGutRiskService gutRiskService,

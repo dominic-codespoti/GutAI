@@ -2,9 +2,12 @@ using System.Security.Claims;
 using System.Text.Json;
 using FluentAssertions;
 using GutAI.Api.Mcp;
+using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Interfaces;
 using GutAI.Domain.Entities;
 using GutAI.Domain.Enums;
 using GutAI.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -63,7 +66,15 @@ public class McpProjectionParityTests(AzuriteFixture fx)
                 userId, DateOnly.FromDateTime(now.AddDays(-60)), DateOnly.FromDateTime(now.AddDays(1))))
             .First(c => c.FoodOrAdditive == "Garlic Bread");
 
-        var tools = new MealSymptomTools(fx.Store, null!, engine, new FoodDiaryAnalysisService(), NullLogger<MealSymptomTools>.Instance);
+        var tools = new MealSymptomTools(
+            fx.Store,
+            engine,
+            new FoodDiaryAnalysisService(),
+            new UnusedMealDraftService(),
+            new UnusedAgentMealItemResolver(),
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            NullLogger<MealSymptomTools>.Instance);
         var json = await tools.GetTriggerFoods(MakeUser(userId), days: 61, CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
@@ -104,7 +115,15 @@ public class McpProjectionParityTests(AzuriteFixture fx)
         var diaryService = new FoodDiaryAnalysisService();
         var groundTruth = await diaryService.GetEliminationStatusAsync(userId, fx.Store);
 
-        var tools = new MealSymptomTools(fx.Store, null!, new CorrelationEngine(fx.Store), diaryService, NullLogger<MealSymptomTools>.Instance);
+        var tools = new MealSymptomTools(
+            fx.Store,
+            new CorrelationEngine(fx.Store),
+            diaryService,
+            new UnusedMealDraftService(),
+            new UnusedAgentMealItemResolver(),
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            NullLogger<MealSymptomTools>.Instance);
         var json = await tools.GetEliminationDietStatus(MakeUser(userId), CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
@@ -112,5 +131,39 @@ public class McpProjectionParityTests(AzuriteFixture fx)
         var mcpFoodsToEliminate = doc.RootElement.GetProperty("foodsToEliminate").EnumerateArray().Select(e => e.GetString()).ToList();
         mcpFoodsToEliminate.Should().BeEquivalentTo(groundTruth.FoodsToEliminate,
             "the MCP tool's elimination candidates must be exactly the Food Diary screen's candidates, not a separately filtered list");
+    }
+
+    private sealed class UnusedMealDraftService : IMealDraftService
+    {
+        private static NotSupportedException UnexpectedCall() =>
+            new("Meal draft operations are not part of these read-projection tests.");
+
+        public Task<MealDraftDto> CreateAsync(Guid userId, MealDraftCreateRequest request, CancellationToken ct = default) =>
+            throw UnexpectedCall();
+        public Task<MealDraftDto?> GetAsync(Guid userId, Guid draftId, CancellationToken ct = default) =>
+            throw UnexpectedCall();
+        public Task<IReadOnlyList<MealDraftDto>> ListPendingAsync(Guid userId, CancellationToken ct = default) =>
+            throw UnexpectedCall();
+        public Task<MealDraftDto> UpdateAsync(Guid userId, Guid draftId, MealDraftUpdateRequest request, CancellationToken ct = default) =>
+            throw UnexpectedCall();
+        public Task<MealDraftCommitResult> CommitAsync(
+            Guid userId,
+            Guid draftId,
+            MealDraftCommitRequest? request,
+            MealDraftCommitGuard? guard = null,
+            CancellationToken ct = default) =>
+            throw UnexpectedCall();
+        public Task DiscardAsync(Guid userId, Guid draftId, CancellationToken ct = default) =>
+            throw UnexpectedCall();
+    }
+
+    private sealed class UnusedAgentMealItemResolver : IAgentMealItemResolver
+    {
+        public Task<IReadOnlyList<MealDraftItemDto>> ResolveAsync(
+            IReadOnlyList<AgentMealItemInput> items,
+            string? fallbackDescription = null,
+            GutAI.Domain.Enums.FoodRegion region = GutAI.Domain.Enums.FoodRegion.Default,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException("Meal item resolution is not part of these read-projection tests.");
     }
 }

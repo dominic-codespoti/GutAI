@@ -20,7 +20,7 @@ class MockStorage {
 function createTestHarness() {
   const storage = new MockStorage();
 
-  type UserProfile = { id: string; email: string; displayName: string; onboardingCompleted: boolean };
+  type UserProfile = { id: string; email: string; displayName: string; onboardingCompleted: boolean; preferredFoodRegion: "Default" | "Us" | "Au" };
   type AuthState = {
     user: UserProfile | null;
     isAuthenticated: boolean;
@@ -69,7 +69,7 @@ function createTestHarness() {
         }
 
         resetRetry();
-        set({ user: { id: "u1", email: "test@test.com", displayName: "Test", onboardingCompleted: true }, isAuthenticated: true, isLoading: false, isReconnecting: false });
+        set({ user: { id: "u1", email: "test@test.com", displayName: "Test", onboardingCompleted: true, preferredFoodRegion: "Default" }, isAuthenticated: true, isLoading: false, isReconnecting: false });
       } catch (err: any) {
         const status = err?.response?.status;
         if (status === 401 || status === 403) {
@@ -100,7 +100,7 @@ function createTestHarness() {
         }
 
         resetRetry();
-        set({ user: { id: "u1", email: "test@test.com", displayName: "Test", onboardingCompleted: true }, isAuthenticated: true, isLoading: false, isReconnecting: false });
+        set({ user: { id: "u1", email: "test@test.com", displayName: "Test", onboardingCompleted: true, preferredFoodRegion: "Default" }, isAuthenticated: true, isLoading: false, isReconnecting: false });
       } catch (err: any) {
         const status = err?.response?.status;
         if (status === 401 || status === 403) {

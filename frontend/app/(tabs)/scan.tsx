@@ -25,18 +25,15 @@ import { ErrorState } from "../../components/ErrorState";
 import { NutritionBar } from "../../components/NutritionBar";
 import { FoodSearchResult } from "../../components/FoodSearchResult";
 import { AddToMealSheet } from "../../components/meals/AddToMealSheet";
-import { MealScanReviewSheet } from "../../components/meals/MealScanReviewSheet";
+import { MealDraftReviewSheet } from "../../components/meals/MealDraftReviewSheet";
 import { useSubscriptionStore, presentPaywall } from "../../src/stores/subscription";
-import {
-  scaleNutrition,
-} from "../../src/utils/nutrition";
+import { scaleNutrition } from "../../src/utils/nutrition";
 import { useFavorites } from "../../src/hooks/useFavorites";
 import type {
   FavoriteFood,
   FoodProduct,
   RecentFood,
-  MealScanConfirmItem,
-  MealScanDraft,
+  MealDraft,
 } from "../../src/types";
 import { useRouter, useGlobalSearchParams } from "expo-router";
 import { ratingColor, cspiEmoji } from "../../src/utils/colors";
@@ -46,6 +43,7 @@ import {
   mealWriteFromResponse,
 } from "../../src/services/health";
 import { useThemeColors } from "../../src/stores/theme";
+import { useAuthStore } from "../../src/stores/auth";
 import { SearchResultSkeleton } from "../../components/SkeletonLoader";
 
 const EMPTY_PRODUCT_ID = "00000000-0000-0000-0000-000000000000";
@@ -154,6 +152,9 @@ export default function ScanScreen() {
   const [barcode, setBarcode] = useState("");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const preferredFoodRegion = useAuthStore((state) => state.user?.preferredFoodRegion ?? "Default");
+  const searchRegion =
+    preferredFoodRegion === "Au" ? "AU" : preferredFoodRegion === "Us" ? "US" : undefined;
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -176,12 +177,27 @@ export default function ScanScreen() {
   const [browseFocus, setBrowseFocus] = useState<BrowseFocus>("default");
   const { isPro } = useSubscriptionStore();
 
-  const [scanDraft, setScanDraft] = useState<MealScanDraft | null>(null);
+  const [scanDraft, setScanDraft] = useState<MealDraft | null>(null);
   const [showScanReview, setShowScanReview] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanNote, setScanNote] = useState("");
   const lastScanPhotoRef = useRef<string | null>(null);
   const celebrate = useCelebrationStore((s) => s.celebrate);
-
+  const scanStartedAtRef = useRef<number | null>(null);
+  const [scanStage, setScanStage] = useState(0);
+  useEffect(() => {
+    if (!isScanning) {
+      scanStartedAtRef.current = null;
+      setScanStage(0);
+      return;
+    }
+    scanStartedAtRef.current = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - (scanStartedAtRef.current ?? Date.now());
+      setScanStage(elapsed > 10_000 ? 2 : elapsed >= 4_000 ? 1 : 0);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isScanning]);
   useEffect(() => {
     if (params.tab === "favorites") {
       setBrowseFocus("favorites");
@@ -233,9 +249,9 @@ export default function ScanScreen() {
   });
 
   const searchResults = useQuery({
-    queryKey: ["food-search", debouncedSearch],
+    queryKey: ["food-search", debouncedSearch, searchRegion],
     queryFn: ({ signal }) =>
-      foodApi.search(debouncedSearch, signal).then((r) => r.data),
+      foodApi.search(debouncedSearch, signal, searchRegion).then((r) => r.data),
     enabled: debouncedSearch.length >= 2,
     staleTime: 5 * 60 * 1000,
   });
@@ -346,55 +362,19 @@ export default function ScanScreen() {
   ]);
 
   const scanMealMutation = useMutation({
-    mutationFn: (uri: string) => mealScanApi.scanImage(uri).then((r) => r.data),
-    onSuccess: (draft, uri) => {
+    mutationFn: ({ uri, mime }: { uri: string; mime?: string }) =>
+      mealScanApi.scanImage(uri, mime, scanNote.trim() || undefined).then((r) => r.data),
+    onSuccess: (draft, variables) => {
       setIsScanning(false);
-      lastScanPhotoRef.current = typeof uri === "string" ? uri : null;
+      setScanNote("");
+      lastScanPhotoRef.current = variables.uri;
       setScanDraft(draft);
       setShowScanReview(true);
       haptics.success();
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       setIsScanning(false);
-      toast.error(err.message || "Failed to analyze meal photo.");
-    },
-  });
-
-  const confirmScanMutation = useMutation({
-    mutationFn: ({
-      sessionId,
-      mealType,
-      items,
-    }: {
-      sessionId: string;
-      mealType: string;
-      items: MealScanConfirmItem[];
-    }) => mealScanApi.confirmDraft(sessionId, { mealType, items }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["meals"] });
-      queryClient.invalidateQueries({ queryKey: ["daily-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-foods"] });
-      queryClient.invalidateQueries({ queryKey: ["streak"] });
-      setShowScanReview(false);
-      setScanDraft(null);
-      toast.success("Meal logged!");
-      maybeRequestReview();
-      haptics.success();
-      const first = variables.items[0]?.name;
-      const kcal = variables.items.reduce((sum, i) => sum + (i.calories ?? 0), 0);
-      celebrate({
-        title: "Meal logged!",
-        subtitle: first
-          ? `${first}${variables.items.length > 1 ? ` +${variables.items.length - 1} more` : ""}`
-          : undefined,
-        photoUri: lastScanPhotoRef.current ?? undefined,
-        kcal,
-      });
-      lastScanPhotoRef.current = null;
-    },
-    onError: () => {
-      toast.error("Failed to log scanned meal.");
-      haptics.error();
+      toast.error(err instanceof Error ? err.message : "Failed to analyze meal photo.");
     },
   });
 
@@ -415,7 +395,10 @@ export default function ScanScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     setIsScanning(true);
-    scanMealMutation.mutate(result.assets[0].uri);
+    scanMealMutation.mutate({
+      uri: result.assets[0].uri,
+      mime: result.assets[0].mimeType ?? undefined,
+    });
   };
 
   const handleMealPhotoFromLibrary = async () => {
@@ -435,7 +418,10 @@ export default function ScanScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     setIsScanning(true);
-    scanMealMutation.mutate(result.assets[0].uri);
+    scanMealMutation.mutate({
+      uri: result.assets[0].uri,
+      mime: result.assets[0].mimeType ?? undefined,
+    });
   };
 
   const addToMealMutation = useMutation({
@@ -617,69 +603,33 @@ export default function ScanScreen() {
     customFoodsQuery.isLoading;
 
   const renderMealPhotoScanSection = () => (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 6,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 15,
-            fontWeight: "700",
-            color: colors.text,
-          }}
-          accessibilityRole="header"
-        >
+    <View style={{ backgroundColor: colors.card, borderRadius: 12, padding: 16, marginBottom: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }} accessibilityRole="header">
           AI Meal Photo Scan
         </Text>
         {!isPro && (
-          <View
-            style={{
-              backgroundColor: colors.warning,
-              borderRadius: 4,
-              paddingHorizontal: 5,
-              paddingVertical: 2,
-            }}
-          >
+          <View style={{ backgroundColor: colors.warning, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
             <Text style={{ color: colors.textOnPrimary, fontSize: 9, fontWeight: "800" }}>PRO</Text>
           </View>
         )}
       </View>
-      <Text
-        style={{
-          fontSize: 13,
-          color: colors.textSecondary,
-          marginBottom: 12,
-          lineHeight: 18,
-        }}
-      >
+      <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12, lineHeight: 18 }}>
         Photograph your plate. AI detects components & estimates portions for review.
       </Text>
-
+      <TextInput
+        placeholder="Add a note (e.g. from Chipotle, cooked in butter)"
+        value={scanNote}
+        onChangeText={(value) => setScanNote(value.slice(0, 200))}
+        maxLength={200}
+        accessibilityLabel="Photo scan note"
+        style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10, color: colors.text }}
+      />
       {isScanning ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            paddingVertical: 16,
-            gap: 10,
-          }}
-        >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 10 }}>
           <ActivityIndicator color={colors.primaryLight} />
           <Text style={{ color: colors.primaryLight, fontWeight: "600", fontSize: 14 }}>
-            Analyzing meal & matching nutrition...
+            {["Identifying foods…", "Matching nutrition…", "Almost there — preparing your review…"][scanStage]}
           </Text>
         </View>
       ) : (
@@ -688,46 +638,19 @@ export default function ScanScreen() {
             onPress={handleMealPhotoFromCamera}
             accessibilityRole="button"
             accessibilityLabel="Take meal photo"
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              backgroundColor: colors.primaryBg,
-              borderColor: colors.primaryBorder,
-              borderWidth: 1,
-              borderRadius: 8,
-              paddingVertical: 12,
-            }}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.primaryBg, borderColor: colors.primaryBorder, borderWidth: 1, borderRadius: 8, paddingVertical: 12 }}
           >
             <Ionicons name="camera" size={18} color={colors.primaryLight} />
-            <Text style={{ color: colors.primaryLight, fontWeight: "700", fontSize: 13 }}>
-              Take Photo
-            </Text>
+            <Text style={{ color: colors.primaryLight, fontWeight: "700", fontSize: 13 }}>Take Photo</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={handleMealPhotoFromLibrary}
             accessibilityRole="button"
             accessibilityLabel="Choose meal photo from library"
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              backgroundColor: colors.bg,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 8,
-              paddingVertical: 12,
-            }}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1, borderRadius: 8, paddingVertical: 12 }}
           >
             <Ionicons name="images-outline" size={18} color={colors.text} />
-            <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }}>
-              From Library
-            </Text>
+            <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }}>From Library</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1577,22 +1500,37 @@ export default function ScanScreen() {
         defaultMealType={addToMealType}
       />
 
-      <MealScanReviewSheet
+      <MealDraftReviewSheet
         draft={scanDraft}
         visible={showScanReview && !!scanDraft}
         onClose={() => {
           setShowScanReview(false);
           setScanDraft(null);
         }}
-        onConfirm={async ({ mealType, items }) => {
-          if (!scanDraft) return;
-          await confirmScanMutation.mutateAsync({
-            sessionId: scanDraft.scanSessionId,
-            mealType,
-            items,
+        onCommitted={(result, draft, request) => {
+          setShowScanReview(false);
+          setScanDraft(null);
+          const names = draft.items.map((item) => item.name).filter(Boolean).join(", ");
+          maybeWriteMealToPlatform({
+            mealId: result.mealId,
+            loggedAt: request.loggedAt ?? new Date().toISOString(),
+            mealType: request.mealType ?? "Meal",
+            name: names || request.mealType || "Scanned meal",
+            calories: result.totalCalories,
+            proteinG: result.totalProteinG,
+            carbsG: result.totalCarbsG,
+            fatG: result.totalFatG,
           });
+          celebrate({
+            title: "Meal logged!",
+            subtitle: draft.items[0]?.name
+              ? `${draft.items[0].name}${draft.items.length > 1 ? ` +${draft.items.length - 1} more` : ""}`
+              : undefined,
+            photoUri: lastScanPhotoRef.current ?? undefined,
+            kcal: result.totalCalories,
+          });
+          lastScanPhotoRef.current = null;
         }}
-        isConfirming={confirmScanMutation.isPending}
       />
     </View>
   );

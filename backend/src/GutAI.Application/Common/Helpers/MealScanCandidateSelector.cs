@@ -21,4 +21,18 @@ public static class MealScanCandidateSelector
 
         return index;
     }
+
+    public static int? SelectIndex(
+        MealScanBatchChoiceItem? choice,
+        int candidateCount,
+        decimal minimumConfidence)
+    {
+        if (choice?.CandidateIndex is not { } index
+            || index < 0
+            || index >= candidateCount
+            || choice.Confidence < minimumConfidence)
+            return null;
+
+        return index;
+    }
 }

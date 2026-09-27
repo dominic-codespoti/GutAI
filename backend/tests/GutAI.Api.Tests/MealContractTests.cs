@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GutAI.Application.Common.Interfaces;
+using GutAI.Domain.Entities;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace GutAI.Api.Tests;
@@ -61,7 +64,227 @@ public class MealContractTests(GutAiWebFactory factory)
         item.AssertHasNumberProperty("sodiumMg");
         item.AssertHasStringProperty("safetyRating");
     }
+    [Fact]
+    public async Task CreateMeal_CatalogItemRecomputesTamperedCalories()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Catalog {Guid.NewGuid():N}",
+            Calories100g = 200m,
+            Protein100g = 10m,
+            Carbs100g = 20m,
+            Fat100g = 8m,
+            Fiber100g = 3m,
+            Sugar100g = 4m,
+            SodiumMg100g = 50m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
 
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = 50m, calories = 9999m, proteinG = 499m, carbsG = 500m, fatG = 500m } }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("calories").GetDecimal().Should().Be(100m);
+        item.GetProperty("proteinG").GetDecimal().Should().Be(5m);
+        item.GetProperty("nutritionProvenance").GetString().Should().Be("Sourced");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(5001)]
+    public async Task CreateMeal_CatalogItemRejectsInvalidServingWeight(int grams)
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Gram limit {Guid.NewGuid():N}",
+            Calories100g = 200m,
+            Protein100g = 10m,
+            Carbs100g = 20m,
+            Fat100g = 8m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
+
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = grams, calories = 100m } }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateMeal_ManualMissingProvenanceStoresUserEntered()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Hand-entered lunch", servings = 1m, calories = 150m, proteinG = 5m, carbsG = 20m, fatG = 5m } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("nutritionProvenance").GetString().Should().Be("UserEntered");
+    }
+
+    [Fact]
+    public async Task CreateMeal_UnknownProvenanceReturns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Unknown source", servings = 1m, calories = 100m, nutritionProvenance = "invented" } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateMeal_UnknownProvenanceWithNutritionReturns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Unknown source", servings = 1m, calories = 100m, nutritionProvenance = "Unknown" } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateAndUpdateMeal_UnknownProvenanceWithoutNutritionRoundtrips()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var created = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Name-only item", servings = 1m, nutritionProvenance = "Unknown" } }
+        });
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var createdMeal = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var item = createdMeal.GetProperty("items")[0];
+        item.GetProperty("calories").GetDecimal().Should().Be(0m);
+        item.GetProperty("nutritionProvenance").GetString().Should().Be("Unknown");
+
+        var mealId = createdMeal.GetProperty("id").GetString();
+        var updated = await client.PutAsJsonAsync($"/api/meals/{mealId}", new
+        {
+            items = new[] { new { foodName = "Name-only item", servings = 1m, nutritionProvenance = "Unknown", calories = 0m } }
+        });
+        updated.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updatedItem = (await updated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        updatedItem.GetProperty("calories").GetDecimal().Should().Be(0m);
+        updatedItem.GetProperty("nutritionProvenance").GetString().Should().Be("Unknown");
+    }
+
+    [Fact]
+    public async Task CreateMeal_EstimatedProvenanceWithNutritionIsAccepted()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Estimated food", servings = 1m, calories = 145m, nutritionProvenance = "Estimated" } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("calories").GetDecimal().Should().Be(145m);
+        item.GetProperty("nutritionProvenance").GetString().Should().Be("Estimated");
+    }
+
+    [Fact]
+    public async Task CreateMeal_SourcedWithoutProductStoresAsEstimated()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Unlinked food", servings = 1m, calories = 145m, proteinG = 5m, carbsG = 20m, fatG = 5m, nutritionProvenance = "Sourced" } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("nutritionProvenance").GetString().Should().Be("Estimated");
+    }
+
+    [Fact]
+    public async Task CreateMeal_HardNutritionSanityViolationReturns422()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Impossible food", servings = 1m, servingWeightG = 100m, calories = 500m, proteinG = 60m, carbsG = 60m, fatG = 60m } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task UpdateMeal_CatalogItemRecomputesTamperedCalories()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Update catalog {Guid.NewGuid():N}",
+            Calories100g = 240m,
+            Protein100g = 12m,
+            Carbs100g = 24m,
+            Fat100g = 8m,
+            Fiber100g = 2m,
+            Sugar100g = 4m,
+            SodiumMg100g = 60m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
+        var created = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Initial", servings = 1m, calories = 150m, proteinG = 5m, carbsG = 20m, fatG = 5m } }
+        });
+        var mealId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        var response = await client.PutAsJsonAsync($"/api/meals/{mealId}", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = 50m, calories = 9999m, proteinG = 499m, carbsG = 500m, fatG = 500m } }
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("calories").GetDecimal().Should().Be(120m);
+    }
+
+    [Fact]
+    public async Task LogNatural_ReturnsDraftAndParsedItemReferencesWithContractShape()
+    {
+        // The shared factory's FaultInjectionTableStore throws on SearchFoodProductsAsync,
+        // so exercise NLP resolution with the factory's real-store client.
+        var (client, _, _, token) = await factory.CreateAuthenticatedRealStoreClientAsync();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var response = await client.PostAsJsonAsync("/api/meals/log-natural", new { text = $"1 serving of unknown-{Guid.NewGuid():N}", mealType = "lunch" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.AssertHasStringProperty("originalText");
+        json.AssertHasStringProperty("mealType");
+        json.AssertHasStringProperty("draftId");
+        json.AssertHasProperty("parsedItems", JsonValueKind.Array);
+        var parsedItem = json.GetProperty("parsedItems")[0];
+        parsedItem.AssertHasStringProperty("draftItemId");
+        parsedItem.AssertHasProperty("per100g", JsonValueKind.Object);
+        parsedItem.GetProperty("needsChoice").ValueKind.Should().BeOneOf(JsonValueKind.True, JsonValueKind.False);
+        var draftId = json.GetProperty("draftId").GetString();
+        var draftResponse = await client.GetAsync($"/api/meals/drafts/{draftId}");
+        draftResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var draft = await draftResponse.Content.ReadFromJsonAsync<JsonElement>();
+        draft.GetProperty("mealType").GetString().Should().Be("Lunch");
+    }
+
+    [Fact]
+    public async Task LogNatural_InvalidMealTypeReturns400()
+    {
+        var (client, _, _, token) = await factory.CreateAuthenticatedRealStoreClientAsync();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.PostAsJsonAsync("/api/meals/log-natural", new { text = "1 serving of oatmeal", mealType = "Brunch" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
     [Fact]
     public async Task CreateMeal_EmptyItems_Returns400()
     {
@@ -174,6 +397,10 @@ public class MealContractTests(GutAiWebFactory factory)
     public async Task DailySummary_ReturnsCorrectShape()
     {
         var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Unknown nutrition item", servings = 1m, calories = 0m, nutritionProvenance = "Unknown" } }
+        });
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
         var response = await client.GetAsync($"/api/meals/daily-summary/{today}");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -188,6 +415,10 @@ public class MealContractTests(GutAiWebFactory factory)
         json.AssertHasNumberProperty("totalSodiumMg");
         json.AssertHasNumberProperty("mealCount");
         json.AssertHasNumberProperty("calorieGoal");
+        json.AssertHasNumberProperty("itemsWithoutNutrition");
+        json.GetProperty("itemsWithoutNutrition").GetInt32().Should().BeGreaterThan(0);
+
+
     }
 
     [Fact]

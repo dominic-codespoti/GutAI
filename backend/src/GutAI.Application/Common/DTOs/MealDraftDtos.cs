@@ -75,7 +75,7 @@ public sealed class ScannedComponent
 }
 
 /// <summary>One resolved line item in the draft returned to the client.</summary>
-public sealed record MealScanItemDto
+public sealed record MealDraftItemDto
 {
     public required Guid ItemId { get; init; }
 
@@ -116,7 +116,22 @@ public sealed record MealScanItemDto
     /// <summary>True when tagged as a low-mass garnish/seasoning.</summary>
     public bool IsGarnish { get; init; }
 
-    // Computed deterministically from DB per-100g × grams (null while Source == "ai").
+    /// <summary>True for an inferred (not directly visible) component such as cooking oil.</summary>
+    public bool IsInferred { get; init; }
+
+    /// <summary>False for items the review UI shows as opt-in (inferred components).</summary>
+    public bool IncludedByDefault { get; init; } = true;
+
+    /// <summary>True when grounding abstained and a human must pick a candidate.</summary>
+    public bool NeedsChoice { get; init; }
+
+    /// <summary>Per-100 g basis the server recomputes from at commit (null when ungrounded).</summary>
+    public NutritionPer100gDto? Per100g { get; init; }
+
+    /// <summary><see cref="NutritionProvenance"/> name for this item's numbers.</summary>
+    public string NutritionProvenance { get; init; } = nameof(DTOs.NutritionProvenance.Unknown);
+
+    // Computed deterministically from Per100g × Grams (null while ungrounded).
     public decimal? Calories { get; set; }
     public decimal? ProteinG { get; set; }
     public decimal? CarbsG { get; set; }
@@ -128,8 +143,8 @@ public sealed record MealScanItemDto
     /// <summary>Stage-B database resolution confidence (0 for an AI estimate).</summary>
     public required decimal MatchConfidence { get; init; }
 
-    /// <summary>Stage-A vision confidence carried through.</summary>
-    public required decimal VisionConfidence { get; init; }
+    /// <summary>Stage-A vision confidence (photo drafts only).</summary>
+    public decimal? VisionConfidence { get; init; }
 
     /// <summary>Alternate DB candidates for quick swap in the review UI (top-3).</summary>
     public IReadOnlyList<string>? CandidateNames { get; init; }
@@ -172,7 +187,9 @@ public sealed record GroundingCandidateDto(
     [property: JsonPropertyName("fat_100g")] decimal? Fat100g = null,
     [property: JsonPropertyName("fiber_100g")] decimal? Fiber100g = null,
     [property: JsonPropertyName("sugar_100g")] decimal? Sugar100g = null,
-    [property: JsonPropertyName("sodium_mg_100g")] decimal? SodiumMg100g = null);
+    [property: JsonPropertyName("sodium_mg_100g")] decimal? SodiumMg100g = null,
+    [property: JsonPropertyName("candidate_key")] string? CandidateKey = null,
+    [property: JsonPropertyName("data_quality_flags")] IReadOnlyList<string>? DataQualityFlags = null);
 
 /// <summary>Constrained Stage-B2 choice: the model may select one supplied candidate or abstain.</summary>
 public sealed class MealScanCandidateChoice
@@ -222,15 +239,116 @@ public sealed record GroundingAttemptDto
     public required string Method { get; init; }
 }
 
-/// <summary>Persisted scan draft (PendingReview) returned by the scan endpoints.</summary>
-public sealed class MealScanDraftDto
+/// <summary>
+/// A meal draft awaiting user review (AGENTS.md N3): photo scan, Coach, MCP, natural-language
+/// parse or suggestion. Nothing reaches the diary until the user commits it.
+/// </summary>
+public sealed class MealDraftDto
 {
-    public required Guid ScanSessionId { get; init; }
-    public required IReadOnlyList<MealScanItemDto> Items { get; init; }
+    public required Guid DraftId { get; init; }
+
+    /// <summary>One of <c>MealDraftOrigins</c>.</summary>
+    public required string Origin { get; init; }
+
+    /// <summary>One of <c>MealDraftStatuses</c>.</summary>
+    public required string Status { get; init; }
+
+    public string? MealType { get; init; }
+    public DateTimeOffset? LoggedAt { get; init; }
+    public required IReadOnlyList<MealDraftItemDto> Items { get; init; }
 
     /// <summary>User-facing warnings, e.g. "No reference object visible — portions are rough estimates."</summary>
     public required IReadOnlyList<string> Warnings { get; init; }
 
     public required bool ReferenceObjectVisible { get; init; }
     public required decimal OverallConfidence { get; init; }
+
+    /// <summary>Server-computed totals over the items included by default.</summary>
+    public required MealDraftTotalsDto Totals { get; init; }
+
+    public required DateTimeOffset CreatedAt { get; init; }
+    public required DateTimeOffset ExpiresAt { get; init; }
+}
+
+public sealed record MealDraftTotalsDto
+{
+    public decimal Calories { get; init; }
+    public decimal ProteinG { get; init; }
+    public decimal CarbsG { get; init; }
+    public decimal FatG { get; init; }
+
+    /// <summary>Included items without a nutrition basis — totals are lower bounds when non-zero.</summary>
+    public int ItemsWithoutNutrition { get; init; }
+}
+
+/// <summary>
+/// One reviewed item in a commit/update request. Nutrition numbers are never accepted from
+/// the client (AGENTS.md N1): the server recomputes from the selected basis × grams.
+/// </summary>
+public sealed record MealDraftCommitItem
+{
+    public required Guid ItemId { get; init; }
+    public required decimal Grams { get; init; }
+
+    /// <summary>Swap to this grounding candidate (its <c>candidate_key</c>).</summary>
+    public string? SelectedCandidateKey { get; init; }
+
+    /// <summary>Replace the item with this persisted catalog product (inline search fix).</summary>
+    public Guid? ReplacementFoodProductId { get; init; }
+
+    /// <summary>Explicit opt-in to log an item with no nutrition basis (provenance Unknown).</summary>
+    public bool LogWithoutCalories { get; init; }
+}
+
+public sealed record MealDraftCommitRequest
+{
+    public string? MealType { get; init; }
+    public DateTimeOffset? LoggedAt { get; init; }
+    public string? Notes { get; init; }
+
+    /// <summary>Reviewed items (removed items are omitted); null commits every item included by default, unchanged.</summary>
+    public List<MealDraftCommitItem>? Items { get; init; }
+}
+
+/// <summary>Edits a pending draft without committing: listed items are recomputed, unlisted items are kept.</summary>
+public sealed record MealDraftUpdateRequest
+{
+    public string? MealType { get; init; }
+    public DateTimeOffset? LoggedAt { get; init; }
+    public required List<MealDraftCommitItem> Items { get; init; }
+}
+
+public sealed record MealDraftCommitResult
+{
+    public required Guid MealId { get; init; }
+    public decimal TotalCalories { get; init; }
+    public decimal TotalProteinG { get; init; }
+    public decimal TotalCarbsG { get; init; }
+    public decimal TotalFatG { get; init; }
+    public int ItemCount { get; init; }
+    public int ItemsWithoutNutrition { get; init; }
+}
+
+/// <summary>Batched Stage-B2 choice: one structured call covers every ambiguous component.</summary>
+public sealed class MealScanBatchCandidateChoice
+{
+    [JsonPropertyName("choices")]
+    public List<MealScanBatchChoiceItem> Choices { get; set; } = [];
+}
+
+public sealed class MealScanBatchChoiceItem
+{
+    /// <summary>Index into the component list supplied in the prompt.</summary>
+    [JsonPropertyName("component_index")]
+    public int ComponentIndex { get; set; }
+
+    /// <summary>Index into that component's candidate list, or null to abstain.</summary>
+    [JsonPropertyName("candidate_index")]
+    public int? CandidateIndex { get; set; }
+
+    [JsonPropertyName("confidence")]
+    public decimal Confidence { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = "";
 }

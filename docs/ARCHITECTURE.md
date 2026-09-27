@@ -3,20 +3,19 @@
 > **Meal logging · Calorie tracking · Gut health symptom correlation · Food safety insights**
 > **.NET 10 Backend + React Native Expo Frontend (iOS / Android / Web)**
 
-> **⚠️ Documentation note:** Sections below this point are the original pre-implementation
-> planning document. The build diverged from the plan in a few load-bearing ways the plan
-> text was never updated to reflect:
+> **Documentation note:** The current-implementation sections that follow through
+> “Verification hardening” are maintained against shipped code. The numbered project-plan
+> sections beginning at “1. Project Overview & Vision” are historical planning text.
 > - **Persistence is Azure Table Storage (`TableStorageStore.cs`), not PostgreSQL 16 / EF Core.**
 >   There is no `AppDbContext`, no migrations, no `Configurations/` folder — see
 >   `AGENTS.md`'s "Entity ↔ Table Storage Roundtrip" rule, which is the actual governing
 >   convention for persistence changes.
 > - **Backend unit tests use xUnit + Moq**, not xUnit + NSubstitute.
-> Treat the "Tech Stack" and "Architecture" sections below as historical intent, not current
-> fact, for anything persistence-related. Everything else (endpoints, correlation engine,
-> external API fan-out, frontend structure) matches the shipped implementation reasonably
-> closely as of this note.
+> Treat the historical “Tech Stack” and “Architecture” sections as intent, not current
+> fact, for anything persistence-related. Refer to the current-implementation sections above
+> and `AGENTS.md` for shipped behavior and governing persistence conventions.
 
-## Current Implementation Status (2026-07)
+## Current Implementation Status (2026-09)
 Current meal logging supports natural-language parsing, search/scan selection, manual entry, meal notes, local draft recovery, reusable templates, correction tracking, and end-to-end uncertainty disclosure.
 
 ### Current evidence architecture
@@ -35,27 +34,56 @@ The shipped system now draws a hard line between four different evidence types a
 
 Known evidence limits remain explicit: ingredient order is not dose, proprietary FODMAP concentration thresholds are not embedded, GI reference matches do not establish an exact branded product’s measured GI, and observational food-symptom patterns still do not prove causation.
 
-### AI Coach & Meal Photo Scanning Architecture (2026-08)
-
-The system features two modern, production-hardened AI sub-systems:
+### AI Coach & Meal Photo Scanning Architecture (2026-09)
 
 #### 1. Conversational Coach (`CoachChatService`)
-- **Transport:** Built on `Microsoft.Extensions.AI` (`IChatClient`) over Azure OpenAI **Responses** transport (replaces the retired Assistants API). The Azure client network timeout is configurable and defaults to 300 seconds for reasoning workloads.
-- **Tool Calling:** `UseFunctionInvocation` middleware executes the 12 domain tools (`search_foods`, `log_meal`, `get_food_safety`, `get_todays_meals`, etc.) via `AIFunctionFactory` adapters. User identity is captured server-side from JWT claims and is NEVER a model-supplied argument.
-- **Current-day and local-range parity:** User-local date requests carry the browser/device IANA timezone when available; the server falls back to the persisted profile timezone, then UTC. All local ranges use DST-aware UTC boundaries while stored/exported timestamps remain UTC instants.
-- **Structured tool results (2026-08):** after each tool completes the stream emits `{ tool_result, summary }` where `summary` is a compact typed payload built by `GutAI.Application.Chat.ChatToolSummaries` — `meal_logged {mealType, calories, items[≤3]}`, `meals_today {count, calories}`, `triggers {count, top}`; unknown tools send `summary: null` and clients render a neutral chip. Shapes are locked by `ChatToolSummariesTests` (AGENTS.md #3).
-- **State & History:** App-owned conversation history stored in Azure Table Storage (`COACHMSG|` partition rows, inverted-tick ordering) instead of cloud-managed threads.
-- **Developer Instructions:** Stable coach instructions live in `CoachPrompts.cs` and are sent as one developer-role message. User profile data is delimited user content, not elevated instructions.
+- **Runtime:** `CoachChatService` streams directly through the keyed `IChatClient` supplied for `AiWorkloads.Coach`; `UseFunctionInvocation` runs its `AIFunctionFactory` tools. It is not a `ChatClientAgent`. Coach requests are sent with Responses `store=false` plus `reasoning.encrypted_content` (`MealScanReasoningOptions.Create(effort, storeOutput: false)`). Each tool-loop call therefore carries its own history, Azure keeps no stored response, and no call depends on `previous_response_id`. See `backend/src/GutAI.Infrastructure/Services/CoachChatService.cs` and workload registration in `backend/src/GutAI.Infrastructure/DependencyInjection.cs`.
+- **Tool inventory:** `search_foods`, `search_web_nutrition`, `get_food_safety`, `get_fodmap_assessment`, `propose_meal`, `commit_meal`, `log_symptom`, `get_todays_meals`, `get_trigger_foods`, `get_symptom_history`, `get_nutrition_summary`, `get_elimination_diet_status`, and `get_user_profile`; `suggest_meals` is added only when `Features:MealSuggestions` is true and the suggestion service is available. Meal proposal/commit and symptom logging are writes; food search may persist unresolved external products when necessary. The other listed tools are reads.
+- **Tool safety:** user identity comes from the authenticated request, not model arguments. Meal proposals become `coach`-origin drafts; commit tools enforce origin and reject a draft created during the current turn. Coach follows propose-first when logging food, using a standard serving when no amount is given and presenting unresolved identities as `needs_choice`; it asks before proposing only when search finds no candidate that could plausibly be the food at all or recorded allergies/dietary preferences conflict. Imperfect, branded-only, or multiple-variety candidates are still proposed. The prompt version is `2026-09-26.v6-propose-first`. `propose_meal` accepts only `Breakfast`, `Lunch`, `Dinner` or `Snack` (case-insensitive, via `MealValidation.TryParseMealType`). Anything else returns a tool error without creating a draft. `MealDraftService.CreateAsync` rejects invalid meal types for every origin and stores the canonical name, so a stored draft is always committable.
+- **History:** messages and `CoachSessionState` are application-owned in Table Storage; history is bounded by message count and `Coach:MaxHistoryChars`. Profile context, including `PreferredFoodRegion`, is user data.
 
-#### 2. Meal Photo Scanning & Grounding Pipeline (`MealScanService`)
-- **Stage A (Vision Decomposition):** `POST /api/meals/scan/image` accepts a meal photo (preprocessed via ImageSharp for EXIF stripping, 2000px downscale, JPEG q80) and calls `IChatClient.GetResponseAsync<MealVisionResult>()` with strict schema output and configurable `VisionReasoningEffort` (`none` through `max`). Output carries component names, gram ranges ($low, midpoint, high$), scale notes, and confidence. The LLM **never produces calories or nutrition numbers**.
-- **Stage-B Agent Review:** Ambiguous grounding snapshots are exposed to a bounded Agent Framework `ChatClientAgent` through typed read-only tools. The agent may inspect the authoritative candidate snapshot and request one server-capped reanalysis with a different effort. Final selection still passes through `MealScanCandidateSelector`, compatibility checks, and human-review thresholds.
-- **Deterministic Semantic Validation:** `MealVisionValidator` checks $low \le midpoint \le high$, caps portions at $\le 5\text{ kg}$, enforces component count limits, and drops invalid items.
-- **Stage B (Database Grounding):** `ComponentGroundingEngine` resolves each component through `IFoodSearchService.ResolveAsync`. Auto-select occurs ONLY when status is `Exact` or `Probable` AND `MatchConfidence >= 0.85`. Ambiguous items abstain to human review with top-3 candidates exposed. Quantities attach to the detected component, never database default servings.
-- **Stage B3 (Zero-Cost Web Cascade):** `WebNutritionCascade` runs for unresolved items behind `Features:WebGrounding` (Table cache $\rightarrow$ DuckDuckGo HTML search $\rightarrow$ Jina Reader markdown $\rightarrow$ LLM extraction $\rightarrow$ physiological plausibility gate $\rightarrow$ cache write).
-- **Stage C & Health Signals:** Macros are computed deterministically from verified per-100g database values $\times$ grams. `MealScanHealthSignals` enriches grounded items with FODMAP status/triggers and gut ratings. Web-scraped and AI-estimated items physically cannot receive FODMAP signals.
-- **Frontend Review Sheet:** `MealScanReviewSheet.tsx` provides an interactive bottom sheet with confidence badges, provenance chips (`USDA`, `OFF`, `AU`, `Web ↗`, `AI`), FODMAP/gut badges, portion steppers with live macro scaling, 1-tap candidate swapper, and meal type logging.
-- **Regression Gating:** `backend/tools/GoldenScanHarness` tests Stage A across a golden test suite of meal photos (`golden-images/manifest.json`), reporting component recall, gram error, and token usage with an automated `--gate` exit rule.
+#### MCP tool inventory
+
+MCP tools are registered by `[McpServerTool(Name=...)]` in `backend/src/GutAI.Api/Mcp/*.cs`. `gutai_link_account` is the anonymous, read-only linking exception. Authenticated reads: `gutai_get_fodmap_assessment`, `gutai_get_food_safety`, `gutai_get_todays_meals`, `gutai_get_nutrition_summary`, `gutai_get_trigger_foods`, `gutai_get_symptom_history`, `gutai_get_elimination_diet_status`, and `gutai_get_user_profile`. `gutai_search_foods` is a search operation that may persist candidates for write-enabled callers; proposals/writes are `gutai_propose_meal`, `gutai_commit_meal`, and `gutai_log_symptom`. Read-only PAT callers cannot perform persisted writes.
+
+#### 2. Meal photo scan
+- `POST /api/meals/scan/image` accepts an image and optional ≤200-character note and returns a pending `photo`-origin meal draft. Scan-session confirm/get/delete routes no longer exist. The route and scan implementation are in `backend/src/GutAI.Api/Endpoints/MealScanEndpoints.cs` and `backend/src/GutAI.Infrastructure/Services/MealScanService.cs`.
+- Vision returns component identity and portion ranges, not nutrition. Components are grounded against food data; one batched B2 selection call covers every eligible ambiguous component, bounded by `MealScan:MaxComponentsPerPhoto`. Bounded agent review can inspect the same snapshots and request at most one capped reanalysis. The deterministic `GroundingPolicy` controls auto-selection; unresolved items remain for review.
+- Draft review/commit, not the scan endpoint, is the save boundary. The UI is `frontend/components/meals/MealDraftReviewSheet.tsx`; server draft routes are under `/api/meals/drafts`.
+
+### Calorie pipeline
+
+AI-assisted meal creation converges on pending drafts and an explicit commit: origins are `photo`, `coach`, `mcp`, `nlp`, and `suggestion`. `MealDraftService` validates edits, recomputes selected catalog-linked items at commit, rejects unresolved items, and atomically claims a draft with an ETag-conditional replace before creating a meal (`backend/src/GutAI.Infrastructure/Services/MealDraftService.cs`, `backend/src/GutAI.Api/Endpoints/MealDraftEndpoints.cs`, `backend/src/GutAI.Application/Common/Interfaces/MealDraftRecord.cs`). Pending drafts expire after `MealDrafts:TtlHours` (default 24); discard is an ETag-conditional `PendingReview`→`Discarded` transition that retains the record, while GET returns 404 and inbox lists omit it. Cleanup purges expired pending drafts and closed (`Committed`, `Discarded`, `Expired`) drafts after `MealDrafts:ClosedRetentionDays` (default 90), on `MealDrafts:CleanupIntervalHours` (default 24) (`backend/src/GutAI.Infrastructure/Services/MealDraftCleanupService.cs`).
+
+- **Server-authoritative nutrition (N1):** `NutritionCalculator` computes per-100g basis × grams / 100 with the single rounding policy; `NutritionSanity` screens catalog, web and portion values. Meal create/update recompute catalog-linked nutrition, and catalog-linked grams must be in `(0, 5000]`. `frontend/src/utils/nutrition.ts` mirrors the arithmetic for display only (`backend/src/GutAI.Application/Common/Helpers/NutritionCalculator.cs`, `backend/src/GutAI.Application/Common/Helpers/NutritionSanity.cs`, `backend/src/GutAI.Api/Endpoints/MealEndpoints.cs`).
+- **Grounding (N2):** `GroundingPolicy` is the shared auto-select decision across scan, NLP, Coach, MCP, and describe-food: status must be `Exact` or `Probable`, confidence at least 0.85, calories present, `NutritionSanity` must pass, and compatibility/food-form vetoes must be absent. Otherwise candidates are returned with `needs_choice`. Draft commit requires an explicit candidate key (including the previewed key), replacement food, or log-without-calories choice; otherwise the API returns 422.
+- **Food text matching:** Queries and food names share `backend/src/GutAI.Infrastructure/Data/FoodTextNormalizer.cs`; hyphenated words match their parts and joined form, so “hard-boiled,” “hard boiled,” and “boiled” match, and “boiled egg” resolves to “Egg, whole, cooked, hard-boiled” rather than eggplant.
+  `backend/src/GutAI.Infrastructure/Data/FoodRelevanceScorer.cs` and `backend/src/GutAI.Infrastructure/Data/FoodMatchIndex.cs` rank whole-token matches above prefix-only matches (“egg” no longer matches eggplant), then favor candidates covering every query token among nutritionally plausible candidates; a normalized exact catalog-name query ranks its entry first.
+  Macro implausibility still outranks lexical coverage, so an exact-name product with implausible macros loses to a plausible generic one.
+  `backend/src/GutAI.Infrastructure/Data/FoodMacroArchetypes.cs` matches keywords as whole words with simple plurals: “boiled,” “broiled,” and “foil” no longer trigger the oil archetype, and “steak” and “steamed” no longer trigger the beverage (“tea”) archetype.
+  Resolution stays conservative: `FoodMatchIndex.Resolve` reports `Exact`/`Probable` only for an unbranded candidate matching every query token as a whole token, or for an exact-name branded match. Partial-token matches such as "turkey sandwich" or "roasted potatoes" come back `Ambiguous` with candidates.
+  The generic-versus-branded auto-selection policy is unchanged: a brandless query can still auto-select an exact-name branded product (for example, “bacon” → a branded “Bacon”); changing this remains a pending product decision.
+  Regression coverage is in `FoodSearchServiceTests`, which runs over the real embedded catalogs, alongside `FoodMatchIndexTests`.
+- **Truthful provenance:** persisted nutrition provenance is `Sourced`, `Estimated`, `Web`, `ModelEstimated`, `UserEntered`, or `Unknown`; items without a nutrition basis are `Unknown`. Missing-basis lines are reported as `itemsWithoutNutrition` in daily summaries and draft totals (`backend/src/GutAI.Application/Common/Helpers/NutritionProvenanceRules.cs`, `MealDraftService.cs`).
+- **Keyed AI and scan metering:** keyed clients separate `vision`, `selection`, `extraction`, `coach`, `describe`, and `suggestion`; each can use `AzureOpenAI:Workloads:{key}:Deployment` and `ReasoningEffort`, with shared `AzureOpenAI:DeploymentName` fallback. Function invocation, logging and OpenTelemetry middleware are registered with the clients. `AiUsageMeter` records Stage-A vision, batched selection, bounded agent review/reanalysis, and web-nutrition extraction calls in each scan's usage summary and `gutai.ai.operation.*` metrics. Web extraction uses the scan's ambient meter scope; lookups outside a scan do not contribute to scan metering. Application Insights alert rules are in `infra/main.bicep`.
+- **Meal suggestions:** `MealSuggestionService` builds a server-owned candidate pool, asks the suggestion workload only for pool indices and grams, then deterministically checks nutrition budget, FODMAP/exclusions and repairs substitutions before saving suggestion-origin drafts. API: `/api/meals/suggestions` and `/status`; UI: dashboard sheet and chat cards (`backend/src/GutAI.Infrastructure/Services/MealSuggestionService.cs`, `backend/src/GutAI.Api/Endpoints/MealSuggestionEndpoints.cs`).
+- **Describe-food and personalization:** describe-food decomposes a prepared dish into grounded components; a sanity-checked `ModelEstimated` fallback is marked as such. `PreferredFoodRegion` informs web lookups, NLP, Coach, MCP and scans; scan/grounding and NLP can also boost foods from recent meal history. The scan accepts an optional note of at most 200 characters (`backend/src/GutAI.Infrastructure/Services/ContentUnderstandingService.cs`, `AgentMealItemResolver.cs`, `backend/src/GutAI.Api/Endpoints/MealScanEndpoints.cs`).
+- **Evaluation and analytics:** `backend/tools/GoldenScanHarness` supports `stage-a`, `in-process` and `e2e` modes with GoldenMetrics v2 gates and manifest v2; `.github/workflows/golden-nightly.yml` runs the nightly golden gate and AgentEvalHarness job. `backend/tools/AgentEvalHarness` evaluates Coach/describe/label behavior, `backend/tools/CorrectionAnalytics` emits a read-only operator report and calibration snippet, and `backend/tools/ScanMealRepair` is a dry-run-by-default repair utility (`--apply` is explicit). Backend build/test CI is in `.github/workflows/ci.yml`.
+
+#### Current calorie API / status
+
+| Surface | Current behavior |
+|---|---|
+| `POST /api/meals/scan/image` | Synchronous scan returning a `photo` draft (not a scan-session id). |
+| `/api/meals/drafts` | Pending inbox/list, get, edit, commit and discard for reviewable drafts. |
+| `/api/meals/suggestions` | Suggestion generation and status; disabled unless `Features:MealSuggestions` is enabled. |
+| `/api/meals/log-natural` | Creates an `nlp` draft; ambiguous input keeps its preview candidate marked `needs_choice`. Commit requires an explicit candidate choice (including keeping the preview), replacement, or log-without-calories; otherwise it returns 422. The UI blocks save until a choice is made. |
+| Coach / MCP | Coach tool inventory is listed above; MCP inventory is listed in its section. MCP commit requires write access and a minimum delay; read-only PAT callers cannot persist fresh food-search results, so those results have null ids. |
+| Removed routes | No scan-session confirm, get, or delete routes; save/discard/edit is handled by `/api/meals/drafts`. |
+
+Accuracy flags default off: `Features:HiddenCalories`, `Features:PortionCalibration`, `Features:MealSuggestions`, `Features:WebGrounding`, `MealScan:RequireCompatibilityAgreement`, and `MealScan:MultiQueryAutoSelect`. Scan configuration (code defaults unless appsettings provides a value): `MealScan:DeadlineSeconds` (60), `MealScan:MaxComponentsPerPhoto` (12), `MealScan:MaxInferredComponents` (3), `MealScan:MaxInferredGramsPerMeal` (40 g), `MealScan:MaxConcurrentGrounding` (4), `MealScan:EnableCandidateDisambiguation` (true), `MealScan:EnableAgentGroundingReview` (false), `MealScan:AgentMaxReanalysisEffort` (high), `MealScan:AgentMinSelectionConfidence` (0.90), `MealScan:AgentReanalysisMinImprovement` (0.05), `MealScan:MinCandidateSelectionConfidence` (0.85), `MealScan:MinSecondsForSelection` (8), `MealScan:MinSecondsForWeb` (6), and `MealScan:MaxWebQueriesPerScan` (2). The obsolete `MealScan:MaxCandidateDisambiguationsPerScan` limit is removed; B2 covers every eligible ambiguous component within the component cap. Calibration factors apply only when the feature is enabled and a non-empty `MealScan:PortionCalibration:Version` is configured.
+
+Other AI/draft/MCP controls: `AzureOpenAI:NetworkTimeoutSeconds` defaults to 300 seconds in code (clamped to 30–600); `AzureOpenAI:Workloads:coach:MaxToolIterations` defaults to 8 and `AzureOpenAI:Workloads:coach:MaxConsecutiveToolErrors` to 2; `AzureOpenAI:Telemetry:EnableSensitiveData` defaults false. `MealDrafts:ClosedRetentionDays` defaults 90 and `MealDrafts:CleanupIntervalHours` 24; `Mcp:MinCommitDelaySeconds` defaults 20. The final scan draft persistence uses the request cancellation token rather than the scan deadline token, so completed analysis is not discarded at persistence.
 
 ### External AI-consumer access via pairing-code linking (2026-08)
 
@@ -75,9 +103,9 @@ site root — `app.MapMcp("/mcp")` makes it explicit) without ever handling a us
   token cannot drive the REST API.
 - **Per-tool authorization:** `/mcp` has NO route-level authorization;
   `AddAuthorizationFilters` enforces `[Authorize]` on every data tool while
-  `gutai_link_account` is `[AllowAnonymous]`. Mutating tools (`gutai_log_meal`,
-  `gutai_log_symptom`) additionally call `McpAccess.EnsureWrite(user)` — PAT links are
-  read-only today; JWT sessions keep full access.
+  `gutai_link_account` is `[AllowAnonymous]`. Meal proposal, commit, and symptom-write
+  tools call `McpAccess.EnsureWrite(user)` — PAT links are read-only today; JWT sessions keep full access.
+- **Current meal tools:** `gutai_search_foods`, `gutai_propose_meal`, and `gutai_commit_meal` participate in draft-based meal logging. Search results are persisted only for callers with write access; read-only PAT callers receive null ids for unpersisted candidates. The MCP meal commit requires a draft of origin `mcp` and a minimum delay (`Mcp:MinCommitDelaySeconds`, default 20). Other live tools include food/FODMAP/gut-risk and profile/meal/symptom reads plus `gutai_log_symptom`; see `backend/src/GutAI.Api/Mcp/FoodTools.cs`, `MealSymptomTools.cs`, and `ProfileTools.cs`.
 - **Tool parameter contract (hard-won, verified end-to-end by `McpLinkFlowTests`):**
   SDK 1.2.0 binds ONLY these request-context parameter types: `ClaimsPrincipal`,
   `McpServer`, `RequestContext<CallToolRequestParams>`, `IProgress<ProgressNotificationValue>`,
@@ -183,7 +211,7 @@ assertion:
 | Component              | Status | Details                                                                                                        |
 | ---------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
 | **Auth**               | ✅     | Register (with transaction safety), Login, Refresh token rotation, Logout, **Change Password**                 |
-| **Meal Endpoints**     | ✅     | CRUD, natural language parsing, daily summary, **data export**, negative value validation                      |
+| **Meal Endpoints**     | ✅     | CRUD, natural-language parse to `nlp` draft, daily summary, export; draft review/commit under `/api/meals/drafts`; photo scan `/api/meals/scan/image` returns a draft; suggestions at `/api/meals/suggestions` (feature-gated). Scan-session routes were removed. |
 | **Insight Endpoints**    | ✅     | Correlations, nutrition trends, additive exposure, food diary analysis, elimination-diet status — cached projections over the shared evidence engine |
 | **User Endpoints**       | ✅     | Profile CRUD, goals, alerts watchlist, **account deletion**                                                    |
 | **Middleware**           | ✅     | ExceptionMiddleware (ProblemDetails), RateLimiting (3 policies), Serilog request logging                       |
@@ -201,7 +229,7 @@ assertion:
 | **Dashboard**      | ✅     | Calorie progress ring, macro bars, today's meals/symptoms, date navigation                               |
 | **Meals**          | ✅     | Manual entry (with negative validation), natural language parsing, edit/delete, date navigation          |
 | **Symptoms**       | ✅     | Type selection, severity picker, notes, meal linking, edit/delete, date navigation                       |
-| **Scan**           | ✅     | Barcode input + camera, food search, safety report, add-to-meal, **product images**                      |
+| **Scan**           | ✅     | Barcode input + camera, food search, safety report, add-to-meal, product images, photo-to-draft flow and shared draft review sheet |
 | **Insights**       | ✅     | Nutrition trends, additive exposure, correlations (shared utils), symptom timeline                       |
 | **Profile**        | ✅     | User info, daily goals, alerts, correlations preview, **settings link**                                  |
 | **Food Detail**    | ✅     | Safety badges, nutrition, ingredients, allergens, additives, **product images**, add-to-meal             |
@@ -514,13 +542,11 @@ frontend/
 - **Rate limit**: 1,000 req/hr — use Polly circuit breaker
 - **Integration point**: `UsdaFoodDataClient.cs` → fallback/enrichment for meal logging
 
-#### CalorieNinjas (FREE tier — NLP meal logging)
+#### Natural-language meal logging (no external NLP provider)
 
-- **Used for**: Natural language meal input parsing. User types "ate a chicken burrito and a coke" → API returns structured per-item nutrition (calories, protein, carbs, fat, etc.)
-- **Endpoint**: `GET https://api.calorieninjas.com/v1/nutrition?query={text}`
-- **Response**: Array of items, each with `name`, `calories`, `protein_g`, `carbohydrates_total_g`, `fat_total_g`, `fiber_g`, `sugar_g`, `sodium_mg`, `cholesterol_mg`
-- **Caching**: Cache query → result pairs with **24-hour TTL**
-- **Integration point**: `CalorieNinjasClient.cs` → called from `POST /api/meals/log-natural` endpoint
+- **Used for**: Parsing text such as "ate a chicken burrito and a coke" into food segments with portions. The original CalorieNinjas integration no longer exists.
+- **Implementation**: `NaturalLanguageFallbackService` (behind `INutritionApiService`) segments the text, resolves each segment through `IFoodSearchService.ResolveAsync` and `GroundingPolicy`, and falls back to the web cascade (when `Features:WebGrounding` is on) or a generic estimate. The service never returns model-invented nutrition numbers.
+- **Integration point**: `POST /api/meals/log-natural` creates a pending `nlp` meal draft; see §8.3.
 
 #### CSPI Chemical Cuisine (Static Import — Additive safety ratings)
 
@@ -1020,11 +1046,17 @@ Time-window analysis correlating meals with subsequently logged symptoms:
 ```
 1. User types: "had a chicken burrito, chips and guac, and a dr pepper"
 2. Frontend sends POST /api/meals/log-natural { text, mealType, loggedAt }
-3. Backend calls CalorieNinjas: GET /v1/nutrition?query={text}
-4. API returns array of parsed items with nutrition per item
-5. Backend returns parsed items to frontend for confirmation
-6. Frontend shows editable list: user can adjust servings, remove items
-7. User confirms → backend creates MealLog + MealItems, updates DailyNutritionSummary
+3. NaturalLanguageFallbackService segments the text and grounds each food through
+   IFoodSearchService.ResolveAsync + GroundingPolicy (web cascade or generic estimate otherwise)
+4. Backend stores a pending `nlp` MealDraft (grams, per-100 g basis, provenance) and returns the
+   parsed items with draftId/draftItemIds. An ambiguous match keeps its preview, marked
+   needs_choice, with grounding candidates.
+5. LogMealSheet shows the editable review: adjust grams, remove items, and pick a match for each
+   needs_choice item (keep the preview, choose an alternative, or search for a replacement)
+6. User confirms → PUT /api/meals/drafts/{id}/commit; MealDraftService recomputes nutrition with
+   NutritionCalculator and creates the MealLog. The API returns 422 while a needs_choice item
+   lacks a choice. An expired draft is re-analyzed from the saved text, never logged via
+   POST /api/meals.
 ```
 
 ### 8.4 Smart Alerts

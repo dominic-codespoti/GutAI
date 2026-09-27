@@ -41,6 +41,9 @@ public record UserProfileDto
     public string[] GutConditions { get; init; } = [];
     public bool OnboardingCompleted { get; init; }
     public string? TimezoneId { get; init; }
+
+    /// <summary><c>FoodRegion</c> name ("Default" | "Us" | "Au") biasing food sources and the web cascade.</summary>
+    public string PreferredFoodRegion { get; init; } = "Default";
 }
 
 public record UpdateProfileRequest
@@ -50,6 +53,9 @@ public record UpdateProfileRequest
     public string[]? DietaryPreferences { get; init; }
     public string[]? GutConditions { get; init; }
     public string? TimezoneId { get; init; }
+
+    /// <summary>Optional <c>FoodRegion</c> name ("Default" | "Us" | "Au", case-insensitive); omitted keeps the current value.</summary>
+    public string? PreferredFoodRegion { get; init; }
     public bool? OnboardingCompleted { get; init; }
 }
 

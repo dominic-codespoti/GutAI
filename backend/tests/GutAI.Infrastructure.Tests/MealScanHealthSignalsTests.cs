@@ -18,7 +18,7 @@ namespace GutAI.Infrastructure.Tests;
 /// </summary>
 public class MealScanHealthSignalsTests
 {
-    private static MealScanItemDto GroundedItem(Guid productId) => new()
+    private static MealDraftItemDto GroundedItem(Guid productId) => new()
     {
         ItemId = Guid.NewGuid(),
         Name = "grilled chicken",
@@ -29,7 +29,7 @@ public class MealScanHealthSignalsTests
         VisionConfidence = 0.9m,
     };
 
-    private static MealScanItemDto AiItem() => new()
+    private static MealDraftItemDto AiItem() => new()
     {
         ItemId = Guid.NewGuid(),
         Name = "grandma mystery casserole",
@@ -95,7 +95,7 @@ public class MealScanHealthSignalsTests
     /// <summary>Thin wrapper so tests exercise the real enricher with real services.</summary>
     private sealed class MealScanHealthSignalsEnricherHarness(ITableStore store)
     {
-        public Task EnrichAsync(MealScanItemDto item) =>
+        public Task EnrichAsync(MealDraftItemDto item) =>
             MealScanHealthSignals.EnrichAsync(
                 item, store,
                 new Infrastructure.Services.FodmapService(),
@@ -175,10 +175,16 @@ public class MealScanHealthSignalsTests
         public Task<List<CoachChatMessage>> GetRecentCoachMessagesAsync(Guid userId, int limit, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertCoachMessageAsync(Guid userId, DateTimeOffset at, string role, string text, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeleteCoachMessagesAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MealDraftRecord?> GetMealDraftAsync(Guid userId, Guid draftId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<string?> TryReplaceMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task<List<MealDraftRecord>> GetMealDraftsByStatusAsync(Guid userId, string status, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<int> PurgeMealDraftsAsync(DateTimeOffset pendingExpiredBefore, DateTimeOffset closedCreatedBefore, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<CoachSessionState?> GetCoachSessionStateAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertCoachSessionStateAsync(Guid userId, CoachSessionState state, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeleteCoachSessionStateAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<WebNutritionCacheEntry?> GetWebNutritionCacheEntryAsync(string cacheKey, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task UpsertWebNutritionNegativeCacheAsync(string cacheKey, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<GutAI.Domain.Entities.PairingCode?> GetPairingCodeByHashAsync(string codeHash, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertPairingCodeAsync(GutAI.Domain.Entities.PairingCode code, CancellationToken ct = default) => throw new NotSupportedException();

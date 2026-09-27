@@ -1,9 +1,12 @@
 using System.Net;
 using System.Text.Json;
 using GutAI.Application.Common.DTOs;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.Interfaces;
+using GutAI.Domain.Enums;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace GutAI.Infrastructure.Services;
@@ -35,21 +38,30 @@ public class WebNutritionCascade : IWebNutritionLookup
 
     private readonly IChatClient _chatClient;
     private readonly ITableStore _store;
+    private readonly IConfiguration _configuration;
     private readonly HttpClient _searchHttp;
     private readonly HttpClient _readerHttp;
     private readonly bool _enabled;
+    private readonly int _cacheTtlDays;
+    private readonly int _negativeCacheTtlDays;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<WebNutritionCascade> _logger;
 
     public WebNutritionCascade(
-        IChatClient chatClient,
+        [FromKeyedServices(AiWorkloads.Extraction)] IChatClient chatClient,
         ITableStore store,
         IConfiguration config,
         HttpClient httpClient,
-        ILogger<WebNutritionCascade> logger)
+        ILogger<WebNutritionCascade> logger,
+        TimeProvider? timeProvider = null)
     {
+        _configuration = config;
         _chatClient = chatClient;
         _store = store;
         _enabled = config.GetValue("Features:WebGrounding", false);
+        _cacheTtlDays = config.GetValue("WebGrounding:CacheTtlDays", 180);
+        _negativeCacheTtlDays = config.GetValue("WebGrounding:NegativeCacheTtlDays", 7);
+        _timeProvider = timeProvider ?? TimeProvider.System;
         // One client, 8s hard cap per stage; reader gets a slightly longer one for slow pages.
         _searchHttp = httpClient;
         _searchHttp.Timeout = TimeSpan.FromSeconds(8);
@@ -60,20 +72,26 @@ public class WebNutritionCascade : IWebNutritionLookup
         _logger = logger;
     }
 
-    public async Task<WebNutritionResult?> LookupAsync(string foodName, CancellationToken ct = default)
+    public async Task<WebNutritionResult?> LookupAsync(string foodName, FoodRegion region, CancellationToken ct = default)
     {
         if (!_enabled || string.IsNullOrWhiteSpace(foodName)) return null;
 
-        var key = NormalizeName(foodName);
+        var key = $"{NormalizeName(foodName)}|{region.ToString().ToLowerInvariant()}";
+        var now = _timeProvider.GetUtcNow();
 
         // ── 0. Cache ──
         try
         {
-            var cached = await _store.GetWebNutritionCacheAsync(key, ct);
+            var cached = await _store.GetWebNutritionCacheEntryAsync(key, ct);
             if (cached is not null)
             {
-                _logger.LogDebug("Web nutrition cache hit: {Key}", key);
-                return cached;
+                var isUsableEntry = cached.IsNegative || cached.Result is not null;
+                var ttlDays = cached.IsNegative ? _negativeCacheTtlDays : _cacheTtlDays;
+                if (isUsableEntry && now - cached.CachedAt < TimeSpan.FromDays(ttlDays))
+                {
+                    _logger.LogDebug("Web nutrition cache hit: {Key}", key);
+                    return cached.IsNegative ? null : cached.Result;
+                }
             }
         }
         catch (Exception ex)
@@ -83,22 +101,49 @@ public class WebNutritionCascade : IWebNutritionLookup
 
         // ── 2. Free search (authoritative domains preferred in ranking) ──
         var query = $"{foodName} nutrition per 100g";
-        var results = await SearchDuckDuckGo(query, ct);
-        if (results.Count == 0) return null;
+        List<(string Title, string Url)> results;
+        try
+        {
+            results = await SearchDuckDuckGo(query, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Web nutrition search failed for '{Food}'.", foodName);
+            return null;
+        }
+        if (results.Count == 0)
+        {
+            if (ct.IsCancellationRequested) return null;
+            await CacheNegativeAsync(key, ct);
+            return null;
+        }
 
         var ordered = results.OrderByDescending(u => DomainScore(u.Url)).Take(2).ToList();
 
         // ── 3+4. Fetch + extract per candidate until one passes plausibility ──
         foreach (var (_, url) in ordered)
         {
-            var markdown = await FetchViaJina(url, ct);
-            if (string.IsNullOrEmpty(markdown)) continue;
+            string? markdown;
+            try { markdown = await FetchViaJina(url, ct); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Web nutrition fetch failed for {Url}.", url);
+                return null;
+            }
+            if (markdown is null) return null;
 
-            var extraction = await ExtractAsync(foodName, url, markdown!, ct);
-            if (extraction is null || !extraction.Found) continue;
+            WebNutritionExtraction? extraction;
+            try { extraction = await ExtractAsync(foodName, url, markdown, ct); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Web nutrition extraction failed for '{Food}' from {Url}.", foodName, url);
+                return null;
+            }
+            if (extraction is null) return null;
+            if (!extraction.Found) continue;
 
-            var result = ToResult(extraction, key);
-            if (result is null || !IsPlausible(result))
+            var result = ToResult(extraction, key, url);
+            if (result is null || !IsPlausible(result, foodName))
             {
                 _logger.LogInformation("Web extraction for '{Food}' from {Url} failed plausibility.", foodName, url);
                 continue;
@@ -111,26 +156,27 @@ public class WebNutritionCascade : IWebNutritionLookup
             return result;
         }
 
+        if (ct.IsCancellationRequested) return null;
+        await CacheNegativeAsync(key, ct);
         return null;
     }
+
+    private async Task CacheNegativeAsync(string key, CancellationToken ct)
+    {
+        try { await _store.UpsertWebNutritionNegativeCacheAsync(key, ct); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Web nutrition negative-cache write failed for {Key}.", key); }
+    }
+
 
     // ── DuckDuckGo HTML parsing ──
 
     internal virtual async Task<List<(string Title, string Url)>> SearchDuckDuckGo(string query, CancellationToken ct)
     {
-        try
-        {
-            using var response = await _searchHttp.GetAsync(string.Format(SearchUrl, Uri.EscapeDataString(query)), ct);
-            response.EnsureSuccessStatusCode();
-            await using var stream = response.Content.ReadAsStream(ct);
-            using var reader = new StreamReader(stream);
-            return DuckDuckGoParser.ParseResults(await reader.ReadToEndAsync(ct));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "DDG search failed for '{Query}'.", query);
-            return [];
-        }
+        using var response = await _searchHttp.GetAsync(string.Format(SearchUrl, Uri.EscapeDataString(query)), ct);
+        response.EnsureSuccessStatusCode();
+        await using var stream = response.Content.ReadAsStream(ct);
+        using var reader = new StreamReader(stream);
+        return DuckDuckGoParser.ParseResults(await reader.ReadToEndAsync(ct));
     }
 
     internal static class DuckDuckGoParser // nested for internal test access
@@ -210,8 +256,16 @@ public class WebNutritionCascade : IWebNutritionLookup
                     $"Food: {foodName}\nPage URL: {url}\n\nPage content:\n{markdown}"),
             };
 
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var response = await _chatClient.GetResponseAsync<WebNutritionExtraction>(
                 messages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+            stopwatch.Stop();
+            AiUsageMeter.Current?.Record(
+                "web_extraction",
+                AiWorkloads.ResolveDeployment(_configuration, AiWorkloads.Extraction),
+                response.Usage?.InputTokenCount,
+                response.Usage?.OutputTokenCount,
+                stopwatch.Elapsed);
             return response.Result;
         }
         catch (Exception ex)
@@ -223,9 +277,9 @@ public class WebNutritionCascade : IWebNutritionLookup
 
     // ── Plausibility gate ──
 
-    internal static WebNutritionResult? ToResult(WebNutritionExtraction e, string cacheKey)
+    internal static WebNutritionResult? ToResult(WebNutritionExtraction e, string cacheKey, string fetchedUrl)
     {
-        if (!e.Found || string.IsNullOrWhiteSpace(e.SourceUrl)) return null;
+        if (!e.Found) return null;
         return new WebNutritionResult
         {
             CaloriesKcal = e.CaloriesKcal,
@@ -235,37 +289,14 @@ public class WebNutritionCascade : IWebNutritionLookup
             FiberG = e.FiberG,
             SugarG = e.SugarG,
             SodiumMg = e.SodiumMg,
-            SourceName = string.IsNullOrWhiteSpace(e.SourceName) ? new Uri(e.SourceUrl).Host : e.SourceName,
-            SourceUrl = e.SourceUrl,
+            SourceName = string.IsNullOrWhiteSpace(e.SourceName) ? new Uri(fetchedUrl).Host : e.SourceName,
+            SourceUrl = fetchedUrl,
             CacheKey = cacheKey,
         };
     }
 
-    /// <summary>
-    /// Deterministic physiological sanity ranges (per 100 g). Rejects the classic
-    /// web-garbage cases: kcal from a different row than macros, mg/g mixups,
-    /// negative or absurd values.
-    /// </summary>
-    internal static bool IsPlausible(WebNutritionResult r)
-    {
-        if (r.CaloriesKcal is < 1m or > 900m) return false;
-        if (r.ProteinG < 0 || r.ProteinG > 90m) return false;
-        if (r.CarbsG < 0 || r.CarbsG > 100m) return false;
-        if (r.FatG < 0 || r.FatG > 100m) return false;
-        if (r.FiberG is < 0 or > 60m) return false;
-        if (r.SugarG is < 0 or > 100m) return false;
-        if (r.SodiumMg is < 0 or > 6000m) return false;
-        if (r.SugarG.HasValue && r.SugarG > r.CarbsG + 5m) return false;   // sugar ⊆ carbs (+tolerance)
-        if (r.SodiumMg > 6000m) return false;
-
-        // Macro-energy consistency: 4·(P+C) + 9·F should roughly cover kcal (±40% slack
-        // for fiber/rounding/alcohol). Catches pages mixing rows or units.
-        var macroKcal = 4m * (r.ProteinG + r.CarbsG) + 9m * r.FatG;
-        if (macroKcal > 0 && (macroKcal < r.CaloriesKcal * 0.6m || macroKcal > r.CaloriesKcal * 1.4m))
-            return false;
-
-        return true;
-    }
+    internal static bool IsPlausible(WebNutritionResult result, string? foodName = null) =>
+        NutritionSanity.Check(NutritionCalculator.BasisFrom(result), NutritionSanityProfile.Web, foodName).IsPlausible;
 
     internal static string NormalizeName(string name)
     {

@@ -148,6 +148,7 @@ public class TableStorageStore : ITableStore
             { "GutConditions", StringArrayToJson(user.GutConditions) },
             { "OnboardingCompleted", user.OnboardingCompleted },
             { "TimezoneId", user.TimezoneId },
+            { "PreferredFoodRegion", user.PreferredFoodRegion.ToString() },
             { "AgentThreadId", user.AgentThreadId }
         };
         await UpsertAsync(e, ct);
@@ -155,7 +156,12 @@ public class TableStorageStore : ITableStore
 
     public async Task DeleteUserAsync(Guid userId, CancellationToken ct)
     {
-        await DeleteAsync("USER", userId.ToString(), ct);
+        var userPartition = userId.ToString();
+        var filter = $"PartitionKey eq '{userPartition}' and RowKey ge 'DRAFT|' and RowKey lt 'DRAFT|~'";
+        foreach (var entity in await QueryAsync(filter, ct))
+            await DeleteAsync(entity.PartitionKey, entity.RowKey, ct);
+        await DeleteCoachSessionStateAsync(userId, ct);
+        await DeleteAsync("USER", userPartition, ct);
     }
 
     private static User MapToUser(TableEntity e) => new()
@@ -175,6 +181,8 @@ public class TableStorageStore : ITableStore
         GutConditions = JsonToStringArray(e.GetString("GutConditions")),
         OnboardingCompleted = e.GetBoolean("OnboardingCompleted") ?? false,
         TimezoneId = e.GetString("TimezoneId"),
+        PreferredFoodRegion = Enum.TryParse<FoodRegion>(e.GetString("PreferredFoodRegion"), out var region) &&
+                              Enum.IsDefined(region) ? region : FoodRegion.Default,
         AgentThreadId = e.GetString("AgentThreadId")
     };
 
@@ -1281,7 +1289,7 @@ public class TableStorageStore : ITableStore
     {
         // Update timestamp before saving
         food.UpdatedAt = DateTime.UtcNow;
-        
+
         var e = new TableEntity(food.UserId.ToString(), $"CUSTOMFOOD|{food.Id}")
         {
             { "Name", food.Name },
@@ -1291,7 +1299,9 @@ public class TableStorageStore : ITableStore
             { "Calories", (double)food.Calories },
             { "ProteinG", (double)food.ProteinG },
             { "CarbG", (double)food.CarbG },
-            { "FatG", (double)food.FatG }
+            { "FatG", (double)food.FatG },
+            { "NutritionProvenance", food.NutritionProvenance },
+            { "ExtractionConfidence", food.ExtractionConfidence is null ? null : (double?)food.ExtractionConfidence.Value }
         };
 
         if (food.FiberG.HasValue) e.Add("FiberG", (double)food.FiberG.Value);
@@ -1351,65 +1361,208 @@ public class TableStorageStore : ITableStore
             await DeleteAsync(entity.PartitionKey, entity.RowKey, ct);
     }
 
-    // ── Meal-scan sessions (drafts pending user review) ──
+    // ── Meal drafts ──
 
-    public async Task UpsertScanSessionAsync(ScanSessionRecord session, CancellationToken ct = default)
+    private const int MaxTableStringPropertyLength = 32_000;
+
+    private static void ValidateMealDraftStrings(MealDraftRecord draft)
     {
-        var entity = new TableEntity(session.UserId.ToString(), $"SCAN|{session.Id}")
+        Validate(nameof(draft.Origin), draft.Origin);
+        Validate(nameof(draft.Status), draft.Status);
+        Validate(nameof(draft.MealType), draft.MealType);
+        Validate(nameof(draft.ItemsJson), draft.ItemsJson);
+        Validate(nameof(draft.RawModelJson), draft.RawModelJson);
+        Validate(nameof(draft.PromptVersion), draft.PromptVersion);
+        Validate(nameof(draft.ModelDeployment), draft.ModelDeployment);
+        Validate(nameof(draft.CalibrationVersion), draft.CalibrationVersion);
+        Validate(nameof(draft.CorrectionDeltaJson), draft.CorrectionDeltaJson);
+        Validate("WarningsJson", JsonSerializer.Serialize(draft.Warnings, JsonOpts));
+
+        static void Validate(string property, string? value)
         {
-            ["Status"] = session.Status,
-            ["RawVisionJson"] = session.RawVisionJson,
-            ["DraftItemsJson"] = session.DraftItemsJson,
-            ["WarningsJson"] = System.Text.Json.JsonSerializer.Serialize(session.Warnings),
-            ["ReferenceObjectVisible"] = session.ReferenceObjectVisible,
-            ["OverallConfidence"] = (double)session.OverallConfidence,
-            ["ModelDeployment"] = session.ModelDeployment,
-            ["CreatedAt"] = session.CreatedAt,
+            if (value is { Length: > MaxTableStringPropertyLength })
+                throw new ArgumentException($"The {property} property exceeds the Table Storage limit.", property);
+        }
+    }
+
+    public async Task UpsertMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default)
+    {
+        ValidateMealDraftStrings(draft);
+        await UpsertAsync(ToMealDraftEntity(draft), ct);
+    }
+
+    public async Task<string?> TryReplaceMealDraftAsync(MealDraftRecord draft, CancellationToken ct = default)
+    {
+        if (draft.ETag is null) return null;
+        ValidateMealDraftStrings(draft);
+        var entity = ToMealDraftEntity(draft);
+        await EnsureTableAsync();
+        try
+        {
+            var response = await _table.UpdateEntityAsync(entity, new Azure.ETag(draft.ETag), TableUpdateMode.Replace, ct);
+            return response.Headers.ETag.ToString();
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status is 404 or 412)
+        {
+            return null;
+        }
+    }
+
+    private static TableEntity ToMealDraftEntity(MealDraftRecord draft) =>
+        new(draft.UserId.ToString(), $"DRAFT|{draft.Id}")
+        {
+            ["Origin"] = draft.Origin,
+            ["Status"] = draft.Status,
+            ["MealType"] = draft.MealType,
+            ["LoggedAt"] = draft.LoggedAt?.ToUniversalTime(),
+            ["ItemsJson"] = draft.ItemsJson,
+            ["WarningsJson"] = JsonSerializer.Serialize(draft.Warnings, JsonOpts),
+            ["ReferenceObjectVisible"] = draft.ReferenceObjectVisible,
+            ["OverallConfidence"] = (double)draft.OverallConfidence,
+            ["RawModelJson"] = draft.RawModelJson,
+            ["PromptVersion"] = draft.PromptVersion,
+            ["ModelDeployment"] = draft.ModelDeployment,
+            ["CalibrationVersion"] = draft.CalibrationVersion,
+            ["CorrectionDeltaJson"] = draft.CorrectionDeltaJson,
+            ["CommittedMealId"] = draft.CommittedMealId?.ToString(),
+            ["CreatedAt"] = draft.CreatedAt.ToUniversalTime(),
+            ["ExpiresAt"] = draft.ExpiresAt.ToUniversalTime(),
+            ["CommittedAt"] = draft.CommittedAt?.ToUniversalTime(),
+        };
+
+    public async Task<MealDraftRecord?> GetMealDraftAsync(Guid userId, Guid draftId, CancellationToken ct = default)
+    {
+        var entity = await GetEntityOrNullAsync(userId.ToString(), $"DRAFT|{draftId}", ct);
+        return entity is null ? null : MapToMealDraft(entity);
+    }
+
+    public async Task<List<MealDraftRecord>> GetMealDraftsByStatusAsync(Guid userId, string status, CancellationToken ct = default)
+    {
+        var filter = $"PartitionKey eq '{userId}' and RowKey ge 'DRAFT|' and RowKey lt 'DRAFT|~' and Status eq '{status.Replace("'", "''")}'";
+        return (await QueryAsync(filter, ct)).Select(MapToMealDraft).ToList();
+    }
+    /// <summary>Enumerates drafts across user partitions whose creation time is at or after the supplied instant.</summary>
+    public async Task<List<MealDraftRecord>> GetMealDraftsCreatedSinceAsync(DateTimeOffset since, CancellationToken ct = default)
+    {
+        // Deliberately query without EnsureTableAsync: analytics is read-only and must not create storage.
+        var filter = TableClient.CreateQueryFilter($"RowKey ge 'DRAFT|' and RowKey lt 'DRAFT|~' and CreatedAt ge {since.UtcDateTime}");
+        var records = new List<MealDraftRecord>();
+        await foreach (var entity in _table.QueryAsync<TableEntity>(filter, cancellationToken: ct))
+            records.Add(MapToMealDraft(entity));
+        return records;
+    }
+
+
+
+    public async Task<int> PurgeMealDraftsAsync(DateTimeOffset pendingExpiredBefore, DateTimeOffset closedCreatedBefore, CancellationToken ct = default)
+    {
+        var filter = "RowKey ge 'DRAFT|' and RowKey lt 'DRAFT|~'";
+        var entities = await QueryAsync(filter, ct);
+        var deleted = 0;
+        foreach (var entity in entities)
+        {
+            var status = entity.GetString("Status");
+            var expiresAt = entity.GetDateTimeOffset("ExpiresAt");
+            var createdAt = entity.GetDateTimeOffset("CreatedAt");
+            var expiredPending = status == MealDraftStatuses.PendingReview && expiresAt < pendingExpiredBefore;
+            var oldClosed = status is MealDraftStatuses.Committed or MealDraftStatuses.Discarded or MealDraftStatuses.Expired &&
+                            createdAt < closedCreatedBefore;
+            if (!expiredPending && !oldClosed) continue;
+            await DeleteAsync(entity.PartitionKey, entity.RowKey, ct);
+            deleted++;
+        }
+        return deleted;
+    }
+
+    private static MealDraftRecord MapToMealDraft(TableEntity entity)
+    {
+        return new MealDraftRecord
+        {
+            Id = Guid.Parse(entity.RowKey["DRAFT|".Length..]),
+            UserId = Guid.Parse(entity.PartitionKey),
+            Origin = entity.GetString("Origin") ?? "",
+            Status = entity.GetString("Status") ?? "",
+            MealType = entity.GetString("MealType"),
+            LoggedAt = entity.GetDateTimeOffset("LoggedAt")?.ToUniversalTime(),
+            ItemsJson = entity.GetString("ItemsJson") ?? "[]",
+            Warnings = JsonSerializer.Deserialize<List<string>>(entity.GetString("WarningsJson") ?? "[]", JsonOpts) ?? [],
+            ReferenceObjectVisible = entity.GetBoolean("ReferenceObjectVisible") ?? false,
+            OverallConfidence = (decimal)(entity.GetDouble("OverallConfidence") ?? 0),
+            RawModelJson = entity.GetString("RawModelJson"),
+            PromptVersion = entity.GetString("PromptVersion"),
+            ModelDeployment = entity.GetString("ModelDeployment"),
+            CalibrationVersion = entity.GetString("CalibrationVersion"),
+            CorrectionDeltaJson = entity.GetString("CorrectionDeltaJson"),
+            CommittedMealId = Guid.TryParse(entity.GetString("CommittedMealId"), out var mealId) ? mealId : null,
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt")?.ToUniversalTime() ?? DateTimeOffset.UnixEpoch,
+            ExpiresAt = entity.GetDateTimeOffset("ExpiresAt")?.ToUniversalTime() ?? DateTimeOffset.UnixEpoch,
+            CommittedAt = entity.GetDateTimeOffset("CommittedAt")?.ToUniversalTime(),
+            ETag = entity.ETag.ToString(),
+        };
+    }
+
+    // ── Coach session state ──
+
+    public async Task<CoachSessionState?> GetCoachSessionStateAsync(Guid userId, CancellationToken ct = default)
+    {
+        var entity = await GetEntityOrNullAsync(userId.ToString(), "COACHSTATE", ct);
+        return entity is null
+            ? null
+            : JsonSerializer.Deserialize<CoachSessionState>(entity.GetString("StateJson") ?? "{}", JsonOpts);
+    }
+
+    public async Task UpsertCoachSessionStateAsync(Guid userId, CoachSessionState state, CancellationToken ct = default)
+    {
+        var utcState = state with { UpdatedAt = state.UpdatedAt.ToUniversalTime() };
+        var entity = new TableEntity(userId.ToString(), "COACHSTATE")
+        {
+            ["StateJson"] = JsonSerializer.Serialize(utcState, JsonOpts),
+            ["UpdatedAt"] = utcState.UpdatedAt,
         };
         await UpsertAsync(entity, ct);
     }
 
-    public async Task<ScanSessionRecord?> GetScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
-    {
-        var e = await GetEntityOrNullAsync(userId.ToString(), $"SCAN|{sessionId}", ct);
-        if (e is null) return null;
-        return new ScanSessionRecord
-        {
-            Id = sessionId,
-            UserId = userId,
-            Status = e.GetString("Status") ?? "PendingReview",
-            RawVisionJson = e.GetString("RawVisionJson") ?? "",
-            DraftItemsJson = e.GetString("DraftItemsJson") ?? "[]",
-            Warnings = System.Text.Json.JsonSerializer.Deserialize<List<string>>(e.GetString("WarningsJson") ?? "[]") ?? [],
-            ReferenceObjectVisible = e.GetBoolean("ReferenceObjectVisible") ?? false,
-            OverallConfidence = (decimal)(e.GetDouble("OverallConfidence") ?? 0),
-            ModelDeployment = e.GetString("ModelDeployment") ?? "",
-            CreatedAt = e.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.UtcNow,
-        };
-    }
-
-    public Task DeleteScanSessionAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
-        => DeleteAsync(userId.ToString(), $"SCAN|{sessionId}", ct);
+    public Task DeleteCoachSessionStateAsync(Guid userId, CancellationToken ct = default)
+        => DeleteAsync(userId.ToString(), "COACHSTATE", ct);
 
     // ── Web nutrition cascade cache ──
 
-    public async Task<WebNutritionResult?> GetWebNutritionCacheAsync(string normalizedName, CancellationToken ct = default)
+    public async Task<WebNutritionCacheEntry?> GetWebNutritionCacheEntryAsync(string cacheKey, CancellationToken ct = default)
     {
-        var e = await GetEntityOrNullAsync("WEBNUTRITION", normalizedName.ToLowerInvariant().Trim(), ct);
-        if (e is null) return null;
-        return new WebNutritionResult
+        var normalizedKey = cacheKey.ToLowerInvariant().Trim();
+        var entity = await GetEntityOrNullAsync("WEBNUTRITION", normalizedKey, ct);
+        if (entity is null) return null;
+        var isNegative = entity.GetBoolean("IsNegative") ?? false;
+        var cachedAt = entity.GetDateTimeOffset("CachedAt") ?? entity.Timestamp ?? DateTimeOffset.UnixEpoch;
+        return new WebNutritionCacheEntry
         {
-            CaloriesKcal = (decimal)(e.GetDouble("CaloriesKcal") ?? 0),
-            ProteinG = (decimal)(e.GetDouble("ProteinG") ?? 0),
-            CarbsG = (decimal)(e.GetDouble("CarbsG") ?? 0),
-            FatG = (decimal)(e.GetDouble("FatG") ?? 0),
-            FiberG = e.ContainsKey("FiberG") ? (decimal?)e.GetDouble("FiberG") : null,
-            SugarG = e.ContainsKey("SugarG") ? (decimal?)e.GetDouble("SugarG") : null,
-            SodiumMg = e.ContainsKey("SodiumMg") ? (decimal?)e.GetDouble("SodiumMg") : null,
-            SourceName = e.GetString("SourceName") ?? "",
-            SourceUrl = e.GetString("SourceUrl") ?? "",
-            CacheKey = normalizedName.ToLowerInvariant().Trim(),
+            IsNegative = isNegative,
+            CachedAt = cachedAt.ToUniversalTime(),
+            Result = isNegative ? null : new WebNutritionResult
+            {
+                CaloriesKcal = (decimal)(entity.GetDouble("CaloriesKcal") ?? 0),
+                ProteinG = (decimal)(entity.GetDouble("ProteinG") ?? 0),
+                CarbsG = (decimal)(entity.GetDouble("CarbsG") ?? 0),
+                FatG = (decimal)(entity.GetDouble("FatG") ?? 0),
+                FiberG = entity.ContainsKey("FiberG") ? (decimal?)entity.GetDouble("FiberG") : null,
+                SugarG = entity.ContainsKey("SugarG") ? (decimal?)entity.GetDouble("SugarG") : null,
+                SodiumMg = entity.ContainsKey("SodiumMg") ? (decimal?)entity.GetDouble("SodiumMg") : null,
+                SourceName = entity.GetString("SourceName") ?? "",
+                SourceUrl = entity.GetString("SourceUrl") ?? "",
+                CacheKey = normalizedKey,
+            },
         };
+    }
+
+    public async Task UpsertWebNutritionNegativeCacheAsync(string cacheKey, CancellationToken ct = default)
+    {
+        var key = cacheKey.ToLowerInvariant().Trim();
+        var entity = new TableEntity("WEBNUTRITION", key)
+        {
+            ["IsNegative"] = true,
+            ["CachedAt"] = DateTimeOffset.UtcNow,
+        };
+        await UpsertAsync(entity, ct);
     }
 
     public async Task UpsertWebNutritionCacheAsync(WebNutritionResult result, CancellationToken ct = default)
@@ -1424,6 +1577,7 @@ public class TableStorageStore : ITableStore
             ["FatG"] = (double)result.FatG,
             ["SourceName"] = result.SourceName,
             ["SourceUrl"] = result.SourceUrl,
+            ["IsNegative"] = false,
             ["CachedAt"] = DateTimeOffset.UtcNow,
         };
         if (result.FiberG is not null) entity["FiberG"] = (double)result.FiberG.Value;
@@ -1431,6 +1585,7 @@ public class TableStorageStore : ITableStore
         if (result.SodiumMg is not null) entity["SodiumMg"] = (double)result.SodiumMg.Value;
         await UpsertAsync(entity, ct);
     }
+
 
     private static CustomFood MapToCustomFood(TableEntity e)
     {
@@ -1448,6 +1603,8 @@ public class TableStorageStore : ITableStore
             CarbG = (decimal)(e.GetDouble("CarbG") ?? 0),
             FatG = (decimal)(e.GetDouble("FatG") ?? 0),
             FiberG = e.ContainsKey("FiberG") ? (decimal?)e.GetDouble("FiberG") : null,
+            NutritionProvenance = e.GetString("NutritionProvenance"),
+            ExtractionConfidence = e.ContainsKey("ExtractionConfidence") ? (decimal?)e.GetDouble("ExtractionConfidence") : null,
             SugarG = e.ContainsKey("SugarG") ? (decimal?)e.GetDouble("SugarG") : null,
             SodiumMg = e.ContainsKey("SodiumMg") ? (decimal?)e.GetDouble("SodiumMg") : null,
             Ingredients = e.GetString("Ingredients"),

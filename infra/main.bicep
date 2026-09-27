@@ -224,3 +224,123 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
 output apiUrl string = 'https://${api.properties.configuration.ingress.fqdn}'
 output storageAccountName string = storage.name
 output resourceGroupName string = resourceGroup().name
+
+@description('Email address for optional Application Insights cost and scan-latency alerts. Leave empty to disable alerts.')
+param alertEmailAddress string = ''
+
+@description('P95 estimated AI cost per meal scan that triggers an alert, in USD (for example, 0.05).')
+param scanCostP95ThresholdUsd string = '0.05'
+
+@description('P95 image-scan request duration budget that triggers an alert, in milliseconds (default is 75% of the 60-second scan deadline).')
+param scanLatencyP95BudgetMs int = 45000
+
+resource scanAlertActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(alertEmailAddress)) {
+  name: '${prefix}-scan-alerts'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'GutAIScan'
+    enabled: true
+    emailReceivers: [
+      {
+        name: 'scan-alert-email'
+        emailAddress: alertEmailAddress
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
+resource scanCostAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = if (!empty(alertEmailAddress)) {
+  name: '${prefix}-scan-cost-p95'
+  location: location
+  tags: tags
+  kind: 'LogAlert'
+  properties: {
+    displayName: 'GutAI meal scan p95 AI cost exceeded'
+    description: 'Alerts when p95 estimated AI cost per meal scan exceeds the configured USD threshold.'
+    severity: 2
+    enabled: true
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT1H'
+    scopes: [
+      appInsights.id
+    ]
+    targetResourceTypes: [
+      'Microsoft.Insights/components'
+    ]
+    autoMitigate: true
+    criteria: {
+      allOf: [
+        {
+          query: '''
+            traces
+            | where tostring(customDimensions.Operation) == "meal_scan"
+            | extend EstimatedCostUsd = todouble(customDimensions.EstimatedCostUsd)
+            | where isnotnull(EstimatedCostUsd)
+            | summarize p95CostUsd = percentile(EstimatedCostUsd, 95)
+          '''
+          timeAggregation: 'Average'
+          metricMeasureColumn: 'p95CostUsd'
+          operator: 'GreaterThan'
+          threshold: json(scanCostP95ThresholdUsd)
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [
+        scanAlertActionGroup.id
+      ]
+    }
+  }
+}
+
+resource scanLatencyAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = if (!empty(alertEmailAddress)) {
+  name: '${prefix}-scan-latency-p95'
+  location: location
+  tags: tags
+  kind: 'LogAlert'
+  properties: {
+    displayName: 'GutAI image scan p95 latency exceeded'
+    description: 'Alerts when p95 POST /api/meals/scan/image request duration exceeds the configured millisecond budget.'
+    severity: 3
+    enabled: true
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT1H'
+    scopes: [
+      appInsights.id
+    ]
+    targetResourceTypes: [
+      'Microsoft.Insights/components'
+    ]
+    autoMitigate: true
+    criteria: {
+      allOf: [
+        {
+          query: '''
+            requests
+            | where tostring(name) == "POST /api/meals/scan/image"
+            | summarize p95DurationMs = percentile(duration / 1ms, 95)
+          '''
+          timeAggregation: 'Average'
+          metricMeasureColumn: 'p95DurationMs'
+          operator: 'GreaterThan'
+          threshold: scanLatencyP95BudgetMs
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [
+        scanAlertActionGroup.id
+      ]
+    }
+  }
+}

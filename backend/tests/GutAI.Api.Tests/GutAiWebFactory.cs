@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -20,6 +22,9 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string TestAdminKey = "test-admin-key-for-integration-tests";
     private IContainer _azurite = default!;
+    private readonly ConcurrentBag<AsyncServiceScope> _realStoreScopes = new();
+    private readonly object _derivedHostLock = new();
+    private readonly Dictionary<string, WebApplicationFactory<Program>> _derivedHosts = new(StringComparer.Ordinal);
 
     static GutAiWebFactory()
     {
@@ -52,7 +57,7 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         builder.UseEnvironment("Development");
         builder.UseSetting("AdminKey", TestAdminKey);
-        builder.UseSetting("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://centralus-0.in.applicationinsights.azure.com/;LiveEndpoint=https://centralus.livediagnostics.monitor.azure.com/");
+        builder.UseSetting("APPLICATIONINSIGHTS_CONNECTION_STRING", "");
         builder.ConfigureServices(services =>
         {
             Storage.Replace(services, connStr);
@@ -63,9 +68,34 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public new async Task DisposeAsync()
     {
+        while (_realStoreScopes.TryTake(out var scope))
+            await scope.DisposeAsync();
+        WebApplicationFactory<Program>[] derivedHosts;
+        lock (_derivedHostLock)
+            derivedHosts = _derivedHosts.Values.ToArray();
+        foreach (var host in derivedHosts)
+            await host.DisposeAsync();
         await base.DisposeAsync();
         await _azurite.DisposeAsync();
     }
+
+    /// <summary>
+    /// Returns the fixture-cached host for a unique configuration key. A key must uniquely
+    /// identify the host configuration; subsequent calls with that key reuse the first host.
+    /// </summary>
+    public WebApplicationFactory<Program> DerivedHost(string key, Action<IWebHostBuilder> configure)
+    {
+        lock (_derivedHostLock)
+        {
+            if (!_derivedHosts.TryGetValue(key, out var host))
+            {
+                host = WithWebHostBuilder(configure);
+                _derivedHosts.Add(key, host);
+            }
+            return host;
+        }
+    }
+
 
     public async Task<(HttpClient Client, string Token)> CreateAuthenticatedClientAsync()
     {
@@ -82,6 +112,40 @@ public class GutAiWebFactory : WebApplicationFactory<Program>, IAsyncLifetime
         var token = json.GetProperty("accessToken").GetString()!;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return (client, token);
+    }
+    public async Task<(HttpClient Client, Guid UserId, IServiceProvider Services, string Token)> CreateAuthenticatedRealStoreClientAsync(
+        string hostKey = "real-store",
+        Action<IWebHostBuilder>? configure = null)
+    {
+        var factory = DerivedHost(hostKey, builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<ITableStore>();
+                services.AddSingleton<ITableStore>(sp => new TableStorageStore(sp.GetRequiredService<TableServiceClient>()));
+            });
+            configure?.Invoke(builder);
+        });
+
+        var client = factory.CreateClient();
+        var email = $"test-{Guid.NewGuid():N}@test.com";
+        var response = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            email,
+            password = "TestPass123",
+            displayName = "Test User"
+        });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = json.GetProperty("accessToken").GetString()!;
+        var payload = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+        payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+        var claims = JsonDocument.Parse(Convert.FromBase64String(payload));
+        var userId = Guid.Parse(claims.RootElement.GetProperty("sub").GetString()!);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var scope = factory.Services.CreateAsyncScope();
+        _realStoreScopes.Add(scope);
+        return (client, userId, scope.ServiceProvider, token);
     }
 
     public async Task<(HttpClient Client, string Token)> CreateAdminClientAsync()

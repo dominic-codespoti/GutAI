@@ -15,20 +15,25 @@ public static class MealVisionValidator
 {
     public sealed record ValidatedVision(
         List<ScannedComponent> Components,
+        List<ScannedComponent> InferredComponents,
         bool ReferenceObjectVisible,
         string ScaleNotes,
         decimal OverallConfidence,
         IReadOnlyList<string> DroppedNotes);
 
     /// <exception cref="MealScanValidationException">Nothing usable survived validation.</exception>
-    public static ValidatedVision Validate(MealVisionResult raw, int maxComponents)
+    public static ValidatedVision Validate(
+        MealVisionResult raw,
+        int maxComponents,
+        IEnumerable<ScannedComponent>? inferredComponents = null,
+        int maxInferredComponents = 3,
+        decimal maxInferredGramsPerMeal = 40m)
     {
         if (raw.Components.Count == 0)
             throw new MealScanValidationException("No food components were identified in the photo.");
 
         var dropped = new List<string>();
         var valid = new List<ScannedComponent>();
-
         foreach (var c in raw.Components.Take(maxComponents * 2)) // hard read-cap before filtering
         {
             if (valid.Count >= maxComponents)
@@ -37,67 +42,37 @@ public static class MealVisionValidator
                 continue;
             }
 
-            var cleanedName = CleanseComponentName(c.Name);
-            if (string.IsNullOrWhiteSpace(cleanedName))
+            if (TryValidateComponent(c, dropped, out var component))
+                valid.Add(component);
+        }
+
+        var inferred = new List<ScannedComponent>();
+        decimal inferredGrams = 0m;
+        foreach (var c in inferredComponents ?? [])
+        {
+            if (inferred.Count >= maxInferredComponents)
             {
-                dropped.Add("Unnamed component dropped.");
+                dropped.Add($"Inferred component limit ({maxInferredComponents}) reached — '{Truncate(c.Name)}' ignored.");
                 continue;
             }
 
-            if (c.EstimatedGramsLow < 0 || c.EstimatedGramsMidpoint < 0 || c.EstimatedGramsHigh < 0
-                || c.EstimatedGramsLow > c.EstimatedGramsMidpoint || c.EstimatedGramsMidpoint > c.EstimatedGramsHigh)
+            if (string.IsNullOrWhiteSpace(c.PreparationNote))
             {
-                dropped.Add($"'{Truncate(c.Name)}' dropped — implausible portion range.");
+                dropped.Add($"Inferred component '{Truncate(c.Name)}' dropped — no visible cue.");
                 continue;
             }
 
-            // Physiological sanity ceiling for a single photographed food item.
-            if (c.EstimatedGramsHigh > 5000m)
+            if (!TryValidateComponent(c, dropped, out var component))
+                continue;
+
+            if (component.EstimatedGramsMidpoint > maxInferredGramsPerMeal - inferredGrams)
             {
-                dropped.Add($"'{Truncate(c.Name)}' dropped — portion estimate exceeds 5 kg.");
+                dropped.Add($"Inferred component '{Truncate(c.Name)}' dropped — inferred mass exceeds {maxInferredGramsPerMeal} g per meal.");
                 continue;
             }
 
-            var servingHint = NormalizeServingHint(
-                c.ServingHintUnit, c.ServingHintUnitPlural, c.ServingHintUnitGrams);
-            if (c.Confidence is < 0m or > 1m)
-            {
-                // Clamp rather than drop — an over/under-confident model output doesn't
-                // invalidate the component's identity itself.
-                valid.Add(new ScannedComponent
-                {
-                    Name = cleanedName,
-                    EstimatedGramsLow = decimal.Round(c.EstimatedGramsLow, 1),
-                    EstimatedGramsMidpoint = decimal.Round(c.EstimatedGramsMidpoint, 1),
-                    EstimatedGramsHigh = decimal.Round(c.EstimatedGramsHigh, 1),
-                    Confidence = Clamp01(c.Confidence),
-                    PortionConfidence = decimal.Round(Clamp01(c.PortionConfidence), 2),
-                    IsGarnish = c.IsGarnish || c.EstimatedGramsMidpoint <= 5m,
-                    ServingHintUnit = servingHint.Unit,
-                    ServingHintUnitPlural = servingHint.Plural,
-                    ServingHintUnitGrams = servingHint.Grams,
-                    SearchQueries = NormalizeSearchQueries(c.SearchQueries),
-                    PreparationNote = (c.PreparationNote ?? "").Trim(),
-                });
-                continue;
-            }
-
-            valid.Add(new ScannedComponent
-            {
-                Name = cleanedName,
-                EstimatedGramsLow = decimal.Round(c.EstimatedGramsLow, 1),
-                EstimatedGramsMidpoint = decimal.Round(c.EstimatedGramsMidpoint, 1),
-                EstimatedGramsHigh = decimal.Round(c.EstimatedGramsHigh, 1),
-                Confidence = decimal.Round(Clamp01(c.Confidence), 2),
-                PortionConfidence = decimal.Round(Clamp01(c.PortionConfidence), 2),
-                IsGarnish = c.IsGarnish || c.EstimatedGramsMidpoint <= 5m,
-                ServingHintUnit = servingHint.Unit,
-                ServingHintUnitPlural = servingHint.Plural,
-                ServingHintUnitGrams = servingHint.Grams,
-                SearchQueries = NormalizeSearchQueries(c.SearchQueries),
-                PreparationNote = (c.PreparationNote ?? "").Trim(),
-            });
-
+            inferred.Add(component);
+            inferredGrams += component.EstimatedGramsMidpoint;
         }
 
         if (valid.Count == 0)
@@ -106,11 +81,55 @@ public static class MealVisionValidator
 
         return new ValidatedVision(
             valid,
+            inferred,
             raw.ReferenceObjectVisible,
             (raw.ScaleNotes ?? "").Trim(),
             Clamp01(raw.OverallConfidence),
             dropped);
     }
+
+    private static bool TryValidateComponent(ScannedComponent c, List<string> dropped, out ScannedComponent component)
+    {
+        component = null!;
+        var cleanedName = CleanseComponentName(c.Name);
+        if (string.IsNullOrWhiteSpace(cleanedName))
+        {
+            dropped.Add("Unnamed component dropped.");
+            return false;
+        }
+
+        if (c.EstimatedGramsLow < 0 || c.EstimatedGramsMidpoint < 0 || c.EstimatedGramsHigh < 0
+            || c.EstimatedGramsLow > c.EstimatedGramsMidpoint || c.EstimatedGramsMidpoint > c.EstimatedGramsHigh)
+        {
+            dropped.Add($"'{Truncate(c.Name)}' dropped — implausible portion range.");
+            return false;
+        }
+
+        if (c.EstimatedGramsHigh > 5000m)
+        {
+            dropped.Add($"'{Truncate(c.Name)}' dropped — portion estimate exceeds 5 kg.");
+            return false;
+        }
+
+        var servingHint = NormalizeServingHint(c.ServingHintUnit, c.ServingHintUnitPlural, c.ServingHintUnitGrams);
+        component = new ScannedComponent
+        {
+            Name = cleanedName,
+            EstimatedGramsLow = decimal.Round(c.EstimatedGramsLow, 1),
+            EstimatedGramsMidpoint = decimal.Round(c.EstimatedGramsMidpoint, 1),
+            EstimatedGramsHigh = decimal.Round(c.EstimatedGramsHigh, 1),
+            Confidence = decimal.Round(Clamp01(c.Confidence), 2),
+            PortionConfidence = decimal.Round(Clamp01(c.PortionConfidence), 2),
+            IsGarnish = c.IsGarnish || c.EstimatedGramsMidpoint <= 5m,
+            ServingHintUnit = servingHint.Unit,
+            ServingHintUnitPlural = servingHint.Plural,
+            ServingHintUnitGrams = servingHint.Grams,
+            SearchQueries = NormalizeSearchQueries(c.SearchQueries),
+            PreparationNote = (c.PreparationNote ?? "").Trim(),
+        };
+        return true;
+    }
+
 
     private static decimal Clamp01(decimal v) => Math.Clamp(v, 0m, 1m);
 

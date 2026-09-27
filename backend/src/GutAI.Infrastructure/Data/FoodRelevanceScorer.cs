@@ -16,14 +16,16 @@ internal static class FoodRelevanceScorer
     /// acts as a moderate booster, not a dominant signal.</summary>
     public const float QualityWeight = 8f;
 
-    /// <summary>Nutrition-implausibility is scaled up specifically here — this scorer has
-    /// no Lucene BM25 term to blend with, so an exact lexical match on a mislabeled catalog
-    /// entry can accumulate 80-90+ points of coverage/exact-match bonus that the archetypes'
-    /// raw severity values alone can't overcome. <see cref="NaturalLanguageFallbackService"/>'s
-    /// separate <c>ScoreMatch</c> also calls into <c>FoodMacroArchetypes</c> but is calibrated
-    /// against its own (unscaled) bonus magnitudes, so the multiplier lives at this call site,
-    /// not inside the shared archetype scorer.</summary>
-    private const float ImplausibilityWeight = 10f;
+    /// <summary>Per-token name evidence strongly prioritizes complete food-name matches.</summary>
+    private const float NameTokenMatchWeight = 500f;
+
+    /// <summary>Severe macro implausibility remains stronger than lexical matching, even
+    /// when the candidate matches every query token.</summary>
+    private const float ImplausibilityWeight = 100f;
+
+    /// <summary>Bonus for preparation-first queries whose catalog match leads with the
+    /// food noun that appears last in the query.</summary>
+    private const float PreparationFirstQueryHeadBonus = 100f;
 
     /// <summary>Bonus for candidates the user has previously logged, comparable in magnitude
     /// to an exact-name-match bonus so personalization meaningfully re-orders ties without
@@ -35,27 +37,28 @@ internal static class FoodRelevanceScorer
     /// the whole catalog would still rank and return the highest-quality candidates — a
     /// confident wrong guess instead of "no match". See the <c>isEligible</c> output below.</summary>
     public static float Score(FoodCandidate candidate, in FoodQueryContext ctx) =>
-        Score(candidate, ctx, out _, out _, out _);
+        Score(candidate, ctx, out _, out _, out _, out _);
 
     /// <summary>Scores a candidate and reports the signals a resolution decision needs:
     /// whether it has any meaningful overlap with the query at all (<paramref name="isEligible"/>),
     /// whether its name is a literal match (<paramref name="isExactMatch"/>), and its best
     /// token-coverage fraction (<paramref name="coverage"/>), used to derive display confidence.</summary>
     public static float Score(FoodCandidate candidate, in FoodQueryContext ctx,
-        out bool isEligible, out bool isExactMatch, out float coverage)
+        out bool isEligible, out bool isExactMatch, out float coverage, out float tokenMatchScore)
     {
         var dto = candidate.Dto;
         var nameLower = candidate.NameLower;
         var queryLower = ctx.QueryLower;
         var queryTokens = ctx.RawTokens;
+        var queryNamesBrand = IsBrandNamed(candidate, ctx);
 
-        float score = ComputeCoverageSignals(candidate, ctx, out float nameCoverage, out float primaryCoverage);
-        var brandSignal = ComputeBrandMatchSignal(dto, queryLower, queryTokens);
-        score += ComputeSourceKindSignal(dto, queryTokens, ctx.QueryHasBrand);
+        float score = ComputeCoverageSignals(candidate, ctx, out float nameCoverage, out float primaryCoverage, out tokenMatchScore);
+        var brandSignal = ComputeBrandMatchSignal(candidate, queryLower, queryNamesBrand);
+        score += ComputeSourceKindSignal(candidate, queryTokens.Length, ctx.QueryHasBrand);
         score += brandSignal;
         score += FoodQualityTerms.ScoreConditionalPenalties(nameLower, queryLower, queryTokens.Length);
         score += FoodQualityTerms.ScoreModifierRules(nameLower, queryLower);
-        score += FoodMacroArchetypes.Score(dto, queryLower) * ImplausibilityWeight;
+        score += FoodMacroArchetypes.Score(candidate.Macros, ctx.MacroArchetypeMask, candidate.NameTokenStems) * ImplausibilityWeight;
 
         if (queryTokens.Length >= 2)
         {
@@ -63,11 +66,9 @@ internal static class FoodRelevanceScorer
             else if (primaryCoverage == 0.5f && nameCoverage < 1f) score -= 10f;
         }
 
-        var nameStem = FoodTextNormalizer.Depluralize(nameLower);
-        isExactMatch = nameLower == queryLower || nameStem == ctx.QueryStem;
+        isExactMatch = candidate.NormalizedName == ctx.NormalizedName;
         coverage = Math.Max(primaryCoverage, nameCoverage);
         isEligible = isExactMatch || coverage > 0f || brandSignal > 0f;
-
         return score;
     }
 
@@ -82,27 +83,65 @@ internal static class FoodRelevanceScorer
         return Math.Round(0.4m + 0.4m * (decimal)coverage, 2);
     }
 
+    public static bool IsBrandNamed(FoodCandidate candidate, in FoodQueryContext ctx)
+    {
+        var brandTokenStems = candidate.BrandTokenStems;
+        for (var i = 0; i < brandTokenStems.Length; i++)
+        {
+            if (brandTokenStems[i].Length >= 4 && ctx.RawTokenStemSet.Contains(brandTokenStems[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool MatchesEveryQueryToken(FoodCandidate candidate, in FoodQueryContext ctx)
+    {
+        var nameTokenStems = candidate.NameTokenStems;
+        foreach (var queryTokenStem in ctx.RawTokenStems)
+        {
+            var found = false;
+            for (var i = 0; i < nameTokenStems.Length; i++)
+            {
+                if (nameTokenStems[i] == queryTokenStem)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+                return false;
+        }
+
+        return ctx.RawTokenStems.Length > 0;
+    }
+
     private static float ComputeCoverageSignals(
-        FoodCandidate candidate, in FoodQueryContext ctx, out float nameCoverage, out float primaryCoverage)
+        FoodCandidate candidate, in FoodQueryContext ctx, out float nameCoverage, out float primaryCoverage, out float tokenMatchScore)
     {
         var queryLower = ctx.QueryLower;
         var queryTokens = ctx.RawTokens;
-        var allQueryTokens = ctx.ExpandedTokens;
+        var allQueryTokens = ctx.ExpandedTokenStems;
         var nameLower = candidate.NameLower;
-        var primaryTokens = candidate.PrimaryTokens;
-        var nameTokens = candidate.NameTokens;
+        var primaryTokens = candidate.PrimaryTokenStems;
+        var nameTokens = candidate.NameTokenStems;
 
         float score = 0f;
-
-        int primaryMatched = allQueryTokens.Count(qt => primaryTokens.Any(pt => pt == qt || pt.StartsWith(qt) || qt.StartsWith(pt)));
-        primaryCoverage = allQueryTokens.Length > 0 ? (float)primaryMatched / allQueryTokens.Length : 0f;
+        float primaryMatch = 0f;
+        foreach (var qt in allQueryTokens)
+            primaryMatch += BestTokenMatch(primaryTokens, qt);
+        primaryCoverage = allQueryTokens.Length > 0 ? primaryMatch / allQueryTokens.Length : 0f;
         score += primaryCoverage * 20f;
         if (primaryCoverage >= 1f) score += 15f;
 
-        int nameMatched = allQueryTokens.Count(qt => nameTokens.Any(nt => nt == qt || nt.StartsWith(qt) || qt.StartsWith(nt)));
-        nameCoverage = allQueryTokens.Length > 0 ? (float)nameMatched / allQueryTokens.Length : 0f;
-        score += nameCoverage * 15f;
-        if (nameCoverage >= 1f) score += 10f;
+        float nameMatch = 0f;
+        foreach (var qt in allQueryTokens)
+            nameMatch += BestTokenMatch(nameTokens, qt);
+        nameCoverage = allQueryTokens.Length > 0 ? nameMatch / allQueryTokens.Length : 0f;
+        tokenMatchScore = nameMatch * NameTokenMatchWeight;
+        score += nameMatch * NameTokenMatchWeight + nameCoverage * 15f;
+        if (nameCoverage >= 1f) score += 100f;
 
         if (queryTokens.Length > 0 && primaryTokens.Length > 0)
         {
@@ -112,40 +151,46 @@ internal static class FoodRelevanceScorer
             if (pt0 == qt0) firstTokenBonus = 20f;
             else if (pt0.StartsWith(qt0) && pt0.Length <= qt0.Length + 3) firstTokenBonus = 12f;
             else if (qt0.StartsWith(pt0)) firstTokenBonus = 10f;
-            else if (primaryTokens.Any(pt => queryTokens.Any(qt => pt == qt || pt == FoodTextNormalizer.Depluralize(qt))))
-                firstTokenBonus = 15f * nameCoverage;
+            else if (HasQueryToken(primaryTokens, ctx)) firstTokenBonus = 15f * nameCoverage;
 
             if (queryTokens.Length >= 2 && pt0 == qt0)
                 firstTokenBonus *= nameCoverage;
-
             score += firstTokenBonus;
         }
+
+        if (ctx.QueryHasPreparationMethod && queryTokens.Length >= 3
+            && nameTokens.Length > 0 && nameTokens[0] == ctx.RawTokenStems[^1])
+            score += PreparationFirstQueryHeadBonus;
 
         if (queryTokens.Length >= 2 && nameCoverage >= 1f)
         {
             score += 15f;
-            // Bonus for inverted USDA matches (e.g. "cooked sausage" matching "Sausage, cooked" or "Sausage, pork, cooked")
-            if (primaryTokens.Any(pt => queryTokens.Any(qt => pt == qt || pt == FoodTextNormalizer.Depluralize(qt))))
+            if (HasQueryToken(primaryTokens, ctx))
                 score += 20f;
         }
-        var nameStem = FoodTextNormalizer.Depluralize(nameLower);
+
+        var nameStem = candidate.NameStem;
         var queryStem = ctx.QueryStem;
         if (nameLower == queryLower) score += 50f;
         else if (nameStem == queryStem) score += 45f;
         if (nameLower.StartsWith(queryLower)) score += 20f;
         else if (nameStem.StartsWith(queryStem) && Math.Abs(nameStem.Length - queryStem.Length) <= nameStem.Length) score += 18f;
 
-        // Single-word query matching a USDA descriptor (e.g. "cheddar" in "Cheese, cheddar")
         if (queryTokens.Length == 1 && primaryTokens.Length > 0)
         {
-            var commaIdx = nameLower.IndexOf(',');
-            var descriptorPart = commaIdx >= 0 ? nameLower[(commaIdx + 1)..].Trim() : "";
-            var descTokens = descriptorPart.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (descTokens.Any(dt => dt == queryLower || FoodTextNormalizer.Depluralize(dt) == queryStem))
-                score += 20f;
+            var descriptorTokens = candidate.DescriptorTokens;
+            var descriptorTokenStems = candidate.DescriptorTokenStems;
+            for (var i = 0; i < descriptorTokens.Length; i++)
+            {
+                if (descriptorTokens[i] == queryLower || descriptorTokenStems[i] == queryStem)
+                {
+                    score += 20f;
+                    break;
+                }
+            }
         }
 
-        if (queryTokens.Length <= 2 && !queryTokens.Any(FoodQualityTerms.PreparationMethodTerms.Contains))
+        if (queryTokens.Length <= 2 && !ctx.QueryHasPreparationMethod)
         {
             foreach (var term in FoodQualityTerms.RawFreshTerms)
                 if (nameLower.Contains(term)) score += 12f;
@@ -155,13 +200,10 @@ internal static class FoodRelevanceScorer
 
         if (queryTokens.Length <= 2)
         {
-
-            var queryTokenSet = new HashSet<string>(queryTokens, StringComparer.OrdinalIgnoreCase);
-            var queryDepluralized = queryTokens.Select(FoodTextNormalizer.Depluralize).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var term in FoodQualityTerms.ProcessedTerms)
             {
                 if (nameLower.Contains(term) && !queryLower.Contains(term)
-                    && !queryTokenSet.Contains(term) && !queryDepluralized.Contains(term))
+                    && !ctx.RawTokenSet.Contains(term) && !ctx.RawTokenStemSet.Contains(term))
                 {
                     score -= queryTokens.Length == 1 ? 12f : 6f;
                     break;
@@ -172,22 +214,43 @@ internal static class FoodRelevanceScorer
         return score;
     }
 
-    private static float ComputeSourceKindSignal(GutAI.Application.Common.DTOs.FoodProductDto dto, string[] queryTokens, bool queryHasBrand)
+    private static bool HasQueryToken(string[] candidateTokens, in FoodQueryContext ctx)
     {
-        float score = 0f;
-        if (queryTokens.Length > 3) return score;
+        foreach (var token in candidateTokens)
+            if (ctx.RawTokenSet.Contains(token) || ctx.RawTokenStemSet.Contains(token))
+                return true;
+        return false;
+    }
 
+    private static float BestTokenMatch(string[] candidateTokens, string queryToken)
+    {
+        var hasPrefixMatch = false;
+        foreach (var token in candidateTokens)
+        {
+            if (token == queryToken)
+                return 1f;
+
+            if (token.Length >= 3 && queryToken.StartsWith(token, StringComparison.Ordinal)
+                || queryToken.Length >= 3 && token.StartsWith(queryToken, StringComparison.Ordinal))
+                hasPrefixMatch = true;
+        }
+
+        return hasPrefixMatch ? 0.25f : 0f;
+    }
+
+    private static float ComputeSourceKindSignal(
+        FoodCandidate candidate, int queryTokenCount, bool queryHasBrand)
+    {
+        var dto = candidate.Dto;
+        if (queryTokenCount > 3) return 0f;
+
+        float score = 0f;
         if (dto.FoodKind == FoodKind.WholeFood)
             score += 10f;
         else if (dto.FoodKind == FoodKind.Branded && !queryHasBrand)
         {
             score -= 25f;
-
-            // A single-word branded product name (e.g. "Eggs", "Garlic", "Coffee") that
-            // matches a common whole-food query is almost always misleading — it's a
-            // candy, sausage, or drink mix, not the actual whole food.
-            var nameTokens = dto.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (nameTokens.Length <= 2 && !string.IsNullOrEmpty(dto.Brand))
+            if (candidate.NameTokenCount <= 2 && !string.IsNullOrEmpty(dto.Brand))
                 score -= 20f;
         }
 
@@ -197,13 +260,10 @@ internal static class FoodRelevanceScorer
         return score;
     }
 
-    private static float ComputeBrandMatchSignal(GutAI.Application.Common.DTOs.FoodProductDto dto, string queryLower, string[] queryTokens)
+    private static float ComputeBrandMatchSignal(FoodCandidate candidate, string queryLower, bool queryNamesBrand)
     {
-        if (string.IsNullOrEmpty(dto.Brand)) return 0f;
-
-        var brandLower = dto.Brand.ToLowerInvariant();
-        if (queryLower.Contains(brandLower)) return 40f;
-        if (queryTokens.Any(brandLower.Contains)) return 20f;
-        return 0f;
+        var brand = candidate.Dto.Brand;
+        if (string.IsNullOrEmpty(brand) || !queryNamesBrand) return 0f;
+        return queryLower.Contains(brand, StringComparison.OrdinalIgnoreCase) ? 40f : 20f;
     }
 }

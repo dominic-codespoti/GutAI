@@ -1,5 +1,6 @@
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
+using GutAI.Domain.Enums;
 
 namespace GutAI.Infrastructure.ExternalApis;
 
@@ -12,6 +13,7 @@ public class CompositeNutritionService : INutritionApiService
         _fallback = fallback;
     }
 
-    public Task<List<ParsedFoodItemDto>> ParseNaturalLanguageAsync(string text, CancellationToken ct = default)
-        => _fallback.ParseAsync(text, ct);
+    public Task<List<ParsedFoodItemDto>> ParseNaturalLanguageAsync(
+        string text, FoodRegion region = FoodRegion.Default, CancellationToken ct = default)
+        => _fallback.ParseAsync(text, region, ct);
 }

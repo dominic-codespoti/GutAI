@@ -1,11 +1,10 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Azure;
 using Azure.AI.ContentUnderstanding;
 using Azure.AI.Extensions.OpenAI;
 using Azure.AI.Projects;
 using Azure.AI.Projects.Agents;
-using Azure.Identity;
+using GutAI.Application.Common.Helpers;
 using GutAI.Application.Common.DTOs;
 using GutAI.Application.Common.Interfaces;
 using Microsoft.Extensions.AI;
@@ -21,10 +20,15 @@ namespace GutAI.Infrastructure.Services;
 
 public class ContentUnderstandingService : IContentUnderstandingService
 {
+    public const string DescribeFoodPromptVersion = "2026-09-25.v1";
+    public const string NutritionLabelPromptVersion = "2026-09-25.v1";
+
     private readonly ContentUnderstandingClient _client;
     private readonly ILogger<ContentUnderstandingService>? _logger;
     private readonly AIProjectClient? _projectClient;
     private readonly IChatClient? _chatClient;
+    private readonly IChatClient? _describeChatClient;
+    private readonly IFoodSearchService? _foodSearch;
     private readonly string _agentName;
 
     /// <summary>
@@ -35,17 +39,27 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
     private static readonly AIChatRole DeveloperRole = new("developer");
 
+    private const string NutritionLabelInstructions = """
+        You extract the nutrition facts and ingredients visible on a food label.
+        Return one JSON object matching the versioned nutrition label extraction schema.
+        Extract values per stated serving; convert explicitly stated kJ to kcal by dividing by 4.184.
+        Never add provenance or described-component fields.
+        """;
     public ContentUnderstandingService(
         ContentUnderstandingClient client,
         IConfiguration? config = null,
         ILogger<ContentUnderstandingService>? logger = null,
         AIProjectClient? projectClient = null,
-        IChatClient? chatClient = null)
+        IChatClient? chatClient = null,
+        IChatClient? describeChatClient = null,
+        IFoodSearchService? foodSearch = null)
     {
         _client = client;
         _logger = logger;
         _projectClient = projectClient;
         _chatClient = chatClient;
+        _describeChatClient = describeChatClient;
+        _foodSearch = foodSearch;
         _agentName = config?["Foundry:AgentName"] ?? "nutrition-estimation-agent";
     }
 
@@ -62,20 +76,14 @@ public class ContentUnderstandingService : IContentUnderstandingService
             var primaryResult = await ParseWithAnalyzerAsync(memoryStream, contentType, "prebuilt-documentFields", ct);
 
             // Accept partial extractions as long as we got any meaningful label data.
-            if (primaryResult != null && HasMeaningfulExtraction(primaryResult))
-            {
+            if (primaryResult != null && HasMeaningfulExtraction(primaryResult) && FinalizeGeneratedFood(primaryResult))
                 return primaryResult;
-            }
 
             if (primaryResult != null)
             {
                 _logger?.LogWarning(
-                    "Analyzer returned incomplete nutrition data (cal={Calories}, protein={ProteinG}, carbs={CarbG}, fat={FatG}, sodium={SodiumMg}); attempting LLM fallback.",
-                    primaryResult.Calories,
-                    primaryResult.ProteinG,
-                    primaryResult.CarbG,
-                    primaryResult.FatG,
-                    primaryResult.SodiumMg);
+                    "Analyzer returned incomplete or implausible nutrition data (cal={Calories}, protein={ProteinG}, carbs={CarbG}, fat={FatG}, sodium={SodiumMg}); attempting LLM fallback.",
+                    primaryResult.Calories, primaryResult.ProteinG, primaryResult.CarbG, primaryResult.FatG, primaryResult.SodiumMg);
             }
             else
             {
@@ -87,7 +95,6 @@ public class ContentUnderstandingService : IContentUnderstandingService
             _logger?.LogWarning(ex, "Analyzer failed; attempting LLM fallback. {Details}", DescribeException(ex));
         }
 
-        // Fallback to the Responses-backed IChatClient.
         if (_chatClient is null)
         {
             _logger?.LogWarning("LLM label fallback unavailable because the Responses chat client is not configured.");
@@ -96,25 +103,23 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
         try
         {
-            _logger?.LogInformation("LLM label fallback starting through the Responses chat client.");
-
+            _logger?.LogInformation("LLM label fallback starting through the Responses chat client using prompt {PromptVersion}.", NutritionLabelPromptVersion);
             await using var llmStream = new MemoryStream();
             memoryStream.Position = 0;
             await memoryStream.CopyToAsync(llmStream, ct);
             llmStream.Position = 0;
 
             var fallbackResult = await ParseWithLlmVisionAsync(llmStream, contentType, ct);
-            if (fallbackResult != null && HasMeaningfulExtraction(fallbackResult))
+            if (fallbackResult != null && HasMeaningfulExtraction(fallbackResult) && FinalizeGeneratedFood(fallbackResult))
             {
                 _logger?.LogInformation("LLM fallback succeeded.");
                 return fallbackResult;
             }
-
             _logger?.LogWarning("LLM fallback returned no usable nutrition data.");
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "LLM fallback failed. {Details}", DescribeException(ex));
+            _logger?.LogError(ex, "LLM label fallback failed. {Details}", DescribeException(ex));
         }
 
         return null;
@@ -124,21 +129,12 @@ public class ContentUnderstandingService : IContentUnderstandingService
     {
         var trimmedDescription = description?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedDescription))
-        {
             return null;
-        }
 
-        // All configured model inference goes through the Responses-backed IChatClient
-        // or the Foundry Responses agent. There is no Chat Completions fallback.
-        if (_chatClient != null)
-        {
+        if ((_describeChatClient ?? _chatClient) is not null)
             return await DescribeFoodWithChatClientAsync(trimmedDescription, ct);
-        }
-
         if (_projectClient != null)
-        {
             return await DescribeFoodWithAgentAsync(trimmedDescription, ct);
-        }
 
         _logger?.LogWarning("Text food description is unavailable because no Responses-backed AI client is configured.");
         return null;
@@ -148,38 +144,15 @@ public class ContentUnderstandingService : IContentUnderstandingService
     {
         try
         {
-            _logger?.LogInformation("Invoking IChatClient for structured food description.");
+            _logger?.LogInformation("Invoking IChatClient for structured food description using prompt {PromptVersion}.", DescribeFoodPromptVersion);
             var messages = new List<AIChatMessage>
             {
-                new(DeveloperRole, """
-                    You are a nutrition estimation AI for a food logging app.
-                    Convert a user's plain-language food description into a single reusable custom food entry.
-
-                    Return one JSON object matching the schema.
-                    Rules:
-                    - Infer a concise food name from the description.
-                    - Only include a brand when the user explicitly mentioned one.
-                    - Choose a standard serving size and unit (e.g. 100g, 1 cup, 1 piece).
-                    - Estimate realistic calories and macronutrients for the specified portion.
-                    - Estimate micronutrients and common minerals when reasonably inferable.
-                    - If the description lists ingredients, include them as a comma-separated list.
-                    - Estimate ExtractionConfidence from 0.0 to 1.0 based on how complete/clear the description was.
-                    """),
-                new(AIChatRole.User, description)
+                new(DeveloperRole, DescribeFoodInstructions),
+                new(AIChatRole.User, $"<food_description>\n{description}\n</food_description>")
             };
-
-            var response = await _chatClient!.GetResponseAsync<CustomFoodDto>(
+            var response = await (_describeChatClient ?? _chatClient!).GetResponseAsync<DescribedDish>(
                 messages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
-
-            var dto = response.Result;
-            if (dto is null)
-            {
-                _logger?.LogWarning("IChatClient returned empty structured output for food description.");
-                return null;
-            }
-
-            FinalizeGeneratedFood(dto, description);
-            return dto;
+            return response.Result is { } dish ? await FinalizeDescribedDishAsync(dish, description, ct) : null;
         }
         catch (Exception ex)
         {
@@ -188,41 +161,39 @@ public class ContentUnderstandingService : IContentUnderstandingService
         }
     }
 
+    private const string DescribeFoodInstructions = """
+        You decompose a described prepared food into its physical food components for nutrition logging.
+        Return exactly one structured DescribedDish object matching the schema.
+        Rules:
+        - Output identity, serving unit and grams, component identities and grams, search queries, and confidence only; never provide dish-level nutrition totals.
+        - Component grams are the amounts within one serving. Sum component grams should be plausible for that serving.
+        - Give at most 3 short, distinct catalog search queries per component.
+        - Include fallback_per_100g only as a plausible estimate for that component, in kcal and grams per 100 g; include fiber only when inferable.
+        - Do not invent brands. Include all meaningful ingredients/components.
+        - Confidence is 0..1 and reflects clarity of the description.
+        """;
+
     private async Task<CustomFoodDto?> DescribeFoodWithAgentAsync(string description, CancellationToken ct)
     {
         try
         {
-            _logger?.LogInformation("Invoking Foundry agent '{AgentName}' for food description.", _agentName);
-
+            _logger?.LogInformation("Invoking Foundry agent '{AgentName}' for food description using prompt {PromptVersion}.", _agentName, DescribeFoodPromptVersion);
             var agentRef = new AgentReference(name: _agentName);
             var responsesClient = _projectClient!.OpenAI.GetProjectResponsesClientForAgent(agentRef);
-
 #pragma warning disable OPENAI001 // Experimental APIs
             var options = new CreateResponseOptions();
-            options.InputItems.Add(ResponseItem.CreateUserMessageItem(description));
+            options.InputItems.Add(ResponseItem.CreateDeveloperMessageItem(DescribeFoodInstructions));
+            options.InputItems.Add(ResponseItem.CreateUserMessageItem($"<food_description>\n{description}\n</food_description>"));
             var result = await responsesClient.CreateResponseAsync(options, ct);
 #pragma warning restore OPENAI001
-
-            // Use the raw HTTP response body (wire-format JSON with lowercase property names)
             var rawJson = result.GetRawResponse()?.Content?.ToString();
-            var textResponse = rawJson is not null
-                ? ExtractResponseText(rawJson)
-                : null;
-
-            if (string.IsNullOrWhiteSpace(textResponse))
+            var textResponse = rawJson is not null ? ExtractResponseText(rawJson) : null;
+            if (string.IsNullOrWhiteSpace(textResponse) || !TryParseDescribedDish(textResponse, out var dish) || dish is null)
             {
-                _logger?.LogWarning("Agent '{AgentName}' returned empty response.", _agentName);
+                _logger?.LogWarning("Agent '{AgentName}' returned no valid structured food description.", _agentName);
                 return null;
             }
-
-            if (!TryParseFallbackResponse(textResponse, out var dto) || dto is null)
-            {
-                _logger?.LogWarning("Agent '{AgentName}' returned unparseable JSON for '{Prompt}'.", _agentName, Truncate(description, 120));
-                return null;
-            }
-
-            FinalizeGeneratedFood(dto, description);
-            return dto;
+            return await FinalizeDescribedDishAsync(dish, description, ct);
         }
         catch (Exception ex)
         {
@@ -230,6 +201,126 @@ public class ContentUnderstandingService : IContentUnderstandingService
             return null;
         }
     }
+
+    internal async Task<CustomFoodDto?> FinalizeDescribedDishAsync(DescribedDish dish, string fallbackName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dish.Name) || dish.Serving is null
+            || dish.Serving.Grams is <= 0 or > 10000 || dish.Components is null
+            || dish.Components.Count == 0 || dish.Components.Count > 50)
+            return null;
+
+        var described = new List<DescribedFoodComponentDto>(dish.Components.Count);
+        var portions = new List<NutritionAmountsDto>(dish.Components.Count);
+        foreach (var component in dish.Components)
+        {
+            if (string.IsNullOrWhiteSpace(component.Name) || component.Grams is <= 0 or > 10000)
+            {
+                _logger?.LogWarning("Dropping invalid described-food component '{ComponentName}'.", component.Name);
+                continue;
+            }
+
+            FoodProductDto? selected = null;
+            decimal matchConfidence = 0m;
+            if (_foodSearch is not null)
+            {
+                foreach (var query in (component.SearchQueries ?? []).Where(q => !string.IsNullOrWhiteSpace(q)).Take(3))
+                {
+                    var resolution = await _foodSearch.ResolveAsync(query.Trim(), [], ct);
+                    var decision = GroundingPolicy.Decide(resolution);
+                    if (!decision.AutoSelected || decision.Selected is null)
+                        continue;
+                    selected = decision.Selected;
+                    matchConfidence = resolution.MatchConfidence;
+                    break;
+                }
+            }
+
+            NutritionPer100gDto? basis = selected is null ? null : NutritionCalculator.BasisFrom(selected);
+            var isGrounded = basis is not null;
+            if (!isGrounded)
+            {
+                var estimate = component.FallbackPer100G;
+                basis = estimate is null ? null : new NutritionPer100gDto
+                {
+                    CaloriesKcal = estimate.Kcal,
+                    ProteinG = estimate.ProteinG,
+                    CarbsG = estimate.CarbsG,
+                    FatG = estimate.FatG,
+                    FiberG = estimate.FiberG
+                };
+                if (basis is null || !NutritionSanity.Check(basis, NutritionSanityProfile.Web, component.Name).IsPlausible)
+                {
+                    _logger?.LogWarning("Dropping described-food component '{ComponentName}': no auto-selected catalog match and fallback estimate failed nutrition sanity.", component.Name);
+                    continue;
+                }
+            }
+
+            var amounts = NutritionCalculator.Compute(basis, component.Grams);
+            portions.Add(amounts);
+            described.Add(new DescribedFoodComponentDto
+            {
+                Name = component.Name.Trim(),
+                Grams = component.Grams,
+                FoodProductId = selected?.Id,
+                CanonicalName = selected?.Name,
+                Source = isGrounded ? NormalizeSource(selected!.DataSource) : "ai",
+                NutritionProvenance = isGrounded ? "Sourced" : "ModelEstimated",
+                MatchConfidence = matchConfidence,
+                Calories = amounts.Calories,
+                ProteinG = amounts.ProteinG,
+                CarbsG = amounts.CarbsG,
+                FatG = amounts.FatG
+            });
+        }
+
+        if (described.Count == 0)
+            return null;
+        var totals = NutritionCalculator.Sum(portions);
+        var provenance = described.All(c => c.NutritionProvenance == "Sourced") ? "Sourced" : "ModelEstimated";
+        // Estimated components have match confidence 0, so this is the mean over surviving components.
+        var meanMatchConfidence = described.Average(c => c.MatchConfidence);
+        var result = new CustomFoodDto
+        {
+            Name = string.IsNullOrWhiteSpace(dish.Name) ? fallbackName : dish.Name.Trim(),
+            ServingSize = dish.Serving.Grams,
+            ServingSizeUnit = string.IsNullOrWhiteSpace(dish.Serving.Unit) ? "g" : dish.Serving.Unit.Trim(),
+            Calories = totals.Calories,
+            ProteinG = totals.ProteinG,
+            CarbG = totals.CarbsG,
+            FatG = totals.FatG,
+            FiberG = totals.FiberG,
+            SugarG = totals.SugarG,
+            SodiumMg = totals.SodiumMg,
+            ExtractionConfidence = Math.Clamp(dish.Confidence, 0m, 1m) * meanMatchConfidence,
+            NutritionProvenance = provenance,
+            DescribedComponents = described
+        };
+        return FinalizeGeneratedFood(result, fallbackName) ? result : null;
+    }
+
+    private static string NormalizeSource(string? source) => source?.Trim().ToLowerInvariant() switch
+    {
+        "usda" => "usda",
+        "openfoodfacts" or "off" => "off",
+        "au" or "australian" or "ausnut" => "au",
+        "db" or "database" or "manual" => "db",
+        _ => "db"
+    };
+
+    internal static bool TryParseDescribedDish(string? responseText, out DescribedDish? dish)
+    {
+        dish = null;
+        var json = ExtractJsonObject(responseText);
+        if (json is null) return false;
+        try
+        {
+            dish = JsonSerializer.Deserialize<DescribedDish>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return dish is not null;
+        }
+        catch (JsonException) { return false; }
+    }
+
+
 
 
     private static string? ExtractResponseText(object responseValue)
@@ -348,78 +439,67 @@ public class ContentUnderstandingService : IContentUnderstandingService
 
     private static bool HasMeaningfulNullableValue(decimal? value) => value.HasValue;
 
-    private static bool IsRecognizedExtractionProperty(string name)
-        => name.Equals("Name", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("BrandName", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("ServingSize", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("ServingSizeUnit", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("Calories", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("ProteinG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("CarbG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("FatG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("FiberG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("SugarG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("SodiumMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("SaturatedFatG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("TransFatG", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("CholesterolMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("PotassiumMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("CalciumMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("IronMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("MagnesiumMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("ZincMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("VitaminA_IU", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("VitaminC_Mg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("VitaminD_Mcg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("VitaminB12_Mcg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("Omega3G", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("CaffeineMg", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("Ingredients", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("Barcode", StringComparison.OrdinalIgnoreCase)
-           || name.Equals("ExtractionConfidence", StringComparison.OrdinalIgnoreCase);
 
     private async Task<CustomFoodDto?> ParseWithLlmVisionAsync(Stream memoryStream, string contentType, CancellationToken ct)
     {
-        if (_chatClient != null)
+        if (_chatClient is null)
+            return null;
+        try
         {
-            try
+            using var mem = new MemoryStream();
+            memoryStream.Position = 0;
+            await memoryStream.CopyToAsync(mem, ct);
+            var rawData = BinaryData.FromBytes(mem.ToArray(), contentType == "image/png" ? "image/png" : "image/jpeg");
+            var aiMessages = new List<AIChatMessage>
             {
-                using var mem = new MemoryStream();
-                memoryStream.Position = 0;
-                await memoryStream.CopyToAsync(mem, ct);
-                var rawData = BinaryData.FromBytes(mem.ToArray(), contentType == "image/png" ? "image/png" : "image/jpeg");
-
-                var aiMessages = new List<AIChatMessage>
-                {
-                    new(DeveloperRole, """
-                        You are a nutrition extraction AI. Analyze the image of a food label or product and extract the nutritional information and ingredients.
-                        If energy is explicitly stated in kJ without Calories, convert it to calories (kcal) by dividing by 4.184.
-                        Extract all available nutrients including vitamins and minerals when present.
-                        """),
-                    new(AIChatRole.User, [
-                        new AITextContent("Extract the nutritional label data."),
-                        new AIDataContent(rawData.ToArray(), rawData.MediaType)
-                    ])
-                };
-
-                var aiResponse = await _chatClient.GetResponseAsync<CustomFoodDto>(
-                    aiMessages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
-
-                var extracted = aiResponse.Result;
-                if (extracted != null)
-                {
-                    FinalizeGeneratedFood(extracted);
-                    return extracted;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Responses vision label parse failed: {Message}", ex.Message);
-            }
+                new(DeveloperRole, NutritionLabelInstructions),
+                new(AIChatRole.User, [
+                    new AITextContent("Extract the nutritional label data."),
+                    new AIDataContent(rawData.ToArray(), rawData.MediaType)
+                ])
+            };
+            var aiResponse = await _chatClient.GetResponseAsync<NutritionLabelExtraction>(
+                aiMessages, options: ExtractionOptions, useJsonSchemaResponseFormat: true, cancellationToken: ct);
+            return aiResponse.Result is { } extracted ? MapLabelExtraction(extracted) : null;
         }
-
-        return null;
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Responses vision label parse failed: {Message}", ex.Message);
+            return null;
+        }
     }
+
+    internal static CustomFoodDto MapLabelExtraction(NutritionLabelExtraction source) => new()
+    {
+        Name = source.Name,
+        BrandName = source.BrandName,
+        ServingSize = source.ServingSize,
+        ServingSizeUnit = source.ServingSizeUnit,
+        Calories = source.Calories,
+        ProteinG = source.ProteinG,
+        CarbG = source.CarbG,
+        FatG = source.FatG,
+        FiberG = source.FiberG,
+        SugarG = source.SugarG,
+        SodiumMg = source.SodiumMg,
+        SaturatedFatG = source.SaturatedFatG,
+        TransFatG = source.TransFatG,
+        CholesterolMg = source.CholesterolMg,
+        PotassiumMg = source.PotassiumMg,
+        CalciumMg = source.CalciumMg,
+        IronMg = source.IronMg,
+        MagnesiumMg = source.MagnesiumMg,
+        ZincMg = source.ZincMg,
+        VitaminA_IU = source.VitaminA_IU,
+        VitaminC_Mg = source.VitaminC_Mg,
+        VitaminD_Mcg = source.VitaminD_Mcg,
+        VitaminB12_Mcg = source.VitaminB12_Mcg,
+        Omega3G = source.Omega3G,
+        CaffeineMg = source.CaffeineMg,
+        Ingredients = source.Ingredients,
+        Barcode = source.Barcode,
+        ExtractionConfidence = source.ExtractionConfidence
+    };
 
 
     internal static string ResolveTextDeploymentName(IConfiguration? config)
@@ -433,83 +513,64 @@ public class ContentUnderstandingService : IContentUnderstandingService
     internal static string ResolveVisionDeploymentName(IConfiguration? config)
         => config?["AzureOpenAI:VisionDeploymentName"] ?? ResolveTextDeploymentName(config);
 
-    internal static void FinalizeGeneratedFood(CustomFoodDto dto, string? fallbackName = null)
+    internal static bool FinalizeGeneratedFood(CustomFoodDto dto, string? fallbackName = null)
     {
-        dto.Name = string.IsNullOrWhiteSpace(dto.Name)
-            ? (fallbackName ?? string.Empty)
-            : dto.Name.Trim();
+        dto.Name = string.IsNullOrWhiteSpace(dto.Name) ? (fallbackName ?? string.Empty) : dto.Name.Trim();
         dto.BrandName = string.IsNullOrWhiteSpace(dto.BrandName) ? null : dto.BrandName.Trim();
         dto.ServingSizeUnit = string.IsNullOrWhiteSpace(dto.ServingSizeUnit) ? "g" : dto.ServingSizeUnit.Trim();
         dto.Ingredients = string.IsNullOrWhiteSpace(dto.Ingredients) ? null : dto.Ingredients.Trim();
         dto.Barcode = string.IsNullOrWhiteSpace(dto.Barcode) ? null : dto.Barcode.Trim();
 
-        if (dto.ExtractionConfidence.HasValue)
+        var servingGrams = dto.ServingSizeUnit.Equals("g", StringComparison.OrdinalIgnoreCase)
+            || dto.ServingSizeUnit.Equals("gram", StringComparison.OrdinalIgnoreCase)
+            || dto.ServingSizeUnit.Equals("grams", StringComparison.OrdinalIgnoreCase)
+            ? dto.ServingSize : (decimal?)null;
+        var amounts = new NutritionAmountsDto
         {
-            dto.ExtractionConfidence = Math.Clamp(dto.ExtractionConfidence.Value, 0m, 1m);
-        }
+            Calories = dto.Calories,
+            ProteinG = dto.ProteinG,
+            CarbsG = dto.CarbG,
+            FatG = dto.FatG,
+            FiberG = dto.FiberG,
+            SugarG = dto.SugarG,
+            SodiumMg = dto.SodiumMg
+        };
+        var sanity = NutritionSanity.CheckPortion(amounts, servingGrams, dto.Name);
+        if (!sanity.IsPlausible || dto.ServingSize < 0
+            || dto.SugarG is { } sugar && sugar > dto.CarbG + 5m
+            || dto.FiberG is { } fiber && fiber > dto.CarbG + 5m)
+            return false;
 
-        // OCR/vision misreads (stray hyphens, mis-parsed dashes) can produce negative values
-        // for quantities that are never physically negative — clamp before persisting so a
-        // misread label can't corrupt downstream daily nutrition totals.
-        dto.Calories = Math.Max(0, dto.Calories);
-        dto.ProteinG = Math.Max(0, dto.ProteinG);
-        dto.CarbG = Math.Max(0, dto.CarbG);
-        dto.FatG = Math.Max(0, dto.FatG);
-        dto.ServingSize = Math.Max(0, dto.ServingSize);
-        if (dto.FiberG.HasValue) dto.FiberG = Math.Max(0, dto.FiberG.Value);
-        if (dto.SugarG.HasValue) dto.SugarG = Math.Max(0, dto.SugarG.Value);
-        if (dto.SodiumMg.HasValue) dto.SodiumMg = Math.Max(0, dto.SodiumMg.Value);
-        if (dto.SaturatedFatG.HasValue) dto.SaturatedFatG = Math.Max(0, dto.SaturatedFatG.Value);
-        if (dto.TransFatG.HasValue) dto.TransFatG = Math.Max(0, dto.TransFatG.Value);
-        if (dto.CholesterolMg.HasValue) dto.CholesterolMg = Math.Max(0, dto.CholesterolMg.Value);
-        if (dto.PotassiumMg.HasValue) dto.PotassiumMg = Math.Max(0, dto.PotassiumMg.Value);
-        if (dto.CalciumMg.HasValue) dto.CalciumMg = Math.Max(0, dto.CalciumMg.Value);
-        if (dto.IronMg.HasValue) dto.IronMg = Math.Max(0, dto.IronMg.Value);
-        if (dto.MagnesiumMg.HasValue) dto.MagnesiumMg = Math.Max(0, dto.MagnesiumMg.Value);
-        if (dto.ZincMg.HasValue) dto.ZincMg = Math.Max(0, dto.ZincMg.Value);
-        if (dto.VitaminA_IU.HasValue) dto.VitaminA_IU = Math.Max(0, dto.VitaminA_IU.Value);
-        if (dto.VitaminC_Mg.HasValue) dto.VitaminC_Mg = Math.Max(0, dto.VitaminC_Mg.Value);
-        if (dto.VitaminD_Mcg.HasValue) dto.VitaminD_Mcg = Math.Max(0, dto.VitaminD_Mcg.Value);
-        if (dto.VitaminB12_Mcg.HasValue) dto.VitaminB12_Mcg = Math.Max(0, dto.VitaminB12_Mcg.Value);
-        if (dto.Omega3G.HasValue) dto.Omega3G = Math.Max(0, dto.Omega3G.Value);
-        if (dto.CaffeineMg.HasValue) dto.CaffeineMg = Math.Max(0, dto.CaffeineMg.Value);
+        if (dto.ExtractionConfidence.HasValue)
+            dto.ExtractionConfidence = Math.Clamp(dto.ExtractionConfidence.Value, 0m, 1m);
+        return true;
     }
 
     internal static bool TryParseFallbackResponse(string? responseText, out CustomFoodDto? dto)
     {
         dto = null;
-
         var jsonText = ExtractJsonObject(responseText);
         if (string.IsNullOrWhiteSpace(jsonText))
-        {
             return false;
-        }
-
         try
         {
             using var doc = JsonDocument.Parse(jsonText);
             if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.EnumerateObject().Any())
-            {
                 return false;
-            }
-
-            dto = JsonSerializer.Deserialize<CustomFoodDto>(jsonText, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (dto != null)
-            {
-                dto.ExtractionConfidence ??= 0m;
-            }
-
-            return dto != null;
+            var extracted = JsonSerializer.Deserialize<NutritionLabelExtraction>(jsonText,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (extracted is null)
+                return false;
+            dto = MapLabelExtraction(extracted);
+            dto.ExtractionConfidence ??= 0m;
+            return true;
         }
         catch (JsonException)
         {
             return false;
         }
     }
+
 
     internal static string? ExtractJsonObject(string? responseText)
     {

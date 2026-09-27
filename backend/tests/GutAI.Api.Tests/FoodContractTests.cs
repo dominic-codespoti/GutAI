@@ -31,7 +31,17 @@ public class FoodContractTests(GutAiWebFactory factory)
             SugarG = 24,
             SodiumMg = 110,
             Ingredients = "banana, yogurt, blueberries, strawberries",
-            ExtractionConfidence = 0.82m
+            ExtractionConfidence = 0.82m,
+            NutritionProvenance = "Sourced",
+            DescribedComponents =
+            [
+                new DescribedFoodComponentDto
+                {
+                    Name = "banana", Grams = 100, FoodProductId = Guid.NewGuid(),
+                    CanonicalName = "Banana, raw", Source = "usda", NutritionProvenance = "Sourced",
+                    MatchConfidence = 0.94m, Calories = 89, ProteinG = 1.1m, CarbsG = 22.8m, FatG = 0.3m
+                }
+            ]
         };
 
         var (client, _) = await factory.CreateAuthenticatedClientAsync();
@@ -48,6 +58,20 @@ public class FoodContractTests(GutAiWebFactory factory)
         json.AssertHasStringProperty("brandName");
         json.AssertHasNumberProperty("servingSize");
         json.AssertHasStringProperty("servingSizeUnit");
+        json.AssertHasStringProperty("nutritionProvenance");
+        json.AssertHasProperty("describedComponents", JsonValueKind.Array);
+        var component = json.GetProperty("describedComponents").EnumerateArray().Single();
+        component.AssertHasStringProperty("name");
+        component.AssertHasNumberProperty("grams");
+        component.AssertHasStringProperty("foodProductId");
+        component.AssertHasStringProperty("canonicalName");
+        component.AssertHasStringProperty("source");
+        component.AssertHasStringProperty("nutritionProvenance");
+        component.AssertHasNumberProperty("matchConfidence");
+        component.AssertHasNumberProperty("calories");
+        component.AssertHasNumberProperty("proteinG");
+        component.AssertHasNumberProperty("carbsG");
+        component.AssertHasNumberProperty("fatG");
         json.AssertHasNumberProperty("calories");
         json.AssertHasNumberProperty("proteinG");
         json.AssertHasNumberProperty("carbG");
@@ -373,6 +397,87 @@ public class FoodContractTests(GutAiWebFactory factory)
         json.AssertHasStringProperty("id");
         json.AssertHasStringProperty("name");
         json.AssertHasNumberProperty("calories");
+    }
+    [Fact]
+    public async Task CustomFood_ProvenanceAndConfidencePersistAndOmittedUpdateFieldsArePreserved()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var createdResponse = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "AI oat bowl",
+            servingSize = 250,
+            servingSizeUnit = "g",
+            calories = 300,
+            proteinG = 12,
+            carbG = 45,
+            fatG = 8,
+            nutritionProvenance = "ModelEstimated",
+            extractionConfidence = 0.73
+        });
+        createdResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createdResponse.Content.ReadFromJsonAsync<JsonElement>();
+        created.AssertHasStringProperty("nutritionProvenance");
+        created.GetProperty("nutritionProvenance").GetString().Should().Be("ModelEstimated");
+        created.AssertHasNumberProperty("extractionConfidence");
+        created.GetProperty("extractionConfidence").GetDecimal().Should().Be(0.73m);
+
+        var id = created.GetProperty("id").GetGuid();
+        var updatedResponse = await client.PutAsJsonAsync($"/api/food/custom/{id}", new
+        {
+            name = "Edited oat bowl",
+            servingSize = 250,
+            servingSizeUnit = "g",
+            calories = 310,
+            proteinG = 13,
+            carbG = 45,
+            fatG = 8
+        });
+        updatedResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await updatedResponse.Content.ReadFromJsonAsync<JsonElement>();
+        updated.GetProperty("nutritionProvenance").GetString().Should().Be("ModelEstimated");
+        updated.GetProperty("extractionConfidence").GetDecimal().Should().Be(0.73m);
+    }
+
+    [Theory]
+    [InlineData("Unknown")]
+    [InlineData("Web")]
+    public async Task CreateCustomFood_RejectsUnsupportedNutritionProvenance(string provenance)
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "Bad provenance",
+            servingSize = 100,
+            servingSizeUnit = "g",
+            calories = 100,
+            proteinG = 5,
+            carbG = 10,
+            fatG = 2,
+            nutritionProvenance = provenance
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+        error.AssertHasStringProperty("error");
+    }
+
+    [Fact]
+    public async Task CreateCustomFood_RejectsOutOfRangeExtractionConfidence()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var response = await client.PostAsJsonAsync("/api/food/custom", new
+        {
+            name = "Bad confidence",
+            servingSize = 100,
+            servingSizeUnit = "g",
+            calories = 100,
+            proteinG = 5,
+            carbG = 10,
+            fatG = 2,
+            extractionConfidence = 1.01
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+        error.AssertHasStringProperty("error");
     }
 
     [Fact]

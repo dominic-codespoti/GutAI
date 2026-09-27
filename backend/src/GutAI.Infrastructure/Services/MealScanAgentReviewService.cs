@@ -46,22 +46,27 @@ internal sealed class MealScanAgentReviewService
         or ingredient.
         """;
 
-    private readonly IChatClient _chatClient;
+    private readonly IChatClient _visionClient;
+    private readonly IChatClient _selectionClient;
     private readonly ComponentGroundingEngine _grounding;
     private readonly IConfiguration _config;
     private readonly ILogger _logger;
     private readonly string _maxReanalysisEffort;
+    private readonly bool _requireCompatibilityAgreement;
 
     public MealScanAgentReviewService(
-        IChatClient chatClient,
+        IChatClient visionClient,
+        IChatClient selectionClient,
         ComponentGroundingEngine grounding,
         IConfiguration config,
         ILogger logger)
     {
-        _chatClient = chatClient;
+        _visionClient = visionClient;
+        _selectionClient = selectionClient;
         _grounding = grounding;
         _config = config;
         _logger = logger;
+        _requireCompatibilityAgreement = config.GetValue("MealScan:RequireCompatibilityAgreement", false);
 
         var configuredCap = config["MealScan:AgentMaxReanalysisEffort"];
         _maxReanalysisEffort = MealScanReasoningOptions.TryNormalize(configuredCap, out var normalizedCap)
@@ -69,10 +74,19 @@ internal sealed class MealScanAgentReviewService
             : "high";
     }
 
+    public Task<GroundedItem> ReviewAsync(
+        GroundedItem grounded,
+        byte[] imageBytes,
+        string contentType,
+        CancellationToken ct)
+        => ReviewAsync(grounded, imageBytes, contentType,
+            new AiUsageMeter(_config, _logger), ct);
+
     public async Task<GroundedItem> ReviewAsync(
         GroundedItem grounded,
         byte[] imageBytes,
         string contentType,
+        AiUsageMeter meter,
         CancellationToken ct)
     {
         var inspections = new List<GroundedItem> { grounded };
@@ -127,11 +141,15 @@ internal sealed class MealScanAgentReviewService
                     ]),
                 };
 
-                var response = await _chatClient.GetResponseAsync<ScannedComponent>(
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var response = await _visionClient.GetResponseAsync<ScannedComponent>(
                     messages,
                     options: MealScanReasoningOptions.Create(normalizedEffort),
                     useJsonSchemaResponseFormat: true,
                     cancellationToken: toolCt);
+                stopwatch.Stop();
+                meter.Record("agent_review", AiWorkloads.ResolveDeployment(_config, AiWorkloads.Vision),
+                    response.Usage?.InputTokenCount, response.Usage?.OutputTokenCount, stopwatch.Elapsed);
 
                 if (response.Result is not { } component)
                     return ReanalysisToolResult.Failure("reanalysis returned no component");
@@ -147,7 +165,7 @@ internal sealed class MealScanAgentReviewService
                 if (validated is null)
                     return ReanalysisToolResult.Failure("reanalysis failed semantic validation");
 
-                var reanalyzedGrounding = await _grounding.GroundAsync(validated, toolCt);
+                var reanalyzedGrounding = await _grounding.GroundAsync(validated, ct: toolCt);
                 var newInspectionId = inspections.Count;
                 inspections.Add(reanalyzedGrounding);
 
@@ -184,7 +202,7 @@ internal sealed class MealScanAgentReviewService
             };
 
             var agent = new ChatClientAgent(
-                _chatClient,
+                new UsageRecordingChatClient(_selectionClient, meter, _config, AiWorkloads.Selection),
                 new ChatClientAgentOptions
                 {
                     UseProvidedChatClientAsIs = true,
@@ -249,6 +267,18 @@ internal sealed class MealScanAgentReviewService
                     grounded.Original.Name, callSummary);
                 return grounded;
             }
+            if (_requireCompatibilityAgreement && index != 0)
+            {
+                const string compatibilityRejection = "candidate is not the compatibility-top candidate";
+                _logger.LogInformation(
+                    "Agent grounding verdict for '{Component}': rejected, {Rejection}; proposed='{Candidate}', confidence={Confidence:F2} ({Calls}).",
+                    grounded.Original.Name,
+                    compatibilityRejection,
+                    selectedGrounding.CandidateProducts[index].Name,
+                    decision.Confidence,
+                    callSummary);
+                return grounded;
+            }
 
             var rejection = MealScanAgentDecisionGate.GetRejection(
                 selectedGrounding,
@@ -280,7 +310,7 @@ internal sealed class MealScanAgentReviewService
                 SelectedFoodProductId = selected.Id,
                 CanonicalName = selected.Name,
                 MatchConfidence = selected.MatchConfidence,
-                Method = reanalysisCalls > 0 ? "agent_tool_review_reanalysis" : "agent_tool_review",
+                Method = decision.InspectionId > 0 ? "agent_tool_review_reanalysis" : "agent_tool_review",
             };
 
             _logger.LogInformation(
@@ -291,10 +321,11 @@ internal sealed class MealScanAgentReviewService
                 decision.Reason,
                 callSummary);
 
-            return selectedGrounding with
+            return grounded with
             {
                 ResolvedProduct = selected,
                 Attempt = attempt,
+                CandidateProducts = selectedGrounding.CandidateProducts,
             };
         }
         catch (Exception ex)
@@ -436,5 +467,35 @@ internal sealed class MealScanAgentReviewService
         public string? Error { get; init; }
 
         public static ReanalysisToolResult Failure(string error) => new() { Error = error };
+    }
+    private sealed class UsageRecordingChatClient(
+        IChatClient inner,
+        AiUsageMeter meter,
+        IConfiguration config,
+        string workload) : IChatClient
+    {
+        public async Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var response = await inner.GetResponseAsync(messages, options, cancellationToken);
+            stopwatch.Stop();
+            meter.Record("agent_review", AiWorkloads.ResolveDeployment(config, workload),
+                response.Usage?.InputTokenCount, response.Usage?.OutputTokenCount, stopwatch.Elapsed);
+            return response;
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+            => inner.GetStreamingResponseAsync(messages, options, cancellationToken);
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+            => inner.GetService(serviceType, serviceKey);
+
+        public void Dispose() { }
     }
 }

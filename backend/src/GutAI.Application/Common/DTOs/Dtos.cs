@@ -64,15 +64,25 @@ public record FoodAdditiveDto
     public DateTime? LastUpdated { get; init; }
 }
 
-/// <summary>Where a parsed item's nutrition numbers actually came from — distinct from
+/// <summary>Where an item's nutrition numbers actually came from — distinct from
 /// <see cref="ParsedFoodItemDto.MatchConfidence"/> (identity confidence), so a low-confidence
-/// name match and a fabricated generic estimate are never conflated into one signal.</summary>
+/// name match and a fabricated generic estimate are never conflated into one signal
+/// (AGENTS.md N4). Persisted as the member name; values are additive — rows written before
+/// the extension keep their meaning.</summary>
 public enum NutritionProvenance
 {
     /// <summary>Nutrition came from a resolved catalog product (USDA/OpenFoodFacts/embedded DB).</summary>
     Sourced,
-    /// <summary>No catalog match — nutrition is a keyword-based generic estimate, not measured.</summary>
+    /// <summary>No catalog match — a keyword-based generic estimate or imported values, not measured.</summary>
     Estimated,
+    /// <summary>Per-100 g values extracted from a cited web page by the web cascade.</summary>
+    Web,
+    /// <summary>Numbers estimated by a language model (describe-food fallback), never catalog-verified.</summary>
+    ModelEstimated,
+    /// <summary>Numbers typed by the user (manual entry or a manually created custom food).</summary>
+    UserEntered,
+    /// <summary>No nutrition available — logged only after the user explicitly chose "log without calories".</summary>
+    Unknown,
 }
 
 public record ParsedFoodItemDto
@@ -102,6 +112,19 @@ public record ParsedFoodItemDto
     public decimal PortionConfidence { get; init; }
     public string NutritionProvenance { get; init; } = "";
     public string ResolutionStatus { get; init; } = "";
+    /// <summary>Per-100 g basis the server recomputes from when the parsed meal is committed.</summary>
+    public NutritionPer100gDto? Per100g { get; init; }
+    /// <summary>True when the resolver's top candidate did not pass the grounding policy.</summary>
+    public bool NeedsChoice { get; init; }
+    /// <summary>Resolver evidence for this item. Present when <see cref="NeedsChoice"/> is true so the
+    /// review can offer the previewed candidate and its alternatives (AGENTS.md #8).</summary>
+    public GroundingAttemptDto? Grounding { get; init; }
+    /// <summary><c>candidate_key</c> of the previewed candidate inside <see cref="Grounding"/>.
+    /// Committing a needs-choice item requires an explicit choice: this key, another candidate,
+    /// a replacement product, or log-without-calories.</summary>
+    public string? CandidateKey { get; init; }
+    /// <summary>Item id inside the server-side <c>nlp</c> meal draft created for this parse.</summary>
+    public Guid? DraftItemId { get; init; }
 }
 
 /// <summary>

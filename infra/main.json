@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "12228728607875025230"
+      "templateHash": "2031038177595535246"
     }
   },
   "parameters": {
@@ -56,11 +56,46 @@
         "description": "Azure OpenAI (AI Foundry) endpoint URL"
       }
     },
+    "azureContentUnderstandingEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure Content Understanding endpoint URL"
+      }
+    },
     "azureOpenAIDeploymentName": {
       "type": "string",
       "defaultValue": "gpt-4o-mini",
       "metadata": {
         "description": "Azure OpenAI deployment name"
+      }
+    },
+    "foundryProjectEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure AI Foundry project endpoint URL"
+      }
+    },
+    "alertEmailAddress": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Email address for optional Application Insights cost and scan-latency alerts. Leave empty to disable alerts."
+      }
+    },
+    "scanCostP95ThresholdUsd": {
+      "type": "string",
+      "defaultValue": "0.05",
+      "metadata": {
+        "description": "P95 estimated AI cost per meal scan that triggers an alert, in USD (for example, 0.05)."
+      }
+    },
+    "scanLatencyP95BudgetMs": {
+      "type": "int",
+      "defaultValue": 45000,
+      "metadata": {
+        "description": "P95 image-scan request duration budget that triggers an alert, in milliseconds (default is 75% of the 60-second scan deadline)."
       }
     }
   },
@@ -266,8 +301,16 @@
                   "value": "[parameters('azureOpenAIEndpoint')]"
                 },
                 {
+                  "name": "AzureOpenAI__ContentUnderstandingEndpoint",
+                  "value": "[parameters('azureContentUnderstandingEndpoint')]"
+                },
+                {
                   "name": "AzureOpenAI__DeploymentName",
                   "value": "[parameters('azureOpenAIDeploymentName')]"
+                },
+                {
+                  "name": "Foundry__ProjectEndpoint",
+                  "value": "[parameters('foundryProjectEndpoint')]"
                 }
               ],
               "probes": [
@@ -306,7 +349,7 @@
             }
           ],
           "scale": {
-            "minReplicas": 1,
+            "minReplicas": 0,
             "maxReplicas": 3,
             "rules": [
               {
@@ -325,6 +368,121 @@
         "[resourceId('Microsoft.Insights/components', format('{0}-appinsights', variables('prefix')))]",
         "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', variables('prefix')))]",
         "[resourceId('Microsoft.Storage/storageAccounts', replace(format('{0}storage', variables('prefix')), '-', ''))]"
+      ]
+    },
+    {
+      "condition": "[not(empty(parameters('alertEmailAddress')))]",
+      "type": "Microsoft.Insights/actionGroups",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}-scan-alerts', variables('prefix'))]",
+      "location": "global",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "groupShortName": "GutAIScan",
+        "enabled": true,
+        "emailReceivers": [
+          {
+            "name": "scan-alert-email",
+            "emailAddress": "[parameters('alertEmailAddress')]",
+            "useCommonAlertSchema": true
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[not(empty(parameters('alertEmailAddress')))]",
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-12-01",
+      "name": "[format('{0}-scan-cost-p95', variables('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "kind": "LogAlert",
+      "properties": {
+        "displayName": "GutAI meal scan p95 AI cost exceeded",
+        "description": "Alerts when p95 estimated AI cost per meal scan exceeds the configured USD threshold.",
+        "severity": 2,
+        "enabled": true,
+        "evaluationFrequency": "PT15M",
+        "windowSize": "PT1H",
+        "scopes": [
+          "[resourceId('Microsoft.Insights/components', format('{0}-appinsights', variables('prefix')))]"
+        ],
+        "targetResourceTypes": [
+          "Microsoft.Insights/components"
+        ],
+        "autoMitigate": true,
+        "criteria": {
+          "allOf": [
+            {
+              "query": "            traces\n            | where tostring(customDimensions.Operation) == \"meal_scan\"\n            | extend EstimatedCostUsd = todouble(customDimensions.EstimatedCostUsd)\n            | where isnotnull(EstimatedCostUsd)\n            | summarize p95CostUsd = percentile(EstimatedCostUsd, 95)\n          ",
+              "timeAggregation": "Average",
+              "metricMeasureColumn": "p95CostUsd",
+              "operator": "GreaterThan",
+              "threshold": "[json(parameters('scanCostP95ThresholdUsd'))]",
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "actions": {
+          "actionGroups": [
+            "[resourceId('Microsoft.Insights/actionGroups', format('{0}-scan-alerts', variables('prefix')))]"
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components', format('{0}-appinsights', variables('prefix')))]",
+        "[resourceId('Microsoft.Insights/actionGroups', format('{0}-scan-alerts', variables('prefix')))]"
+      ]
+    },
+    {
+      "condition": "[not(empty(parameters('alertEmailAddress')))]",
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2023-12-01",
+      "name": "[format('{0}-scan-latency-p95', variables('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "kind": "LogAlert",
+      "properties": {
+        "displayName": "GutAI image scan p95 latency exceeded",
+        "description": "Alerts when p95 POST /api/meals/scan/image request duration exceeds the configured millisecond budget.",
+        "severity": 3,
+        "enabled": true,
+        "evaluationFrequency": "PT15M",
+        "windowSize": "PT1H",
+        "scopes": [
+          "[resourceId('Microsoft.Insights/components', format('{0}-appinsights', variables('prefix')))]"
+        ],
+        "targetResourceTypes": [
+          "Microsoft.Insights/components"
+        ],
+        "autoMitigate": true,
+        "criteria": {
+          "allOf": [
+            {
+              "query": "            requests\n            | where tostring(name) == \"POST /api/meals/scan/image\"\n            | summarize p95DurationMs = percentile(duration / 1ms, 95)\n          ",
+              "timeAggregation": "Average",
+              "metricMeasureColumn": "p95DurationMs",
+              "operator": "GreaterThan",
+              "threshold": "[parameters('scanLatencyP95BudgetMs')]",
+              "failingPeriods": {
+                "numberOfEvaluationPeriods": 1,
+                "minFailingPeriodsToAlert": 1
+              }
+            }
+          ]
+        },
+        "actions": {
+          "actionGroups": [
+            "[resourceId('Microsoft.Insights/actionGroups', format('{0}-scan-alerts', variables('prefix')))]"
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components', format('{0}-appinsights', variables('prefix')))]",
+        "[resourceId('Microsoft.Insights/actionGroups', format('{0}-scan-alerts', variables('prefix')))]"
       ]
     }
   ],

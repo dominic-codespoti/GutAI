@@ -85,6 +85,7 @@ export default function CreateCustomFoodScreen() {
   const [generating, setGenerating] = useState(false);
   const [generatedBy, setGeneratedBy] = useState<"description" | "label" | null>(null);
   const [confidenceScore, setConfidenceScore] = useState<number | null>(null);
+  const [nutritionEdited, setNutritionEdited] = useState(false);
   const confLevel = confidenceLevel(confidenceScore);
   const confColors = confidenceColors(confLevel, c);
 
@@ -147,6 +148,7 @@ export default function CreateCustomFoodScreen() {
     mutationFn: (uri: string) => foodApi.parseLabel(uri, "image/jpeg").then((r) => r.data),
     onSuccess: (data: AiGeneratedFood) => {
       setForm(normalizeCustomFood(data));
+      setNutritionEdited(false);
       setConfidenceScore(data.extractionConfidence ?? null);
       setGeneratedBy("label");
       setGenerating(false);
@@ -162,6 +164,7 @@ export default function CreateCustomFoodScreen() {
     onSuccess: (data: AiGeneratedFood, sub) => {
       if (sub !== descText.trim()) return;
       setForm(normalizeCustomFood(data));
+      setNutritionEdited(false);
       setConfidenceScore(data.extractionConfidence ?? null);
       setGeneratedBy("description");
       setGenerating(false);
@@ -172,8 +175,15 @@ export default function CreateCustomFoodScreen() {
     },
   });
 
+  const foodForSave: CustomFood = {
+    ...form,
+    nutritionProvenance: nutritionEdited
+      ? "UserEntered"
+      : form.nutritionProvenance ?? (isEditMode ? undefined : generatedBy ? "ModelEstimated" : "UserEntered"),
+    extractionConfidence: confidenceScore ?? form.extractionConfidence,
+  };
   const saveFood = useMutation({
-    mutationFn: () => (isEditMode && id ? foodApi.updateCustomFood(id, form) : foodApi.createCustomFood(form)),
+    mutationFn: () => (isEditMode && id ? foodApi.updateCustomFood(id, foodForSave) : foodApi.createCustomFood(foodForSave)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["custom-foods"] });
       toast.success(isEditMode ? "Food updated!" : "Food saved!");
@@ -195,14 +205,19 @@ export default function CreateCustomFoodScreen() {
   const saveAndLogFood = useMutation({
     mutationFn: async () => {
       const saved = isEditMode && id
-        ? await foodApi.updateCustomFood(id, form)
-        : await foodApi.createCustomFood(form);
+        ? await foodApi.updateCustomFood(id, foodForSave)
+        : await foodApi.createCustomFood(foodForSave);
       const customFood = saved.data;
       const productId = customFood.id || id;
       return mealApi.create({
         mealType: logMealType,
         loggedAt: buildLoggedAt(logDate),
-        items: [customFoodToMealItem({ ...form, id: productId }, generatedBy ? confidenceScore : null)],
+        items: [customFoodToMealItem({
+          ...foodForSave,
+          id: productId,
+          nutritionProvenance: customFood.nutritionProvenance ?? foodForSave.nutritionProvenance,
+          extractionConfidence: customFood.extractionConfidence ?? foodForSave.extractionConfidence,
+        }, customFood.extractionConfidence ?? (generatedBy ? confidenceScore : null))],
       });
     },
     onSuccess: (res) => {
@@ -221,6 +236,7 @@ export default function CreateCustomFoodScreen() {
 
   const setField = (field: keyof CustomFood, value: string) => {
     const nums = ["servingSize", "calories", "proteinG", "carbG", "fatG", "fiberG", "sugarG", "sodiumMg"];
+    if (field !== "servingSize" && nums.includes(field)) setNutritionEdited(true);
     if (nums.includes(field)) {
       const n = parseFloat(value);
       setForm((p) => ({ ...p, [field]: isNaN(n) ? 0 : n }));
@@ -228,7 +244,6 @@ export default function CreateCustomFoodScreen() {
       setForm((p) => ({ ...p, [field]: value }));
     }
   };
-
   const validateForm = (): string | null => {
     const trimmedName = form.name?.trim() ?? "";
     if (!trimmedName || trimmedName.length > 300) {
@@ -705,6 +720,34 @@ export default function CreateCustomFoodScreen() {
             <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 6 }}>
               Generated from {sourceLabel(generatedBy)}. Review the details before saving.
             </Text>
+          </View>
+        )}
+        {method === "description" && generatedBy === "description" && !isGenerating && !!form.describedComponents?.length && (
+          <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, marginBottom: 16, backgroundColor: c.card }}>
+            <Text style={{ color: c.text, fontWeight: "700", fontSize: 14, marginBottom: 8 }}>
+              Component breakdown
+            </Text>
+            {form.describedComponents.map((component, index) => {
+              const matched = component.nutritionProvenance === "Sourced";
+              return (
+                <View key={`${component.name}-${index}`} style={{ paddingVertical: 7, borderTopWidth: index ? 1 : 0, borderTopColor: c.borderLight }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <Text style={{ color: c.text, fontWeight: "600", flex: 1 }}>
+                      {component.name} · {ROUND(component.grams)} g
+                    </Text>
+                    <Text style={{ color: matched ? c.primaryLight : c.warning, fontSize: 11, fontWeight: "700" }}>
+                      {matched ? "Catalog matched" : "Estimated"}
+                    </Text>
+                  </View>
+                  {component.canonicalName && component.canonicalName !== component.name && (
+                    <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }}>Matched as {component.canonicalName}</Text>
+                  )}
+                  <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
+                    {component.calories ?? 0} kcal · P {component.proteinG ?? 0} g · C {component.carbsG ?? 0} g · F {component.fatG ?? 0} g
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
 

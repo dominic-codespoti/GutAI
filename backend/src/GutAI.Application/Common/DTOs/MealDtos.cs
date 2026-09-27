@@ -140,6 +140,8 @@ public record DailyNutritionSummaryDto
     public decimal TotalSodiumMg { get; init; }
     public int MealCount { get; init; }
     public int CalorieGoal { get; init; }
+    /// <summary>Logged items with no nutrition basis (provenance Unknown) — totals are lower bounds when non-zero.</summary>
+    public int ItemsWithoutNutrition { get; init; }
 }
 
 public record RecentFoodDto

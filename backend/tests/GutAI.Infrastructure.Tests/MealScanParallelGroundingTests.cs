@@ -74,16 +74,14 @@ public sealed class MealScanParallelGroundingTests
                 ["MealScan:MaxConcurrentGrounding"] = maxConcurrency.ToString(),
             })
             .Build();
-
+        var chat = new Mock<IChatClient>().Object;
         return new MealScanService(
-            new Mock<IChatClient>().Object,
-            new Mock<ITableStore>().Object,
-            config,
-            search,
-            new Mock<IWebNutritionLookup>().Object,
-            new FodmapService(),
-            new GutRiskService(),
-            NullLogger<MealScanService>.Instance);
+            chat, chat, new Mock<ITableStore>().Object, config, search,
+            new Mock<IWebNutritionLookup>().Object, new FodmapService(), new GutRiskService(),
+            new Mock<IMealDraftService>().Object,
+            new VisionResultCache(new Mock<ICacheService>().Object, config),
+            new PortionCalibrator(config), NullLogger<MealScanService>.Instance);
+
     }
 
     private static void UpdateMax(ref int location, int value)

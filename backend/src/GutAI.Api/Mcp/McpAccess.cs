@@ -14,15 +14,20 @@ public static class McpAccess
     public const string ReadScope = "read";
     public const string WriteScope = "write";
 
-    /// <summary>Throws unless the caller is an interactive JWT user or holds the write scope.</summary>
-    public static void EnsureWrite(ClaimsPrincipal user)
-    {
-        if (user.FindFirst(PatAuthenticationHandler.TokenTypeClaim)?.Value != PatAuthenticationHandler.PatTokenType)
-            return; // JWT session — interactive access
+    /// <summary>Returns whether this caller has write access; null and read-only PATs are denied.</summary>
+    public static bool CanWrite(ClaimsPrincipal? user) =>
+        user is not null
+        && (user.FindFirst(PatAuthenticationHandler.TokenTypeClaim)?.Value != PatAuthenticationHandler.PatTokenType
+            || user.FindAll(PatAuthenticationHandler.ScopeClaim).Any(c => c.Value == WriteScope));
 
-        if (!user.FindAll(PatAuthenticationHandler.ScopeClaim).Any(c => c.Value == WriteScope))
-            throw new McpException(
-                "This AI connection is read-only. The user can grant write access by removing and re-linking " +
-                "the connection in GutAI → Settings → Connected AI Assistants once write-scoped links are offered.");
+    /// <summary>Throws unless the caller is an interactive JWT user or holds the write scope.</summary>
+    public static void EnsureWrite(ClaimsPrincipal? user)
+    {
+        if (CanWrite(user))
+            return;
+
+        throw new McpException(
+            "This AI connection is read-only. The user can grant write access by removing and re-linking " +
+            "the connection in GutAI → Settings → Connected AI Assistants once write-scoped links are offered.");
     }
 }

@@ -5,3 +5,6 @@ param containerImage = 'ghcr.io/dominic-codespoti/gutai/gutai-api:latest'
 param azureOpenAIEndpoint = 'https://ai-misc-proj-resource.openai.azure.com/'
 param azureContentUnderstandingEndpoint = 'https://ai-misc-proj-resource.services.ai.azure.com/'
 param azureOpenAIDeploymentName = 'gpt-4o-mini'
+param alertEmailAddress = ''
+param scanCostP95ThresholdUsd = '0.05'
+param scanLatencyP95BudgetMs = 45000

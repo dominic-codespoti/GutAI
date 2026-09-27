@@ -19,6 +19,8 @@ public class CustomFood
     public decimal? SugarG { get; set; }
     public decimal? SodiumMg { get; set; }
     
+    public string? NutritionProvenance { get; set; }
+    public decimal? ExtractionConfidence { get; set; }
     public string? Ingredients { get; set; }
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

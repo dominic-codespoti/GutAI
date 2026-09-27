@@ -2,10 +2,12 @@ using GutAI.Application.Common.DTOs;
 
 namespace GutAI.Infrastructure.Data;
 
-internal readonly record struct FoodMacros(decimal Calories, decimal Protein, decimal Carbs, decimal Fat, decimal Sugar)
+internal readonly record struct FoodMacros(
+    decimal Calories, decimal Protein, decimal Carbs, decimal Fat, decimal Sugar, bool HasMacroData)
 {
     public static FoodMacros From(FoodProductDto dto) => new(
-        dto.Calories100g ?? 0m, dto.Protein100g ?? 0m, dto.Carbs100g ?? 0m, dto.Fat100g ?? 0m, dto.Sugar100g ?? 0m);
+        dto.Calories100g ?? 0m, dto.Protein100g ?? 0m, dto.Carbs100g ?? 0m, dto.Fat100g ?? 0m, dto.Sugar100g ?? 0m,
+        dto.Protein100g.HasValue || dto.Carbs100g.HasValue || dto.Fat100g.HasValue);
 }
 
 /// <summary>
@@ -34,18 +36,76 @@ internal static class FoodMacroArchetypes
     /// separates a real match from one of those.</summary>
     public const decimal LeanProteinMaxCarbsG = 5m;
 
+    private static readonly string[][] LeanProteinKeywordTokens = PrepareTerms(LeanProteinKeywords);
+    private static readonly string[][] LegitimateCarbSourceKeywordTokens = PrepareTerms(LegitimateCarbSourceKeywords);
+
     public static bool IsLeanProteinQuery(string queryLower) =>
-        LeanProteinKeywords.Any(queryLower.Contains) && !LegitimateCarbSourceKeywords.Any(queryLower.Contains);
+        IsLeanProteinQuery(FoodTextNormalizer.DepluralizeAll(FoodTextNormalizer.TokenizeForMatching(queryLower)));
+
+    private static bool IsLeanProteinQuery(string[] queryTokenStems) =>
+        ContainsAny(queryTokenStems, LeanProteinKeywordTokens)
+        && !ContainsAny(queryTokenStems, LegitimateCarbSourceKeywordTokens);
 
     public static bool HasLegitimateCarbSource(string nameLower) =>
-        LegitimateCarbSourceKeywords.Any(nameLower.Contains);
+        HasLegitimateCarbSource(FoodTextNormalizer.DepluralizeAll(FoodTextNormalizer.TokenizeForMatching(nameLower)));
 
-    private delegate float PlausibilityCheck(FoodMacros macros, string nameLower);
+    private static bool HasLegitimateCarbSource(string[] nameTokenStems) =>
+        ContainsAny(nameTokenStems, LegitimateCarbSourceKeywordTokens);
 
-    private readonly record struct Archetype(Func<string, bool> Trigger, PlausibilityCheck Check);
+    private delegate float PlausibilityCheck(FoodMacros macros, string[] nameTokenStems);
 
-    private static Func<string, bool> Exact(params string[] terms) => q => terms.Contains(q);
-    private static Func<string, bool> Contains(params string[] terms) => q => terms.Any(q.Contains);
+    private readonly record struct Archetype(Func<string[], bool> Trigger, PlausibilityCheck Check);
+
+    private static string[][] PrepareTerms(string[] terms) =>
+        terms.Select(term => FoodTextNormalizer.DepluralizeAll(FoodTextNormalizer.Tokenize(term))).ToArray();
+
+    private static bool ContainsAny(string[] tokenStems, string[][] terms)
+    {
+        foreach (var term in terms)
+            if (ContainsPhrase(tokenStems, term))
+                return true;
+        return false;
+    }
+
+    private static bool ContainsPhrase(string[] tokenStems, string[] phrase)
+    {
+        for (var start = 0; start <= tokenStems.Length - phrase.Length; start++)
+        {
+            var matches = true;
+            for (var i = 0; i < phrase.Length; i++)
+            {
+                if (tokenStems[start + i] == phrase[i])
+                    continue;
+                matches = false;
+                break;
+            }
+
+            if (matches)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ExactPhrase(string[] tokenStems, string[][] terms)
+    {
+        foreach (var term in terms)
+            if (tokenStems.Length == term.Length && ContainsPhrase(tokenStems, term))
+                return true;
+        return false;
+    }
+
+    private static Func<string[], bool> Exact(params string[] terms)
+    {
+        var normalizedTerms = PrepareTerms(terms);
+        return queryTokens => ExactPhrase(queryTokens, normalizedTerms);
+    }
+
+    private static Func<string[], bool> Contains(params string[] terms)
+    {
+        var normalizedTerms = PrepareTerms(terms);
+        return queryTokens => ContainsAny(queryTokens, normalizedTerms);
+    }
 
     private static readonly Archetype[] Archetypes =
     [
@@ -55,8 +115,8 @@ internal static class FoodMacroArchetypes
 
         // Lean meat/poultry/fish: near-zero carbs. Skip candidates that are themselves a
         // legitimate composite dish (breaded/marinated/salad/etc.) — those carry real carbs.
-        new(IsLeanProteinQuery, (m, nameLower) =>
-            HasLegitimateCarbSource(nameLower) ? 0f :
+        new(IsLeanProteinQuery, (m, nameTokens) =>
+            HasLegitimateCarbSource(nameTokens) ? 0f :
             (m.Carbs > LeanProteinMaxCarbsG ? -15f : 0f) + (m.Protein < 5m && m.Calories > 50m ? -10f : 0f)),
 
         // Oils/fats/lard: nearly 100% fat.
@@ -109,21 +169,45 @@ internal static class FoodMacroArchetypes
 
     private static float ScoreEnergyDensityConsistency(FoodMacros m)
     {
+        if (!m.HasMacroData) return 0f;
         var macroCalories = 4m * m.Protein + 4m * m.Carbs + 9m * m.Fat;
         return m.Calories - macroCalories > ImplausibleCalorieGap ? -30f : 0f;
     }
 
-    public static float Score(FoodProductDto dto, string queryLower)
+    public static float Score(FoodProductDto dto, string queryLower) =>
+        Score(dto, FoodTextNormalizer.TokenizeForMatching(queryLower),
+            FoodTextNormalizer.TokenizeForMatching(dto.Name));
+
+    public static ulong GetQueryMask(string[] queryTokens) =>
+        GetQueryMaskFromStems(FoodTextNormalizer.DepluralizeAll(queryTokens));
+
+    public static ulong GetQueryMaskFromStems(string[] queryTokenStems)
     {
-        if (!dto.Calories100g.HasValue) return 0f;
+        ulong mask = 0;
+        for (var i = 0; i < Archetypes.Length; i++)
+            if (Archetypes[i].Trigger(queryTokenStems))
+                mask |= 1UL << i;
+        return mask;
+    }
 
-        var macros = FoodMacros.From(dto);
-        var nameLower = dto.Name.ToLowerInvariant();
+    public static float Score(FoodProductDto dto, string[] queryTokens, string[] nameTokens) =>
+        Score(dto, GetQueryMask(queryTokens), nameTokens);
 
-        float score = ScoreEnergyDensityConsistency(macros);
-        foreach (var archetype in Archetypes)
-            if (archetype.Trigger(queryLower))
-                score += archetype.Check(macros, nameLower);
+    public static float Score(FoodProductDto dto, ulong queryMask, string[] nameTokens) =>
+        dto.Calories100g.HasValue
+            ? Score(FoodMacros.From(dto), queryMask, FoodTextNormalizer.DepluralizeAll(nameTokens))
+            : 0f;
+
+    public static float Score(FoodMacros? macros, ulong queryMask, string[] nameTokenStems)
+    {
+        if (!macros.HasValue)
+            return 0f;
+
+        var macroValues = macros.Value;
+        float score = ScoreEnergyDensityConsistency(macroValues);
+        for (var i = 0; i < Archetypes.Length; i++)
+            if ((queryMask & (1UL << i)) != 0)
+                score += Archetypes[i].Check(macroValues, nameTokenStems);
 
         return score;
     }

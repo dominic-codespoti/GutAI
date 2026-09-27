@@ -97,11 +97,17 @@ ci:
 	@echo "🌐 Running API contract tests..."
 	cd backend && dotnet test tests/GutAI.Api.Tests --verbosity minimal
 	@echo ""
+	@echo "🧪 Running integration tests..."
+	cd backend && dotnet test tests/GutAI.IntegrationTests --verbosity minimal --no-build
+	@echo ""
 	@echo "📋 Checking frontend↔backend contracts..."
 	node scripts/check-contracts.js
 	@echo ""
 	@echo "📝 TypeScript type check..."
 	cd frontend && npx tsc --noEmit
+	@echo ""
+	@echo "🧪 Running frontend unit tests..."
+	cd frontend && npx tsx --test src/utils/__tests__/*.test.ts src/stores/__tests__/*.test.ts
 	@echo ""
 	@echo "✅ All CI checks passed!"
 
@@ -161,10 +167,16 @@ azure-deploy:
 	./scripts/azure-setup.sh --deploy
 
 # ── Golden-image regression harness (meal scan Stage A) ──
-.PHONY: golden-run golden-gate
+.PHONY: golden-run golden-gate golden-inprocess golden-e2e
 
 golden-run:
-	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images
+	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode stage-a
 
 golden-gate:
-	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --gate
+	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode stage-a --gate
+
+golden-inprocess:
+	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode in-process
+
+golden-e2e:
+	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode e2e

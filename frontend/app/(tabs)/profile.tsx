@@ -25,7 +25,7 @@ import { AllergyChips } from "../../components/AllergyChips";
 import { GoalField } from "../../components/GoalField";
 import { ProfileSkeleton } from "../../components/SkeletonLoader";
 import * as haptics from "../../src/utils/haptics";
-import type { UserFoodAlert, FoodAdditive } from "../../src/types";
+import type { UserFoodAlert, FoodAdditive, FoodRegion } from "../../src/types";
 import { ratingColor } from "../../src/utils/colors";
 import { GUT_CONDITION_OPTIONS } from "../../src/utils/options";
 import { radius, spacing } from "../../src/utils/theme";
@@ -61,6 +61,7 @@ export default function ProfileScreen() {
   const [displayName, setDisplayName] = useState("");
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [dietaryPreferences, setDietaryPreferences] = useState("");
+  const [preferredFoodRegion, setPreferredFoodRegion] = useState<FoodRegion>("Default");
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [calGoal, setCalGoal] = useState("");
   const [proteinGoal, setProteinGoal] = useState("");
@@ -123,6 +124,7 @@ export default function ProfileScreen() {
       displayName?: string;
       allergies?: string[];
       dietaryPreferences?: string[];
+      preferredFoodRegion: FoodRegion;
       gutConditions?: string[];
     }) => userApi.updateProfile(data),
     onSuccess: ({ data }) => {
@@ -157,6 +159,7 @@ export default function ProfileScreen() {
   const openProfileEdit = () => {
     setDisplayName(user?.displayName ?? "");
     setSelectedAllergies(user?.allergies ?? []);
+    setPreferredFoodRegion(user?.preferredFoodRegion ?? "Default");
     setDietaryPreferences((user?.dietaryPreferences ?? []).join(", "));
     setSelectedConditions(user?.gutConditions ?? []);
     setEditingProfile(true);
@@ -193,6 +196,7 @@ export default function ProfileScreen() {
             .map((s) => s.trim())
             .filter(Boolean)
         : [],
+      preferredFoodRegion,
       gutConditions: selectedConditions,
     });
   };
@@ -820,13 +824,41 @@ export default function ProfileScreen() {
                 textContentType="name"
                 maxLength={100}
               />
-              <Text
-                style={{
-                  ...fonts.caption,
-                  marginBottom: 4,
-                  marginTop: spacing.md,
-                }}
-              >
+              <Text style={{ ...fonts.caption, marginBottom: 4, marginTop: spacing.md }}>
+                Food database region
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {([
+                  { value: "Default", label: "Automatic" },
+                  { value: "Us", label: "United States" },
+                  { value: "Au", label: "Australia" },
+                ] as const).map((option) => {
+                  const selected = preferredFoodRegion === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      onPress={() => setPreferredFoodRegion(option.value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={option.label}
+                      accessibilityState={{ selected }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primaryLight : colors.border,
+                        borderRadius: radius.full,
+                        backgroundColor: selected ? colors.primaryBg : colors.borderLight,
+                        paddingHorizontal: spacing.md,
+                        paddingVertical: spacing.sm,
+                      }}
+                    >
+                      <Text style={{ color: selected ? colors.primary : colors.textMuted, fontSize: 13, fontWeight: "600" }}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={{ ...fonts.caption, marginBottom: 4, marginTop: spacing.md }}>
                 Allergies
               </Text>
               <View style={{ marginBottom: spacing.sm }}>

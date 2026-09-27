@@ -1,3 +1,5 @@
+using GutAI.Domain.Enums;
+
 namespace GutAI.Domain.Entities;
 
 public class User
@@ -17,6 +19,7 @@ public class User
     public string[] GutConditions { get; set; } = [];
     public bool OnboardingCompleted { get; set; }
     public string? TimezoneId { get; set; }
+    public FoodRegion PreferredFoodRegion { get; set; } = FoodRegion.Default;
     public string? AgentThreadId { get; set; }
 
     public ICollection<MealLog> MealLogs { get; set; } = [];
