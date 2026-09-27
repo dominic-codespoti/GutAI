@@ -1,18 +1,15 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Copy solution and project files for restore
-COPY GutAI.sln ./
+# Copy the API's project graph for a cached restore. Restore only the API project, so test and
+# tool projects added to GutAI.sln never break the image build; add a COPY here only when the
+# API gains a new ProjectReference.
 COPY src/GutAI.Api/GutAI.Api.csproj src/GutAI.Api/
 COPY src/GutAI.Application/GutAI.Application.csproj src/GutAI.Application/
 COPY src/GutAI.Domain/GutAI.Domain.csproj src/GutAI.Domain/
 COPY src/GutAI.Infrastructure/GutAI.Infrastructure.csproj src/GutAI.Infrastructure/
-COPY tests/GutAI.Api.Tests/GutAI.Api.Tests.csproj tests/GutAI.Api.Tests/
-COPY tests/GutAI.Infrastructure.Tests/GutAI.Infrastructure.Tests.csproj tests/GutAI.Infrastructure.Tests/
-COPY tests/GutAI.IntegrationTests/GutAI.IntegrationTests.csproj tests/GutAI.IntegrationTests/
-COPY tools/GoldenScanHarness/GutAI.GoldenScanHarness.csproj tools/GoldenScanHarness/
 
-RUN dotnet restore
+RUN dotnet restore src/GutAI.Api/GutAI.Api.csproj
 
 # Copy everything else and build
 COPY . .
