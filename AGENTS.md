@@ -98,7 +98,7 @@ Every AI meal scanning feature MUST adhere to the following deterministic bounda
 - **Hidden calories are opt-in:** inferred items MUST be disabled unless `Features:HiddenCalories` is true. Use its separate inferred-components wire list and prompt-version suffix; the flag-off Stage-A schema MUST remain byte-identical.
 - **Health Signal Isolation (Safety Rule):** `MealScanHealthSignals` (FODMAP status, triggers, gut rating) attach ONLY to items with a verified `FoodProductId`. Web-scraped and AI-estimated items physically cannot receive FODMAP signals.
 - **Symptom:** reanalysis silently changes portion estimates; batched selection bypasses item gates; a feature flag changes the default wire contract or introduces inferred items when off.
-- **Regression gate:** Prompt, schema, model or calibration changes MUST use the applicable harness. For Stage-A changes run `make golden-gate`; the nightly refreshed in-process gate is defined in `.github/workflows/golden-nightly.yml`.
+- **Regression gate:** Prompt, schema, model or calibration changes MUST use the applicable harness. For Stage-A changes run `make golden-gate`; run the refreshed in-process gate manually with `--mode in-process --refresh --gate`.
 ## 9. Reasoning Model Transport & Prompt Roles
 
 All Azure OpenAI reasoning-model inference MUST use the Responses API. App-owned
@@ -213,7 +213,7 @@ is deprecated in Reanimated 4.
 ## 18. Measured Before Shipped (N5)
 
 - **Symptom:** an unmeasured or unverified AI behavior is described or treated as production-ready because a configured gate appears to pass.
-- **Rule:** Scan (`GoldenScanHarness`) and agent (`AgentEvalHarness`) gates and reports MUST run nightly via `.github/workflows/golden-nightly.yml`. Current thresholds are provisional baselines from 5 live refreshed runs of the unweighed 12-case set (plan decision D7), not measured production baselines. If a metric with a configured threshold is unmeasured, the harness MUST fail the gate or report it as not evaluated according to its rules; it MUST NOT be treated as passing.
+- **Rule:** Scan (`GoldenScanHarness`) and agent (`AgentEvalHarness`) gates MUST be run manually against the live deployment before shipping any change to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools, and the report MUST be reviewed. Current thresholds are provisional baselines from 5 live refreshed runs of the unweighed 12-case set (plan decision D7), not measured production baselines. If a metric with a configured threshold is unmeasured, the harness MUST fail the gate or report it as not evaluated according to its rules; it MUST NOT be treated as passing.
 
 ---
 
@@ -224,10 +224,9 @@ is deprecated in Reanimated 4.
 `make ci` runs backend build, Infrastructure/API/Integration tests, contract checks,
 frontend TypeScript checking, and frontend unit tests (see `Makefile`). GitHub
 `.github/workflows/ci.yml` runs the same backend test groups and contract check, plus
-frontend type/unit tests and a Docker API image build. AI regression gates are separate:
-`.github/workflows/golden-nightly.yml` runs the refreshed in-process GoldenScanHarness
-gate and AgentEvalHarness gate nightly, on manual dispatch, and for relevant same-repo
-pull requests.
+frontend type/unit tests and a Docker API image build. The AI regression gates are not
+part of CI; they are run manually on demand (see the harness READMEs), and CI makes no
+model calls.
 
 ---
 
@@ -239,8 +238,8 @@ pull requests.
 | `GutAI.IntegrationTests` | Table Storage and end-to-end persistence flows | xUnit, Testcontainers (Azurite); `make ci` / `.github/workflows/ci.yml` |
 | `GutAI.Api.Tests` | HTTP contracts, validation, authorization and roundtrips | xUnit, `WebApplicationFactory`, Testcontainers (Azurite); `make ci` / `.github/workflows/ci.yml` |
 | Frontend tests | Utility and store behavior, plus TypeScript contracts | `tsx --test` and `tsc --noEmit`; `make ci` / `.github/workflows/ci.yml` |
-| `GoldenScanHarness` | Stage-A, in-process and API end-to-end scan evaluation | `make golden-run`, `make golden-gate`, `make golden-inprocess`, `make golden-e2e`; refreshed in-process gate nightly |
-| `AgentEvalHarness` | Coach, describe-food and label evaluation suites | `--suite all --gate`; nightly workflow |
+| `GoldenScanHarness` | Stage-A, in-process and API end-to-end scan evaluation | `make golden-run`, `make golden-gate`, `make golden-inprocess`, `make golden-e2e`; refreshed in-process gate run manually with `--mode in-process --refresh --gate` |
+| `AgentEvalHarness` | Coach, describe-food and label evaluation suites | `--suite all --gate`; manual live runs |
 | `CorrectionAnalytics` | Read-only correction report and calibration snippet | `backend/tools/CorrectionAnalytics/README.md` |
 | `ScanMealRepair` | Dry-run historical scan-meal repair | `backend/tools/ScanMealRepair/README.md` |
 

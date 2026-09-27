@@ -495,13 +495,18 @@ Pass these parameters to `az deployment group create` (or set them in `infra/mai
 
 The `Logging:OpenTelemetry:LogLevel` provider filter is the one used by the OpenTelemetry logger exported through Application Insights 3.x. Production sets the `GutAI.Infrastructure.Services.MealScanService` category to `Information` while the broader production default remains `Error`, so the structured per-scan usage trace can drive the cost query.
 
-### Golden nightly workflow configuration
-
-The workflow [`.github/workflows/golden-nightly.yml`](../.github/workflows/golden-nightly.yml) requires these GitHub Actions secrets for Azure OIDC and the OpenAI endpoint: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, and `AZURE_OPENAI_ENDPOINT`. Configure repository variables `AZURE_OPENAI_VISION_DEPLOYMENT`, `AZURE_OPENAI_SELECTION_DEPLOYMENT`, `AZURE_OPENAI_COACH_DEPLOYMENT`, `AZURE_OPENAI_DESCRIBE_DEPLOYMENT`, `AZURE_OPENAI_EXTRACTION_DEPLOYMENT`, and `AZURE_OPENAI_SUGGESTION_DEPLOYMENT`; the six matching `AZURE_OPENAI_*_REASONING_EFFORT` variables are optional. The deployment variables must name deployments available at the endpoint.
 
 ## AI Evaluation and Repair Operations
 
-- [GoldenScanHarness README](../backend/tools/GoldenScanHarness/README.md) documents `stage-a`, `in-process`, and `e2e` runs, cache/refresh behavior, gates, and reporting. From the repository root, for example: `dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --gate --report golden-report.json`. The nightly workflow uses `--refresh --gate`.
+The evaluation harnesses are run manually on demand, never on a schedule or in GitHub; the regular CI workflow runs build, unit/integration tests, and contract checks only and makes no model calls.
+
+- [GoldenScanHarness README](../backend/tools/GoldenScanHarness/README.md) documents `stage-a`, `in-process`, and `e2e` runs, cache/refresh behavior, gates, and reporting. From the repository root, after `az login`, run the live photo-scan gate with the Azure CLI credential:
+
+  ```sh
+  AzureOpenAI__Endpoint=<endpoint> AzureOpenAI__Workloads__vision__Deployment=gpt-5.4-mini AzureOpenAI__Pricing__gpt-5.4-mini__InputPer1M=0.20 AzureOpenAI__Pricing__gpt-5.4-mini__OutputPer1M=1.20 dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --refresh --gate --report golden-report.json
+  ```
+
+  Run it before shipping changes to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools. Review the report and keep it with the change when relevant.
 - [AgentEvalHarness README](../backend/tools/AgentEvalHarness/README.md) documents the `coach`, `describe`, `label`, and `all` suites. Run from `backend/`, for example: `dotnet run --project tools/AgentEvalHarness -c Release -- --suite all --gate --report all-report.json`. Coach evaluation needs Azurite and configured Azure OpenAI endpoint/deployments; do not run against a paid model without authorization.
 - [CorrectionAnalytics README](../backend/tools/CorrectionAnalytics/README.md) documents the read-only operator report: `dotnet run --project backend/tools/CorrectionAnalytics -- --connection "<storage connection string>" --out correction-report.json`. Treat its output as sensitive operational data; review and explicitly approve a calibration snippet before applying it.
 - `ScanMealRepair` currently has no README. Its [program and usage](../backend/tools/ScanMealRepair/Program.cs) require a Table Storage connection (`--connection` or `GUTAI_STORAGE_CONNECTION`); run `dotnet run --project backend/tools/ScanMealRepair -- --connection "<storage connection string>"` for a dry run, optionally scoped with `--user <guid>`. Only add `--apply` after reviewing the dry-run report; that mode updates historical meal-item nutrition and meal totals.

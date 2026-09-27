@@ -47,9 +47,9 @@ but the plan's data, review, or rollout condition remains open.
 | 5.1 Golden manifest v2 and data collection | Partial | `GoldenScanHarness/GoldenManifest.cs`, `golden-images/manifest.json`, `GoldenMetricsTests.cs`; manifest remains the cached 12-case set, not the planned weighed dataset. |
 | 5.2 Golden metrics | Implemented | `GoldenMetrics.cs`, `ProductionGoldenE2e.cs`; `GoldenMetricsTests.cs` |
 | 5.3 Gate and cache policy | Partial | `GoldenScanHarness/Program.cs`, `VisionResultCache.cs`, `golden-images/manifest.json`; `GoldenMetricsTests.cs`; thresholds are live-baselined from 5 refreshed runs (2026-09-26), including latency/cost thresholds, and remain provisional pending weighed data (D7). |
-| 5.4 Nightly CI | Implemented | `.github/workflows/golden-nightly.yml`; refreshed in-process golden gate |
+| 5.4 Scheduled CI evaluation | Superseded: manual runs | Evaluations run manually on demand per the product-owner decision of 2026-09-27; the scheduled GitHub workflow was removed. |
 | 5.5 Correction analytics | Implemented | `CorrectionAnalytics.cs`, `backend/tools/CorrectionAnalytics/` |
-| 5.6 Coach, describe-food and label evals | Implemented | `backend/tools/AgentEvalHarness/`, evaluation graders in `Infrastructure/Services/Evaluation`; `AgentEvalGraderTests.cs`; nightly workflow |
+| 5.6 Coach, describe-food and label evals | Implemented | `backend/tools/AgentEvalHarness/`, evaluation graders in `Infrastructure/Services/Evaluation`; `AgentEvalGraderTests.cs`; manual live runs |
 | 6.1 Hidden calories | Implemented, default off | `MealScanService.cs`, Stage-A wire types/prompts; `MealScanServiceHiddenCaloriesTests.cs` |
 | 6.2 Portion calibration | Implemented, default off | `PortionCalibrator.cs`, `FoodClassClassifier.cs`; `PortionCalibratorTests.cs` |
 | 6.3 Personalization | Implemented | user profile persistence, `PreferredFoodRegion` and scan/Coach/NLP/MCP/web lookup call sites; `UserContractTests.cs` |
@@ -71,7 +71,8 @@ but the plan's data, review, or rollout condition remains open.
 - Golden quality thresholds are live-baselined from 5 refreshed runs (2026-09-26),
   pending weighed-meal data (D7); the planned ≥50-case weighed dataset is not yet available.
   Latency and cost thresholds are set from the same live baseline and remain provisional
-  pending weighed data (D7).
+  pending weighed data (D7). Evaluations are run manually by product-owner decision
+  (2026-09-27).
 
 
 ## Summary
@@ -82,7 +83,7 @@ but the plan's data, review, or rollout condition remains open.
 | 2 | One grounding policy for every surface | Complete: shared policy/resolver, immutable Stage-A grams, opt-in query expansion |
 | 3 | Agents propose, humans commit (`MealDraft`) | Complete: draft lifecycle, Coach/MCP/NLP cutover, review UI and undo |
 | 4 | Cost, latency, observability | Complete: workloads, telemetry, batched selection, budgets, deadline/cache, TTL |
-| 5 | Evaluation and learning loop | Partial: v2 metrics and nightly gates shipped; weighed dataset and threshold ratchet pending |
+| 5 | Evaluation and learning loop | Partial: v2 metrics and manual live gates shipped; weighed dataset and threshold ratchet pending |
 | 6 | Calorie accuracy | Complete: opt-in inferred calories/calibration and personalization; flags off by default |
 | 7 | Grounded meal generation | Complete: server-built suggestions and draft surfaces; feature off by default |
 
@@ -96,7 +97,7 @@ flowchart LR
   P0 --> P4[Phase 4 cost and telemetry]
   P1 --> P3[Phase 3 MealDraft and agents]
   P2 --> P3
-  P5a[Phase 5 data and metrics] --> P5b[Phase 5 gates and nightly CI]
+  P5a[Phase 5 data and metrics] --> P5b[Phase 5 gates]
   P5b --> P6[Phase 6 accuracy]
   P3 --> P6
   P3 --> P7[Phase 7 meal generation]
@@ -123,9 +124,11 @@ These invariants are implemented and recorded in AGENTS.md guardrails.
 - **N4 Truthful provenance.** `NutritionProvenance ∈ {Sourced, Web, Estimated,
   ModelEstimated, UserEntered, Unknown}` reflects where the numbers came from; unresolved
   items never masquerade as 0 kcal.
-- **N5 Measured before shipped.** Scan/agent evaluation gates and reports run nightly.
-  The available manifest is still the cached 12-case set, so thresholds are provisional
-  pending weighed-meal data (D7); do not present them as a measured production baseline.
+- **N5 Measured before shipped.** Scan/agent evaluation gates and reports MUST be run
+  manually against the live deployment before shipping relevant changes, and the report
+  reviewed. The available manifest is still the cached 12-case set, so thresholds are
+  provisional pending weighed-meal data (D7); do not present them as a measured production
+  baseline.
 
 ---
 
@@ -228,9 +231,9 @@ is a dry-run-by-default operator tool:
 
 ### 0.5 Backend checks in GitHub CI
 
-`.github/workflows/ci.yml` now runs backend build, Infrastructure/API/Integration tests,
-contract checks, frontend type/unit tests, and a Docker image build. The golden nightly
-workflow independently runs the refreshed in-process and agent-evaluation gates.
+`.github/workflows/ci.yml` runs backend build, Infrastructure/API/Integration tests,
+contract checks, frontend type/unit tests, and a Docker image build. The AI gates are
+run manually on demand and make no model calls in CI.
 
 ### 0.6 Secret hygiene
 
@@ -516,14 +519,25 @@ deterministic grounding, as `SearchQualityTests` does.
 
 ### 5.3 Gate and cache policy
 
-Thresholds live in the v2 manifest and are baselined offline from the existing cached
-12-case set pending weighed data (D7). Nightly runs use `--refresh`; local cache is for
-iteration, and grounded outputs are rebuilt on each in-process run.
+Thresholds are the live baseline from 5 refreshed runs (2026-09-26) of the unweighed
+12-case set pending weighed data (D7), and remain provisional. Live gate runs use
+`--refresh`; the gitignored local cache is for iteration, not evidence.
 
-### 5.4 Nightly CI
+### 5.4 Manual evaluation
 
-`.github/workflows/golden-nightly.yml` runs on schedule, manual dispatch, and relevant
-same-repository pull requests. It uploads reports and runs the gates.
+The product-owner decision of 2026-09-27 is that AI evaluations run manually on demand,
+not on a schedule or in GitHub; the scheduled GitHub workflow was removed. From the
+repository root, run the live photo-scan gate after `az login`:
+
+```sh
+AzureOpenAI__Endpoint=<endpoint> AzureOpenAI__Workloads__vision__Deployment=gpt-5.4-mini AzureOpenAI__Pricing__gpt-5.4-mini__InputPer1M=0.20 AzureOpenAI__Pricing__gpt-5.4-mini__OutputPer1M=1.20 dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --refresh --gate --report golden-report.json
+```
+
+From `backend/`, with Azurite running locally, run agent evaluations:
+
+```sh
+AzureOpenAI__Endpoint=<endpoint> AzureOpenAI__Workloads__coach__Deployment=gpt-5.4-mini AzureOpenAI__Workloads__coach__ReasoningEffort=medium AzureOpenAI__Workloads__describe__Deployment=gpt-5.4-mini AzureOpenAI__Workloads__extraction__Deployment=gpt-5.4-mini dotnet run --project tools/AgentEvalHarness -c Release -- --suite all --gate --report all-report.json
+```
 
 ### 5.5 Correction analytics
 
@@ -641,7 +655,7 @@ Implemented contracts and evaluation coverage:
 | Draft persistence and lifecycle/concurrency | `MealDraftRoundtripTests`, `MealDraftConcurrencyTests`, `MealDraftServiceTests`, `MealDraftCleanupServiceTests` | IntegrationTests; Infrastructure.Tests |
 | MCP propose/commit over the wire | `McpLinkFlowTests` | Api.Tests |
 | Meal suggestions | `MealSuggestionServiceTests`, `MealSuggestionContractTests` | Infrastructure.Tests; Api.Tests |
-| Coach, describe-food and label evaluations | `AgentEvalHarness --suite all --gate` | Nightly workflow |
+| Coach, describe-food and label evaluations | `AgentEvalHarness --suite all --gate` | Manual live run |
 Immediate agent `log_meal` writes and name-based candidate matching are not supported
 contracts after the clean cutover.
 

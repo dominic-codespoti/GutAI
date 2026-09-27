@@ -68,7 +68,7 @@ When `Features:MealSuggestions` is enabled (default false), `/api/meals/suggesti
 
 Evaluation and operator tools:
 
-- `backend/tools/GoldenScanHarness` has `stage-a`, `in-process` and `e2e` modes, manifest v2 and GoldenMetrics v2 gates; the nightly workflow is `.github/workflows/golden-nightly.yml`.
+- `backend/tools/GoldenScanHarness` has `stage-a`, `in-process` and `e2e` modes, manifest v2 and GoldenMetrics v2 gates; gates are run manually against the live deployment (`--mode in-process --refresh --gate`).
 - `backend/tools/AgentEvalHarness` evaluates Coach, describe-food and label suites with graders in `backend/src/GutAI.Infrastructure/Services/Evaluation`.
 - `backend/tools/CorrectionAnalytics` produces a read-only operator report and calibration snippet. `backend/tools/ScanMealRepair` is a dry-run historical scan-meal repair utility.
 
