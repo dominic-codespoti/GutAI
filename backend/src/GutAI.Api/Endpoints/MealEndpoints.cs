@@ -506,16 +506,22 @@ public static class MealEndpoints
                 var product = await store.GetFoodProductAsync(productId);
                 if (product is null)
                     return ([], Results.UnprocessableEntity(new { error = $"Food product '{productId}' was not found" }));
+                var basis = NutritionCalculator.BasisFrom(product);
                 var grams = servingWeightG is > 0
                     ? servingWeightG.Value
                     : product.ServingQuantity is > 0
                         ? input.Servings * product.ServingQuantity.Value
                         : (decimal?)null;
+                if (grams is null && input.Calories > 0m && basis?.CaloriesKcal is > 0m)
+                {
+                    // Legacy app ≤ 1.0.10 sends null servingWeightG for favourites and copied items;
+                    // inferring the portion from its calories keeps the saved value equal to what that app showed.
+                    grams = Math.Round(input.Calories * 100m / basis.CaloriesKcal, 1, MidpointRounding.AwayFromZero);
+                }
                 if (grams is null)
                     return ([], Results.UnprocessableEntity(new { error = "servingWeightG is required for catalog items" }));
                 if (grams is <= 0m || grams > 5000m)
                     return ([], Results.BadRequest(new { error = "servingWeightG must be greater than 0 and no more than 5000 g" }));
-                var basis = NutritionCalculator.BasisFrom(product);
                 if (basis is null)
                     return ([], Results.UnprocessableEntity(new { error = "Catalog item has no nutrition basis" }));
 

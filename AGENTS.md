@@ -224,6 +224,16 @@ is deprecated in Reanimated 4.
   native button does not blur the focused input. Blur may only normalize the displayed text
   (see `PortionGramInput` in `MealDraftReviewSheet.tsx`).
 
+## 20. Released-App Compatibility
+
+- **Symptom:** a deploy removes or reshapes an API the installed app still calls, and users on
+  the store build lose a feature (e.g. 1.0.10 photo-scan saves returning 404).
+- **Rule:** A push to `main` deploys the API at once, while installed apps change only through
+  store builds (no `expo-updates`). Before removing a route or changing a request/response
+  contract, check the released app's calls (`git show <release-commit>:frontend/src/api/`) and
+  keep them working through a marked, deletable legacy adapter (see
+  `LegacyMealScanEndpoints.cs`). Remove it only when `AppRequests` shows no traffic to it.
+
 ---
 
 ## ⚙️ Development Workflow & Commands

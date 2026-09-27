@@ -93,6 +93,117 @@ public class MealContractTests(GutAiWebFactory factory)
         item.GetProperty("proteinG").GetDecimal().Should().Be(5m);
         item.GetProperty("nutritionProvenance").GetString().Should().Be("Sourced");
     }
+    [Fact]
+    public async Task CreateMeal_CatalogItemInfersGramsFromCaloriesAndRecomputesNutrition()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Legacy catalog {Guid.NewGuid():N}",
+            Calories100g = 200m,
+            Protein100g = 10m,
+            Carbs100g = 20m,
+            Fat100g = 8m,
+            Fiber100g = 3m,
+            Sugar100g = 4m,
+            SodiumMg100g = 50m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
+
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = (decimal?)null, calories = 300m, proteinG = 499m, carbsG = 500m, fatG = 500m } }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("servingWeightG").GetDecimal().Should().Be(150m);
+        item.GetProperty("calories").GetDecimal().Should().Be(300m);
+        item.GetProperty("proteinG").GetDecimal().Should().Be(15m);
+        item.GetProperty("carbsG").GetDecimal().Should().Be(30m);
+        item.GetProperty("fatG").GetDecimal().Should().Be(12m);
+        item.GetProperty("fiberG").GetDecimal().Should().Be(4.5m);
+        item.GetProperty("sugarG").GetDecimal().Should().Be(6m);
+        item.GetProperty("sodiumMg").GetDecimal().Should().Be(75m);
+    }
+
+    [Fact]
+    public async Task CreateMeal_CatalogItemWithoutCaloriesStillRequiresServingWeight()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Legacy no-calorie catalog {Guid.NewGuid():N}",
+            Calories100g = 200m,
+            Protein100g = 10m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
+
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = (decimal?)null, calories = 0m } }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("error").GetString().Should().Be("servingWeightG is required for catalog items");
+    }
+
+    [Fact]
+    public async Task CreateMeal_CatalogItemInferredGramsAboveLimitReturns400()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Legacy oversized catalog {Guid.NewGuid():N}",
+            Calories100g = 200m,
+            Protein100g = 10m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
+
+        var response = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = (decimal?)null, calories = 10002m } }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMeal_CatalogItemInfersGramsFromCalories()
+    {
+        var (client, _) = await factory.CreateAuthenticatedClientAsync();
+        var created = await client.PostAsJsonAsync("/api/meals", new
+        {
+            items = new[] { new { foodName = "Initial item", servings = 1m, calories = 100m, proteinG = 5m, carbsG = 10m, fatG = 4m } }
+        });
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var mealId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var product = new FoodProduct
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Legacy update catalog {Guid.NewGuid():N}",
+            Calories100g = 200m,
+            Protein100g = 10m,
+            Carbs100g = 20m,
+            Fat100g = 8m,
+        };
+        await factory.Services.GetRequiredService<ITableStore>().UpsertFoodProductAsync(product);
+
+        var response = await client.PutAsJsonAsync($"/api/meals/{mealId}", new
+        {
+            items = new[] { new { foodName = product.Name, foodProductId = product.Id, servings = 1m, servingWeightG = (decimal?)null, calories = 300m, proteinG = 499m } }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var item = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        item.GetProperty("servingWeightG").GetDecimal().Should().Be(150m);
+        item.GetProperty("calories").GetDecimal().Should().Be(300m);
+        item.GetProperty("proteinG").GetDecimal().Should().Be(15m);
+    }
 
     [Theory]
     [InlineData(0)]

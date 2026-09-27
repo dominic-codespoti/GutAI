@@ -10,13 +10,18 @@ public static class MealScanEndpoints
     public static RouteGroupBuilder MapMealScanEndpoints(this RouteGroupBuilder group)
     {
         group.MapPost("/image", ScanImage).DisableAntiforgery();
+        // Legacy app ≤ 1.0.10 compatibility: keep scan-session routes in this authorized, rate-limited group.
+        group.MapLegacyMealScanRoutes();
         return group;
     }
+
+    // Legacy app ≤ 1.0.10 compatibility: POST responses retain the old scanSessionId field.
 
     /// <summary>POST /api/meals/scan/image — multipart photo and optional context note.</summary>
     private static async Task<IResult> ScanImage(
         HttpRequest request, ClaimsPrincipal principal,
-        IMealScanService scanService, ILogger<Program> logger)
+        IMealScanService scanService, ILogger<Program> logger,
+        Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions)
     {
         var uid = Guid.Parse(principal.FindFirstValue("sub")!);
         try
@@ -39,7 +44,7 @@ public static class MealScanEndpoints
             using var originalStream = file.OpenReadStream();
             using var preprocessed = await GutAI.Api.Imaging.MealPhotoPreprocessor.PreprocessAsync(originalStream);
             var draft = await scanService.ScanMealImageAsync(uid, preprocessed.Stream, preprocessed.ContentType, note, request.HttpContext.RequestAborted);
-            return Results.Ok(draft);
+            return LegacyMealScanEndpoints.WithScanSessionId(draft, jsonOptions.Value.SerializerOptions);
         }
         catch (MealScanValidationException ex)
         {
