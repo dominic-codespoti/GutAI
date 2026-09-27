@@ -385,14 +385,12 @@ function Total({ value, label, c, counted = false }: { value: number; label: str
 function PortionGramInput({ grams, onCommit, c }: { grams: number; onCommit: (grams: number) => void; c: ThemeColors }) {
   const [text, setText] = useState(String(grams));
   const [focused, setFocused] = useState(false);
+  // Leaving the field shows the committed (clamped, rounded) grams, which also discards invalid text.
   useEffect(() => { if (!focused) setText(String(grams)); }, [grams, focused]);
-  const commit = (value: string) => {
-    const parsed = Number.parseFloat(value.replace(",", "."));
-    if (Number.isFinite(parsed)) onCommit(parsed);
-    else setText(String(grams));
-  };
   return <View style={[styles.gramInputBox, { borderColor: focused ? c.primaryBorder : c.border, backgroundColor: c.bg }]}>
-    <TextInput value={text} onChangeText={setText} onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(text); }} onSubmitEditing={() => commit(text)} keyboardType="decimal-pad" returnKeyType="done" selectTextOnFocus accessibilityLabel="Portion weight in grams" style={{ fontSize: 14, fontWeight: "700", color: c.text, minWidth: 34, textAlign: "center" }} />
+    {/* Commit each valid keystroke: the sheet's ScrollView uses keyboardShouldPersistTaps="handled", so on
+        native, tapping Save does not blur this input, and a blur-only commit would save stale grams. */}
+    <TextInput value={text} onChangeText={(value) => { setText(value); const parsed = Number.parseFloat(value.replace(",", ".")); if (Number.isFinite(parsed)) onCommit(parsed); }} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} keyboardType="decimal-pad" returnKeyType="done" selectTextOnFocus accessibilityLabel="Portion weight in grams" style={{ fontSize: 14, fontWeight: "700", color: c.text, minWidth: 34, textAlign: "center" }} />
     <Text style={{ fontSize: 12, fontWeight: "600", color: c.textMuted }}>g</Text>
   </View>;
 }

@@ -294,15 +294,27 @@ export default function ChatScreen() {
   const historyData = queryClient.getQueryData<ChatMessage[]>(["chatHistory"]);
   useEffect(() => {
     if (!historyData || isStreaming || isFetching) return;
-    setMessages(
-      historyData
+    setMessages((current) => {
+      const remaining = [...current];
+      const synced = historyData
         .filter((m) => m.content.trim().length > 0)
-        .map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-        })),
-    );
+        .map((m) => {
+          const previousIndex = remaining.findIndex(
+            (previous) => previous.role === m.role && previous.content === m.content,
+          );
+          const previous =
+            previousIndex >= 0 ? remaining.splice(previousIndex, 1)[0] : undefined;
+          return {
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            ...(previous?.toolResults ? { toolResults: previous.toolResults } : {}),
+            ...(previous?.toolStatus ? { toolStatus: previous.toolStatus } : {}),
+          };
+        });
+      // History omits tool events, so keep their draft cards from the streaming message.
+      return [...synced, ...remaining.filter((message) => message.toolResults?.length)];
+    });
   }, [historyData, isStreaming, isFetching]);
   const { isPro, isLoaded: subLoaded } = useSubscriptionStore();
   const invalidateMealQueries = useCallback(() => {

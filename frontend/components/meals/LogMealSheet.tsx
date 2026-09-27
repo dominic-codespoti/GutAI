@@ -513,6 +513,7 @@ export function LogMealSheet() {
           customText: "",
         };
       });
+      if (response.draftId) queryClient.invalidateQueries({ queryKey: ["meal-drafts"] });
       setNlpDraftId(response.draftId ?? null);
       setParsedOriginalText(text);
       setParsedCandidateChoices({});

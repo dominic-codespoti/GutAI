@@ -88,6 +88,15 @@ public class NaturalLanguageFallbackServiceTests
     }
 
     [Fact]
+    public void Extract_NumericQuantityDoesNotTreatLeadingWordAsUnitAbbreviation()
+    {
+        var (qty, unit, food) = NaturalLanguageFallbackService.ExtractQuantityAndFood("2 large boiled eggs");
+        qty.Should().Be(2);
+        unit.Should().BeEmpty();
+        food.Should().Be("large boiled eggs");
+    }
+
+    [Fact]
     public void Extract_NumericWithUnit()
     {
         var (qty, unit, food) = NaturalLanguageFallbackService.ExtractQuantityAndFood("100g chicken");

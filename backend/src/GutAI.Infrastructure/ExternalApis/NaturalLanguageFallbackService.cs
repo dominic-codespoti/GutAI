@@ -606,10 +606,10 @@ public partial class NaturalLanguageFallbackService
     [GeneratedRegex(@$"^(?<word>a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|half|quarter|dozen|couple|few|several|some)\s+(?:(?<unit>{UnitGroup})\s+)?(?<food>.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex WordQuantityPattern();
 
-    [GeneratedRegex(@$"^(?<qty>\d+\.?\d*)\s*(?<unit>{UnitGroup})?\s*(?<food>.*)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@$"^(?<qty>\d+\.?\d*)\s*(?:(?<unit>{UnitGroup})(?![A-Za-z]))?\s*(?<food>.*)$", RegexOptions.IgnoreCase)]
     private static partial Regex NumericQuantityPattern();
 
-    [GeneratedRegex(@$"^(?:(?<whole>\d+)\s+)?(?<num>\d+)/(?<den>\d+)\s*(?<unit>{UnitGroup})?\s*(?<food>.*)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@$"^(?:(?<whole>\d+)\s+)?(?<num>\d+)/(?<den>\d+)\s*(?:(?<unit>{UnitGroup})(?![A-Za-z]))?\s*(?<food>.*)$", RegexOptions.IgnoreCase)]
     private static partial Regex FractionPattern();
 
     [GeneratedRegex(@"^(?:some|about|around|approximately|roughly|maybe|like|just|probably)\s+", RegexOptions.IgnoreCase)]

@@ -215,6 +215,15 @@ is deprecated in Reanimated 4.
 - **Symptom:** an unmeasured or unverified AI behavior is described or treated as production-ready because a configured gate appears to pass.
 - **Rule:** Scan (`GoldenScanHarness`) and agent (`AgentEvalHarness`) gates MUST be run manually against the live deployment (e.g. `make evals`) before shipping any change to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools, and the report MUST be reviewed. Current thresholds are provisional baselines from 6 live refreshed runs of the unweighed 12-case set (plan decision D7), not measured production baselines. If a metric with a configured threshold is unmeasured, the harness MUST fail the gate or report it as not evaluated according to its rules; it MUST NOT be treated as passing.
 
+## 19. Commit Save-Feeding Inputs on Change
+
+- **Symptom:** the saved meal differs from the portion the user typed, because the edit was
+  still uncommitted when Save was tapped.
+- **Rule:** Inputs that feed a save or commit action MUST update state on change, not only on
+  blur or submit. Inside a ScrollView with `keyboardShouldPersistTaps="handled"`, tapping a
+  native button does not blur the focused input. Blur may only normalize the displayed text
+  (see `PortionGramInput` in `MealDraftReviewSheet.tsx`).
+
 ---
 
 ## ⚙️ Development Workflow & Commands
