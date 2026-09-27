@@ -169,6 +169,18 @@ azure-deploy:
 # ── Golden-image regression harness (meal scan Stage A) ──
 .PHONY: golden-run golden-gate golden-inprocess golden-e2e
 
+# AI evaluation targets make live, paid model calls.
+.PHONY: evals evals-photo evals-agents
+
+evals:
+	@EVAL_INPUT_PER_1M="$(EVAL_INPUT_PER_1M)" EVAL_OUTPUT_PER_1M="$(EVAL_OUTPUT_PER_1M)" EVAL_SUITE="$(EVAL_SUITE)" EVAL_REPEAT="$(EVAL_REPEAT)" GUTAI_EVAL_STORAGE="$(GUTAI_EVAL_STORAGE)" ./scripts/run-ai-evals.sh all
+
+evals-photo:
+	@EVAL_INPUT_PER_1M="$(EVAL_INPUT_PER_1M)" EVAL_OUTPUT_PER_1M="$(EVAL_OUTPUT_PER_1M)" ./scripts/run-ai-evals.sh photo
+
+evals-agents:
+	@EVAL_SUITE="$(EVAL_SUITE)" EVAL_REPEAT="$(EVAL_REPEAT)" GUTAI_EVAL_STORAGE="$(GUTAI_EVAL_STORAGE)" ./scripts/run-ai-evals.sh agents
+
 golden-run:
 	cd backend && dotnet run --project tools/GoldenScanHarness -- --images ../golden-images --mode stage-a
 

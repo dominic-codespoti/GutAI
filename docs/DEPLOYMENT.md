@@ -500,14 +500,18 @@ The `Logging:OpenTelemetry:LogLevel` provider filter is the one used by the Open
 
 The evaluation harnesses are run manually on demand, never on a schedule or in GitHub; the regular CI workflow runs build, unit/integration tests, and contract checks only and makes no model calls.
 
-- [GoldenScanHarness README](../backend/tools/GoldenScanHarness/README.md) documents `stage-a`, `in-process`, and `e2e` runs, cache/refresh behavior, gates, and reporting. From the repository root, after `az login`, run the live photo-scan gate with the Azure CLI credential:
+- Run the live gates manually with `make evals` from the repository root; it runs the photo-scan gate, then the Coach, describe-food, and label suites. Use `make evals-photo` or `make evals-agents` to run only one part. The harness READMEs retain the direct `dotnet run` commands for advanced use.
 
   ```sh
-  AzureOpenAI__Endpoint=<endpoint> AzureOpenAI__Workloads__vision__Deployment=gpt-5.4-mini AzureOpenAI__Pricing__gpt-5.4-mini__InputPer1M=0.20 AzureOpenAI__Pricing__gpt-5.4-mini__OutputPer1M=1.20 dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --refresh --gate --report golden-report.json
+  az login
+  make evals
   ```
 
-  Run it before shipping changes to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools. Review the report and keep it with the change when relevant.
-- [AgentEvalHarness README](../backend/tools/AgentEvalHarness/README.md) documents the `coach`, `describe`, `label`, and `all` suites. Run from `backend/`, for example: `dotnet run --project tools/AgentEvalHarness -c Release -- --suite all --gate --report all-report.json`. Coach evaluation needs Azurite and configured Azure OpenAI endpoint/deployments; do not run against a paid model without authorization.
+- The runner loads `AzureOpenAI` from `backend/src/GutAI.Api/appsettings.json` and overlays `backend/src/GutAI.Api/appsettings.Development.json`; existing environment variables override those values, and `AZURE_OPENAI_ENDPOINT` overrides the endpoint. Pricing defaults to $0.20 input / $1.20 output per 1M tokens for the `gpt-5.4-mini` deployment (gpt-5.6-luna list prices); override with `EVAL_INPUT_PER_1M` and `EVAL_OUTPUT_PER_1M`. `EVAL_SUITE` defaults to `all` and `EVAL_REPEAT` to `1`.
+- The Azure CLI login is required; Docker is required for agent evals. If Azurite is not listening on `127.0.0.1:10002`, the runner starts a temporary container and removes it on exit. `GUTAI_EVAL_STORAGE` defaults to `UseDevelopmentStorage=true`.
+- Reports are written to `eval-reports/<UTC timestamp>/`. `scripts/run-ai-evals.sh` exits `0` when all executed gates pass, `1` when at least one gate fails, and `2` when a prerequisite or configuration is missing. Through `make`, any non-zero result shows as make's own exit status `2`; the printed summary says which gate failed. `make evals` runs both parts even if the photo gate fails. The photo gate runs against a temporary copy of `golden-images`, leaving `golden-images/.cache` untouched; it takes about 2 minutes and costs about $0.02. Agent evals take about 4 minutes and cost about $0.05 per repeat.
+
+- Run the gates before shipping changes to prompts or schemas, model deployments or effort, grounding/search ranking, calibration, or Coach tools. Review the reports and keep them with the change when relevant.
 - [CorrectionAnalytics README](../backend/tools/CorrectionAnalytics/README.md) documents the read-only operator report: `dotnet run --project backend/tools/CorrectionAnalytics -- --connection "<storage connection string>" --out correction-report.json`. Treat its output as sensitive operational data; review and explicitly approve a calibration snippet before applying it.
 - `ScanMealRepair` currently has no README. Its [program and usage](../backend/tools/ScanMealRepair/Program.cs) require a Table Storage connection (`--connection` or `GUTAI_STORAGE_CONNECTION`); run `dotnet run --project backend/tools/ScanMealRepair -- --connection "<storage connection string>"` for a dry run, optionally scoped with `--user <guid>`. Only add `--apply` after reviewing the dry-run report; that mode updates historical meal-item nutrition and meal totals.
 

@@ -52,12 +52,14 @@ Cost thresholds are evaluated when the local `AzureOpenAI__Pricing__<deployment>
 
 ## Running live gates manually
 
-From the repository root, after `az login`, run the live photo-scan gate:
+From the repository root, after `az login`, use `make evals-photo` for the primary live photo gate. It uses the API's `AzureOpenAI` settings from `appsettings.json` overlaid by `appsettings.Development.json`, with caller environment overrides; `AZURE_OPENAI_ENDPOINT` overrides the endpoint. The runner supplies pricing defaults of $0.20 input / $1.20 output per 1M tokens for `gpt-5.4-mini` (gpt-5.6-luna list prices); override them with `EVAL_INPUT_PER_1M` and `EVAL_OUTPUT_PER_1M`. The photo gate runs against a temporary copy of `golden-images`, so the local `golden-images/.cache` replay cache is untouched.
 
 ```bash
+make evals-photo
+# Advanced direct invocation:
 AzureOpenAI__Endpoint=<endpoint> AzureOpenAI__Workloads__vision__Deployment=gpt-5.4-mini AzureOpenAI__Pricing__gpt-5.4-mini__InputPer1M=0.20 AzureOpenAI__Pricing__gpt-5.4-mini__OutputPer1M=1.20 dotnet run --project backend/tools/GoldenScanHarness -c Release -- --images golden-images --mode in-process --refresh --gate --report golden-report.json
 ```
 
-The harness authenticates with the Azure CLI credential. Both pricing variables are needed to evaluate the cost threshold; without them it is reported NotEvaluated. A full live run makes 12 vision calls, costs about $0.02, and takes about 2 minutes.
+The harness authenticates with the Azure CLI credential. Both pricing values are needed to evaluate the cost threshold; without them it is reported NotEvaluated. A full live run makes 12 vision calls, costs about $0.02, and takes about 2 minutes.
 
-Local Make targets: `make golden-run`, `make golden-gate`, `make golden-inprocess`, and `make golden-e2e`.
+Other harness-specific Make targets: `make golden-run`, `make golden-gate`, `make golden-inprocess`, and `make golden-e2e`.

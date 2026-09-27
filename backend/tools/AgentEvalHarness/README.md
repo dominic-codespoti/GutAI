@@ -1,14 +1,18 @@
 # Agent evaluation harness
 
-`AgentEvalHarness` evaluates the production Coach, describe-food, and nutrition-label services against versioned local cases. Run it from `backend/`; default-root autodetection finds `tools/AgentEvalHarness`. If passing `--root`, it must be the `AgentEvalHarness` directory containing both `cases/` and `fonts/` (not the repository root):
+`AgentEvalHarness` evaluates the production Coach, describe-food, and nutrition-label services against versioned local cases. From the repository root, `make evals-agents` is the primary live-run command; `make evals` runs the photo gate first, then these suites.
 
 ```sh
+make evals-agents
+# Advanced direct invocation, from backend/:
 dotnet run --project tools/AgentEvalHarness -c Release -- --suite coach --report coach-report.json
 dotnet run --project tools/AgentEvalHarness -c Release -- --suite describe --gate --report describe-report.json
 dotnet run --project tools/AgentEvalHarness -c Release -- --suite all --repeat 3 --gate --report all-report.json
 ```
 
-The executable composes production services through `AddInfrastructure`; food search is replaced only with the embedded Whole Foods, branded, and Australian providers, matching the deterministic provider setup in `GutAI.IntegrationTests.SearchQualityTests`. No external food APIs are called. Coach cases use a fresh Azurite user and real `IChatService` per conversation. Configure `GUTAI_EVAL_STORAGE` for the storage connection string; the default is `UseDevelopmentStorage=true`. Start Azurite before running Coach. AI calls require `az login` and Azure OpenAI endpoint/deployment settings (including workload-specific deployments) through environment variables or `appsettings.harness.json`. Never run against a paid model without authorization.
+The wrapper loads `AzureOpenAI` from the API's `appsettings.json` plus `appsettings.Development.json`, then applies caller environment overrides; `AZURE_OPENAI_ENDPOINT` overrides the endpoint. Pricing defaults to $0.20 input / $1.20 output per 1M tokens (`EVAL_INPUT_PER_1M` / `EVAL_OUTPUT_PER_1M`, gpt-5.6-luna list prices); set `EVAL_SUITE` (`all` by default) and `EVAL_REPEAT` (`1` by default) to choose agent suites and repeats. Run `az login`; Docker is required, and the wrapper starts/removes temporary Azurite if needed. Reports go under `eval-reports/<UTC timestamp>/`; `scripts/run-ai-evals.sh` exits 0 for passing gates, 1 for gate failures, and 2 for missing prerequisites/configuration (through `make`, any failure shows as exit status 2; the summary names the failing gate). Agent evals take about 4 minutes and cost about $0.05 per repeat.
+
+Direct runs compose production services through `AddInfrastructure`; food search is replaced only with the embedded Whole Foods, branded, and Australian providers, matching the deterministic provider setup in `GutAI.IntegrationTests.SearchQualityTests`. No external food APIs are called. Coach cases use a fresh Azurite user and real `IChatService` per conversation. Configure `GUTAI_EVAL_STORAGE` for the storage connection string; the default is `UseDevelopmentStorage=true`. Direct AI calls require `az login` and Azure OpenAI endpoint/deployment settings (including workload-specific deployments) through environment variables or `appsettings.harness.json`. Never run against a paid model without authorization.
 
 ## Suites and case format
 
