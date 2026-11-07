@@ -1,35 +1,31 @@
-# AGENTS.md — GutAI Master Guide & Guardrails
+# AGENTS.md — GutAI guide and guardrails
 
-You are an expert full-stack AI developer working on **GutAI**.
-Your goal is to write clean, correct, and bug-free code. Think step-by-step and DO NOT guess implementations.
-The tech stack is **React Native (Expo)** on the frontend and **.NET 10 Minimal APIs** (with Azure Table Storage) on the backend.
+GutAI (app name GutLens): **React Native (Expo)** frontend, **.NET 10 Minimal APIs** backend on Azure Table Storage. Read the relevant design doc before changing an area, rather than inferring its architecture, domain logic or test layout.
 
-## 📚 Knowledge Base Routing (Progressive Disclosure)
+## Knowledge base (read the doc for the area you touch)
 
-DO NOT guess architectural details, domain logic, or test arrangements. If your task involves any of the following topics, you **MUST** read the corresponding documentation file using your file reading tool BEFORE writing code or making system changes:
-
-- **System Architecture & Setup**: `docs/ARCHITECTURE.md`
-- **Meal Photo Scan Pipeline & Grounding**: `docs/meal-scan-detailed-design.md`
-- **AI Calorie Estimation & Database Research**: `docs/ai-meal-scan-upgrade-research.md`
-- **End-to-End Testing (Playwright)**: `docs/PLAYWRIGHT_E2E_ANALYSIS.md`
-- **FODMAP Database Hardening Plan**: `docs/FODMAP_DATABASE_HARDENING_PLAN.md`
-- **AI Calorie Pipeline Remediation Plan (confirm, drafts, grounding policy, evals, meal generation)**: `docs/AI_CALORIE_PIPELINE_REMEDIATION_PLAN.md`
-- **Deployment & Production Config**: `docs/DEPLOYMENT.md`
+- **System architecture and setup**: `docs/ARCHITECTURE.md`
+- **Meal photo scan pipeline and grounding**: `docs/meal-scan-detailed-design.md`
+- **AI calorie estimation and database research**: `docs/ai-meal-scan-upgrade-research.md`
+- **End-to-end testing (Playwright)**: `docs/PLAYWRIGHT_E2E_ANALYSIS.md`
+- **FODMAP database hardening plan**: `docs/FODMAP_DATABASE_HARDENING_PLAN.md`
+- **AI calorie pipeline remediation plan (confirm, drafts, grounding policy, evals, meal generation)**: `docs/AI_CALORIE_PIPELINE_REMEDIATION_PLAN.md`
+- **Deployment and production config**: `docs/DEPLOYMENT.md`
 - **Evaluation tooling:** `backend/tools/GoldenScanHarness/README.md`, `backend/tools/AgentEvalHarness/README.md`, `backend/tools/CorrectionAnalytics/README.md`, and `backend/tools/ScanMealRepair/README.md`
 
-## 📝 Documentation Maintenance
+## Keeping docs current
 
-As GutAI evolves, it is your responsibility to keep the system knowledge base current. If you implement a new architectural pattern, add a new service, change deployment steps, or discover a new pattern/bug:
+When you add an architectural pattern or service, change deployment steps, or find a new bug pattern:
 
-- You **MUST** update the relevant file in the `docs/` folder.
-- If you add a completely new category of documentation, you **MUST** update this `AGENTS.md` file to add the new doc to the **Knowledge Base Routing** list above.
-- If you establish a new universal rule to prevent a category of bugs, you **MUST** add it to the **Strict Project Guardrails** section below.
+- Update the relevant file in `docs/`.
+- Add any new category of documentation to the knowledge-base list above.
+- Add any new rule that prevents a whole category of bugs to the guardrails below.
 
 ---
 
-## 🚨 Strict Project Guardrails
+## Project guardrails
 
-This document codifies the rules that prevent recurring bug categories discovered during audit passes. Every contributor (human or AI) MUST follow these rules.
+Each rule below prevents a bug category found in an audit pass; MUST/MUST NOT mark invariants (RFC 2119), not emphasis. They apply to every contributor, human or AI.
 
 ## 1. Entity ↔ Table Storage Roundtrip
 
@@ -236,7 +232,7 @@ is deprecated in Reanimated 4.
 
 ---
 
-## ⚙️ Development Workflow & Commands
+## Development workflow and commands
 
 ### CI Pipeline
 

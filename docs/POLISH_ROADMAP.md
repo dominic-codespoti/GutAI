@@ -165,7 +165,7 @@ Phase 4A M · Phase 5 M-L · Phase 6 S.
 - Each phase updates the relevant `docs/` file (ARCHITECTURE.md frontend tables for
   chart/notification/offline patterns; new patterns get their own section).
 - New guardrail-worthy bug categories discovered during execution get added to
-  AGENTS.md Strict Project Guardrails.
+  AGENTS.md project guardrails.
 
 ## Backlog (explicitly deferred)
 
